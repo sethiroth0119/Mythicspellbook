@@ -1,0 +1,40 @@
+# OS junk files
+Thumbs.db
+ehthumbs.db
+ehthumbs_vista.db
+Desktop.ini
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+
+# Editor metadata
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Logs / temporary
+*.log
+*.tmp
+
+# Node + build artifacts
+node_modules/
+.wrangler/
+public/_preview/
+public/.index.dev.html
+
+# Local secrets / env
+.env
+.env.local
+.dev.vars
+
+# 🏞 Heavy game assets — this is the `code-only` mirror branch on the
+# Mythicspellbook remote. All binary assets (sprites, audio, video, zips,
+# JSON exports) are excluded so the repo stays under GitHub's 100MB-per-
+# file limit. The actual assets ship to Cloudflare Workers as part of
+# `npm run deploy`; they live in the local working tree, just not in git.
+public/assets/
+public/Boosterandpacks/
+public/Exports/
+public/Operations/
