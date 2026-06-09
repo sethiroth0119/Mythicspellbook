@@ -24,8 +24,12 @@ const SRC = path.join(PUBLIC, 'index.html');
 const BACKUP = path.join(PUBLIC, '.index.dev.html');
 const SENTINEL = '<!--MIN-->';
 
-// Match the FIRST big inline <script> block (no src=, no type="application/json").
-const SCRIPT_RE = /(<script(?![^>]*\bsrc=)(?![^>]*\btype=["'][^"']*json[^"']*["'])[^>]*>)([\s\S]*?)(<\/script>)/i;
+// Match EVERY inline <script> block (no src=, no type="application/json").
+// ⚠ This must be /g — the file has TWO inline blocks (the small PWA bootstrap
+// added in <head> and the 5MB+ main game script after it). The old non-global
+// regex silently minified only the FIRST (tiny) block, shipping the main
+// script unminified — the whole point of this build step.
+const SCRIPT_RE = /(<script(?![^>]*\bsrc=)(?![^>]*\btype=["'][^"']*json[^"']*["'])[^>]*>)([\s\S]*?)(<\/script>)/gi;
 
 // Conservative Terser options — string-keyed property access is heavy in this
 // codebase (Profile['gems'], dynamic event-handler IDs, etc.), so:
@@ -67,27 +71,32 @@ export async function minify() {
   }
   console.log('💾 backing up source →', path.basename(BACKUP));
   fs.writeFileSync(BACKUP, html);
-  const m = SCRIPT_RE.exec(html);
-  if (!m) throw new Error('Could not find inline <script> block in ' + SRC);
-  const [whole, open, body, close] = m;
-  const before = body.length;
-  console.log('⚙️  minifying', before.toLocaleString(), 'chars of JS …');
+  const matches = [...html.matchAll(SCRIPT_RE)].filter(m => m[2].trim().length > 0);
+  if (!matches.length) throw new Error('Could not find inline <script> block in ' + SRC);
+  // Rebuild the HTML walking the matches in order; indexOf + slice keeps the
+  // substitution literal. ⚠ Don't use String.replace() — minified JS contains
+  // $&, $1 etc. that String.replace interprets as backreferences, ballooning
+  // the file 3x.
+  let out = '';
+  let cursor = 0;
   const t0 = Date.now();
-  const result = await terserMinify(body, TERSER_OPTS);
-  if (result.error) throw result.error;
-  if (!result.code) throw new Error('Terser returned empty output.');
-  const after = result.code.length;
+  for (const m of matches) {
+    const [whole, open, body, close] = m;
+    const idx = m.index;
+    console.log('⚙️  minifying', body.length.toLocaleString(), 'chars of JS …');
+    const result = await terserMinify(body, TERSER_OPTS);
+    if (result.error) throw result.error;
+    if (!result.code) throw new Error('Terser returned empty output.');
+    const pct = (1 - result.code.length / body.length) * 100;
+    console.log('   ✓ ' + result.code.length.toLocaleString() + ' chars (' + pct.toFixed(1) + '% smaller)');
+    out += html.slice(cursor, idx) + open + result.code + close;
+    cursor = idx + whole.length;
+  }
+  out += html.slice(cursor);
   const dt = Date.now() - t0;
-  const pct = (1 - after / before) * 100;
-  console.log('✓ ' + after.toLocaleString() + ' chars (' + pct.toFixed(1) + '% smaller) in ' + (dt / 1000).toFixed(1) + 's');
-  // ⚠ Don't use String.replace() — minified JS contains $&, $1 etc. that
-  // String.replace interprets as backreferences, ballooning the file 3x.
-  // Use indexOf + slice for a literal substitution.
-  const idx = html.indexOf(whole);
-  if (idx < 0) throw new Error('Could not locate matched script block for replacement.');
-  const minHtml = SENTINEL + html.slice(0, idx) + open + result.code + close + html.slice(idx + whole.length);
+  const minHtml = SENTINEL + out;
   fs.writeFileSync(SRC, minHtml);
-  console.log('✓ wrote minified', SRC, '(' + minHtml.length.toLocaleString() + ' chars total)');
+  console.log('✓ wrote minified', SRC, '(' + minHtml.length.toLocaleString() + ' chars total) in ' + (dt / 1000).toFixed(1) + 's');
 }
 
 export async function restore() {

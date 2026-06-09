@@ -24501,6 +24501,38 @@
       });
     }
 
+    // ---------- Persistent storage claim ----------
+    // Without navigator.storage.persist() the browser treats this origin's
+    // IndexedDB + Cache Storage as "best effort" — under disk pressure it can
+    // silently evict EVERYTHING (sprites, card art, the IDB profile backup,
+    // the SW asset cache). persist() flips the origin to durable storage so
+    // the player's local data survives. Browsers grant it freely for installed
+    // PWAs / engaged origins and deny silently otherwise, so asking is always
+    // safe. StorageHealth is the read-side: the Settings → Device Storage
+    // meter uses estimate() + persisted to show usage and protection status.
+    window.StorageHealth = {
+      persisted: null, // null = unknown/unsupported · true/false once resolved
+      estimate: function () {
+        if (!(navigator.storage && navigator.storage.estimate)) return Promise.resolve(null);
+        return navigator.storage.estimate().then(function (e) {
+          return { usage: e.usage || 0, quota: e.quota || 0 };
+        }).catch(function () { return null; });
+      },
+    };
+    if (navigator.storage && navigator.storage.persist) {
+      // Deferred to load like the SW registration so boot isn't delayed.
+      window.addEventListener('load', function () {
+        navigator.storage.persisted().then(function (already) {
+          if (already) { window.StorageHealth.persisted = true; return true; }
+          return navigator.storage.persist().then(function (granted) {
+            window.StorageHealth.persisted = !!granted;
+            if (granted) console.info('💾 Persistent storage granted — local game data is protected from eviction.');
+            return granted;
+          });
+        }).catch(function () { /* unsupported — meter shows "unknown" */ });
+      });
+    }
+
     // ---------- Install prompt capture ----------
     // beforeinstallprompt fires once per visit on supported browsers and is
     // prompt-able exactly once. We stash the event for the in-game tile to
@@ -42008,7 +42040,13 @@ function loadCamp() {
   } catch (e) { console.warn('Failed to load Camp', e); }
 }
 function saveCamp() {
-  try { localStorage.setItem(STORAGE_KEYS.camp, JSON.stringify({ slots: Camp.slots, maxSlots: Camp.maxSlots, facilities: Camp.facilities, workers: Camp.workers })); }
+  try {
+    const blob = JSON.stringify({ slots: Camp.slots, maxSlots: Camp.maxSlots, facilities: Camp.facilities, workers: Camp.workers });
+    // 🗄️ IndexedDB safety mirror — same pattern as saveProfile: the backup
+    // copy survives a localStorage wipe/quota purge and is restored at boot.
+    try { if (typeof idbSet === 'function') idbSet('backup_hg_camp', blob); } catch (e2) {}
+    localStorage.setItem(STORAGE_KEYS.camp, blob);
+  }
   catch (e) { console.warn('Failed to save Camp', e); showToast('⚠ Camp save failed'); }
 }
 
@@ -43062,7 +43100,12 @@ function loadLab() {
   } catch (e) { console.warn('Failed to load Lab data', e); }
 }
 function saveLab() {
-  try { localStorage.setItem(STORAGE_KEYS.lab, JSON.stringify({ cores: Lab.cores })); }
+  try {
+    const blob = JSON.stringify({ cores: Lab.cores });
+    // 🗄️ IndexedDB safety mirror — same pattern as saveProfile/saveCamp.
+    try { if (typeof idbSet === 'function') idbSet('backup_hg_lab', blob); } catch (e2) {}
+    localStorage.setItem(STORAGE_KEYS.lab, blob);
+  }
   catch (e) { console.warn('Failed to save Lab', e); showToast('⚠ Lab save failed'); }
 }
 
@@ -43370,6 +43413,10 @@ async function loadForgeContentFromIdb() {
   return changed;
 }
 
+// 📛 Whether localStorage held a parseable hg_profile when loadForge() ran.
+// null = loadForge hasn't run · false = missing/corrupt (IDB backup eligible)
+// · true = a local profile loaded fine. Read by the boot async block.
+let _profileWasInLsAtBoot = null;
 function loadForge() {
   try {
     // ⚠️ Heavy chunks (sprites / cardArt / locationArt / weatherAudio) load
@@ -43436,6 +43483,11 @@ function loadForge() {
     // re-writes localStorage and survives this clamp on the next boot.
     Forge.useCustomOnlyPool = true;
     try { localStorage.setItem('hg_useCustomOnlyPool', JSON.stringify(true)); } catch (err) {}
+    // 📛 Record whether a usable local profile existed AT BOOT. The IDB
+    // backup restore (boot async block) keys off this — it must not be
+    // fooled by a fresh default profile that some init path saves between
+    // now and when the async block runs.
+    _profileWasInLsAtBoot = !!pf;
     if (pf) {
       // 🛡 DEFENSIVE PARSE — a corrupt / truncated hg_profile (e.g. a quota-
       // limited write that only partially landed) used to throw here and
@@ -43448,6 +43500,9 @@ function loadForge() {
       catch (parseErr) {
         console.warn('⚠ hg_profile is corrupt/truncated — local profile load skipped; the cloud copy will restore it.', parseErr);
         try { if (typeof showToast === 'function') showToast('⚠ Local save was unreadable — restoring from the cloud…', 4500); } catch (_) {}
+        // Treat a corrupt row like a missing one so the IndexedDB backup
+        // (which holds the last GOOD save) is adopted at boot.
+        _profileWasInLsAtBoot = false;
       }
       if (p) {
       if (p.heroes) Profile.heroes = p.heroes;
@@ -44429,6 +44484,13 @@ function saveProfile() {
     let _profileBlob;
     try { _profileBlob = JSON.stringify(Profile); }
     catch (e) { _profileBlob = '{}'; /* defensive — never happens */ }
+    // 🗄️ IndexedDB safety mirror — fire-and-forget copy of the FULL profile
+    // (replays included; IDB has gigabytes of headroom so no trimming needed).
+    // This is the backup the boot restore adopts when the localStorage row is
+    // missing or corrupt — it means even a total quota failure below can no
+    // longer lose progression. Mirrored BEFORE the localStorage attempt so
+    // the quota-recovery's replay trimming never degrades the backup.
+    try { if (typeof idbSet === 'function') idbSet('backup_hg_profile', _profileBlob); } catch (e) {}
     try {
       localStorage.setItem(STORAGE_KEYS.profile, _profileBlob);
     } catch (quotaErr) {
@@ -44501,7 +44563,9 @@ function saveProfile() {
         } else {
           console.warn('Save retry after full quota purge still failed');
           if (typeof showToast === 'function') {
-            showToast('⚠ Profile save failed — local storage full. Export your data.', 5000);
+            // The IndexedDB mirror above still captured the full profile, so
+            // progress survives a reload — boot restores it from the backup.
+            showToast('⚠ Local storage is full — progress was saved to backup storage instead. Consider exporting your data.', 5000);
           }
           return false;
         }
@@ -85476,12 +85540,47 @@ function renderSettings() {
       </div>
 
       <div class="settings-section">
+        <div class="settings-section-title">💾 Device Storage</div>
+        <div class="settings-section-desc">How much browser storage the game is using on this device (saves, sprites, card art, cached assets) and how much is available. <strong>Protected</strong> means the browser promised not to evict the game's data under disk pressure.</div>
+        <div id="set-storage-meter"><div class="small-text ink-dim">Measuring…</div></div>
+      </div>
+
+      <div class="settings-section">
         <div class="settings-section-title">↺ Reset to defaults</div>
         <div class="settings-section-desc">Restore every setting on this page to the out-of-the-box values. Profile data (decks, heroes, achievements) is NOT affected.</div>
         <button class="btn-secondary btn-mini" id="btn-reset-settings">Reset settings</button>
       </div>
     </div>
   `;
+
+  // 💾 Device Storage meter — fills in asynchronously once
+  // navigator.storage.estimate() resolves. Browsers without the API (old
+  // Safari) keep a "not measurable" note instead of a broken bar.
+  (() => {
+    const box = document.getElementById('set-storage-meter');
+    if (!box) return;
+    const sh = (typeof window !== 'undefined' && window.StorageHealth) ? window.StorageHealth : null;
+    if (!sh) { box.innerHTML = '<div class="small-text ink-dim">Storage usage is not measurable in this browser.</div>'; return; }
+    sh.estimate().then((est) => {
+      // The screen may have re-rendered while we awaited — re-grab the node.
+      const el = document.getElementById('set-storage-meter');
+      if (!el) return;
+      if (!est || !est.quota) { el.innerHTML = '<div class="small-text ink-dim">Storage usage is not measurable in this browser.</div>'; return; }
+      const fmt = (b) => b >= 1e9 ? (b / 1e9).toFixed(2) + ' GB' : b >= 1e6 ? (b / 1e6).toFixed(1) + ' MB' : Math.round(b / 1e3) + ' KB';
+      const pct = Math.min(100, (est.usage / est.quota) * 100);
+      const badge = sh.persisted === true
+        ? '<span style="color:#7fd87f">🛡 Protected — the browser will not auto-evict game data.</span>'
+        : sh.persisted === false
+          ? '<span style="color:#e8c46a">⚠ Best-effort — the browser may clear game data under disk pressure. Installing the game (Add to Home Screen) usually grants protection.</span>'
+          : '<span class="ink-dim">Protection status unknown on this browser.</span>';
+      el.innerHTML =
+        '<div style="background:rgba(255,255,255,0.08);border-radius:6px;height:10px;overflow:hidden;margin:0.4rem 0">' +
+          '<div style="height:100%;width:' + pct.toFixed(1) + '%;background:linear-gradient(90deg,#6db2e0,#9a6de0)"></div>' +
+        '</div>' +
+        '<div class="small-text"><strong>' + fmt(est.usage) + '</strong> used of <strong>' + fmt(est.quota) + '</strong> available (' + pct.toFixed(1) + '%)</div>' +
+        '<div class="small-text" style="margin-top:0.3rem">' + badge + '</div>';
+    });
+  })();
 
   document.getElementById('btn-back-settings').onclick = () => {
     // 🔁 Return-to-screen — when Settings was opened from inside a battle
@@ -116994,6 +117093,31 @@ setTimeout(() => {
     if (typeof _loadCatalogFromIdb === 'function') {
       await _loadCatalogFromIdb();
     }
+    // 🛟 PROGRESSION RESTORE — saveProfile/saveCamp/saveLab mirror their
+    // blobs to IndexedDB on every save. If localStorage had NO (or a
+    // corrupt) hg_profile at boot but the IDB backup has one — browser
+    // evicted localStorage, a quota-failed write, a truncated row — put the
+    // backup rows back and reload ONCE so the normal synchronous load path
+    // picks them up. Fresh players have no backup so this is a no-op for
+    // them; the sessionStorage guard makes a reload loop impossible.
+    try {
+      if (_profileWasInLsAtBoot === false && !sessionStorage.getItem('hg_idbRestoreTried')) {
+        const backup = await idbGet('backup_hg_profile');
+        if (typeof backup === 'string' && backup.length > 2) {
+          sessionStorage.setItem('hg_idbRestoreTried', '1');
+          let ok = false;
+          try { localStorage.setItem(STORAGE_KEYS.profile, backup); ok = true; } catch (e2) {}
+          // Lab + Camp ride along whenever their rows are missing too.
+          try { const lb = await idbGet('backup_hg_lab');  if (typeof lb === 'string' && !localStorage.getItem(STORAGE_KEYS.lab))  localStorage.setItem(STORAGE_KEYS.lab,  lb); } catch (e2) {}
+          try { const cp = await idbGet('backup_hg_camp'); if (typeof cp === 'string' && !localStorage.getItem(STORAGE_KEYS.camp)) localStorage.setItem(STORAGE_KEYS.camp, cp); } catch (e2) {}
+          if (ok) {
+            console.info('🛟 Restored progression from the IndexedDB backup — reloading once to apply.');
+            location.reload();
+            return;
+          }
+        }
+      }
+    } catch (e) { /* restore is best-effort — cloud sync remains the fallback */ }
     // 🛟 ONE-TIME recovery for AI decks lost to the old cloud-only
     // persistence bug. If they were ever Published, the catalog still
     // carries them (Catalog.aiDecks) — pull them back into the editable
