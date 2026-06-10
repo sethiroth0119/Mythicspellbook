@@ -7,6 +7,7 @@
     "deploy": "node deploy.mjs",
     "deploy:raw": "wrangler deploy",
     "build": "node build.mjs minify",
+    "manifest": "node generate-manifest.mjs",
     "restore": "node build.mjs restore",
     "login": "wrangler login",
     "whoami": "wrangler whoami"

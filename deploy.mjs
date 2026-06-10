@@ -12,8 +12,13 @@
 
 import { execSync } from 'node:child_process';
 import { minify, restore } from './build.mjs';
+import { generateManifest } from './generate-manifest.mjs';
 
 console.log('═══════════ BUILD ═══════════');
+// Refresh the precache manifest first so the deployed asset-manifest.json
+// matches exactly what this deploy uploads. Best-effort: a manifest hiccup
+// must never block shipping the game itself.
+try { generateManifest(); } catch (e) { console.warn('⚠ manifest generation failed:', e.message); }
 await minify();
 
 console.log('\n═══════════ DEPLOY ══════════');

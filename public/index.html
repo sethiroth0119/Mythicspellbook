@@ -24533,6 +24533,89 @@
       });
     }
 
+    // ---------- Asset precache ("Download game data") ----------
+    // Proactively fills a DEDICATED cache (mythic-precache-v1) from the
+    // deploy-generated /asset-manifest.json so the full art/audio set lives
+    // on-device — instant loads + offline play instead of lazy per-request
+    // caching. Why a separate cache: the SW fetch handler uses
+    // caches.match(), which searches EVERY cache, so precached files are
+    // served with zero SW changes — and the SW's activate cleanup only
+    // reaps 'mythic-static-*' caches, so the precache (whose asset URLs
+    // never change once published) survives every deploy. The Settings →
+    // Device Storage section drives this and paints the progress.
+    window.AssetPrecache = {
+      CACHE: 'mythic-precache-v1',
+      state: 'idle', // idle | running | done | error
+      total: 0,      // manifest file count
+      done: 0,       // processed (cached/skipped/failed) so far
+      failed: 0,     // fetch failures this run (non-fatal — re-run resumes)
+      bytes: 0,      // bytes fetched this run (manifest sizes, approximate)
+      error: null,
+      onProgress: null, // assigned by the Settings screen while it's open
+      _cancel: false,
+      _man: null,       // memoized manifest
+      supported: (typeof caches !== 'undefined'),
+      manifest: async function () {
+        if (this._man) return this._man;
+        try {
+          const res = await fetch('/asset-manifest.json', { cache: 'no-cache' });
+          if (!res.ok) return null;
+          const man = await res.json();
+          if (man && Array.isArray(man.files)) { this._man = man; return man; }
+        } catch (e) {}
+        return null;
+      },
+      cachedCount: async function () {
+        try { const c = await caches.open(this.CACHE); return (await c.keys()).length; }
+        catch (e) { return 0; }
+      },
+      start: async function () {
+        if (this.state === 'running' || !this.supported) return;
+        this._cancel = false; this.state = 'running';
+        this.error = null; this.failed = 0; this.bytes = 0;
+        const tick = () => { if (this.onProgress) { try { this.onProgress(this); } catch (e) {} } };
+        try {
+          const man = await this.manifest();
+          if (!man || !man.files.length) throw new Error('No asset manifest published yet');
+          const cache = await caches.open(this.CACHE);
+          // Resume support: skip everything already in the cache. Manifest
+          // urls are per-segment encoded, matching Request.url pathnames.
+          const have = new Set((await cache.keys()).map((r) => { try { return new URL(r.url).pathname; } catch (e) { return ''; } }));
+          const todo = man.files.filter((f) => f && f.u && !have.has(f.u));
+          this.total = man.files.length;
+          this.done = this.total - todo.length;
+          tick();
+          const queue = todo.slice();
+          const self = this;
+          // Modest concurrency — fast enough to saturate a connection
+          // without starving the game's own live requests.
+          await Promise.all(Array.from({ length: 4 }, async function worker() {
+            while (queue.length && !self._cancel) {
+              const f = queue.shift();
+              try {
+                const res = await fetch(f.u);
+                if (res && res.ok) { await cache.put(f.u, res); self.bytes += (f.s || 0); }
+                else self.failed += 1;
+              } catch (e) { self.failed += 1; }
+              self.done += 1;
+              tick();
+            }
+          }));
+          this.state = this._cancel ? 'idle' : 'done';
+        } catch (e) {
+          this.state = 'error';
+          this.error = (e && e.message) || 'download failed';
+        }
+        tick();
+      },
+      cancel: function () { this._cancel = true; },
+      clear: async function () {
+        try { await caches.delete(this.CACHE); } catch (e) {}
+        this.state = 'idle'; this.done = 0; this.total = 0; this.bytes = 0; this.failed = 0;
+        if (this.onProgress) { try { this.onProgress(this); } catch (e) {} }
+      },
+    };
+
     // ---------- Install prompt capture ----------
     // beforeinstallprompt fires once per visit on supported browsers and is
     // prompt-able exactly once. We stash the event for the in-game tile to
@@ -85543,6 +85626,8 @@ function renderSettings() {
         <div class="settings-section-title">💾 Device Storage</div>
         <div class="settings-section-desc">How much browser storage the game is using on this device (saves, sprites, card art, cached assets) and how much is available. <strong>Protected</strong> means the browser promised not to evict the game's data under disk pressure.</div>
         <div id="set-storage-meter"><div class="small-text ink-dim">Measuring…</div></div>
+        <div class="settings-section-desc" style="margin-top:0.9rem"><strong>📦 Download game data</strong> — pre-load every published image and audio file onto this device for instant screens and offline play. Safe to cancel and resume; already-downloaded files are skipped.</div>
+        <div id="set-precache-box"><div class="small-text ink-dim">Checking downloaded assets…</div></div>
       </div>
 
       <div class="settings-section">
@@ -85580,6 +85665,72 @@ function renderSettings() {
         '<div class="small-text"><strong>' + fmt(est.usage) + '</strong> used of <strong>' + fmt(est.quota) + '</strong> available (' + pct.toFixed(1) + '%)</div>' +
         '<div class="small-text" style="margin-top:0.3rem">' + badge + '</div>';
     });
+  })();
+
+  // 📦 Asset precache controls — drives window.AssetPrecache (head script).
+  // paint() rebuilds the box for the current state; while a download runs,
+  // AssetPrecache.onProgress updates just the bar/counter, then repaints on
+  // completion. Every callback re-grabs the node by id so a Settings
+  // re-render (or leaving the screen) can never paint into a dead DOM.
+  (() => {
+    const ap = window.AssetPrecache;
+    const box = () => document.getElementById('set-precache-box');
+    if (!box()) return;
+    if (!ap || !ap.supported) {
+      box().innerHTML = '<div class="small-text ink-dim">Asset downloads need a browser with Cache Storage support.</div>';
+      return;
+    }
+    const fmt = (b) => b >= 1e9 ? (b / 1e9).toFixed(2) + ' GB' : b >= 1e6 ? (b / 1e6).toFixed(1) + ' MB' : Math.round(b / 1e3) + ' KB';
+    const bar = (pct) =>
+      '<div style="background:rgba(255,255,255,0.08);border-radius:6px;height:10px;overflow:hidden;margin:0.4rem 0">' +
+        '<div id="set-precache-bar" style="height:100%;width:' + pct.toFixed(1) + '%;background:linear-gradient(90deg,#6db2e0,#9a6de0)"></div>' +
+      '</div>';
+    const paint = async () => {
+      const el = box();
+      if (!el) return;
+      if (ap.state === 'running') {
+        const pct = ap.total ? (ap.done / ap.total) * 100 : 0;
+        el.innerHTML = bar(pct) +
+          '<div class="small-text" id="set-precache-text">' + ap.done + ' of ' + ap.total + ' files…</div>' +
+          '<button class="btn-secondary btn-mini" id="btn-precache-cancel" style="margin-top:0.5rem">✕ Cancel</button>';
+        const c = document.getElementById('btn-precache-cancel');
+        if (c) c.onclick = () => ap.cancel();
+        return;
+      }
+      const man = await ap.manifest();
+      const cached = await ap.cachedCount();
+      if (!box()) return; // screen changed while we awaited
+      if (!man || !man.count) {
+        box().innerHTML = '<div class="small-text ink-dim">No asset manifest is published yet — it\'s generated automatically on the next deploy.</div>';
+        return;
+      }
+      const complete = cached >= man.count;
+      const status = complete
+        ? '<span style="color:#7fd87f">✓ All ' + man.count + ' files (' + fmt(man.totalBytes) + ') are on this device.</span>'
+        : cached > 0
+          ? cached + ' of ' + man.count + ' files downloaded — resume to finish (' + fmt(man.totalBytes) + ' total).'
+          : man.count + ' files · ' + fmt(man.totalBytes) + ' — not downloaded yet.';
+      const err = ap.state === 'error' ? '<div class="small-text" style="color:#e8c46a">⚠ ' + (ap.error || 'Download failed') + ' — try again.</div>' : '';
+      const failed = ap.failed > 0 ? '<div class="small-text" style="color:#e8c46a">⚠ ' + ap.failed + ' file(s) failed — run again to retry them.</div>' : '';
+      box().innerHTML =
+        '<div class="small-text">' + status + '</div>' + err + failed +
+        '<div style="display:flex;gap:0.5rem;flex-wrap:wrap;margin-top:0.5rem">' +
+          (!complete ? '<button class="btn-secondary btn-mini" id="btn-precache-start">⬇ ' + (cached > 0 ? 'Resume download' : 'Download all') + '</button>' : '') +
+          (cached > 0 ? '<button class="btn-secondary btn-mini" id="btn-precache-clear">🗑 Remove downloaded assets</button>' : '') +
+        '</div>';
+      const s = document.getElementById('btn-precache-start');
+      if (s) s.onclick = () => { ap.start(); paint(); };
+      const x = document.getElementById('btn-precache-clear');
+      if (x) x.onclick = () => { ap.clear().then(paint); };
+    };
+    ap.onProgress = (p) => {
+      if (p.state !== 'running') { paint(); return; }
+      const b = document.getElementById('set-precache-bar');
+      const t = document.getElementById('set-precache-text');
+      if (b && p.total) b.style.width = ((p.done / p.total) * 100).toFixed(1) + '%';
+      if (t) t.textContent = p.done + ' of ' + p.total + ' files… (' + fmt(p.bytes) + ' fetched)';
+    };
+    paint();
   })();
 
   document.getElementById('btn-back-settings').onclick = () => {
