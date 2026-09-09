@@ -240,41 +240,6 @@ function LeftColumn() {
         ))}
       </div>
 
-      <div className="left-section roster" title="Your heroes & owned units stationed at the camp">
-        <div className="sec-hd">
-          Roster <span className="count">{ROSTER.length}</span>
-        </div>
-        <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-          {ROSTER.slice(0, 9).map((p, idx) => (
-            <div
-              className={`roster-row ${p.state}`}
-              key={idx}
-              onClick={() => openCard(p.id)}
-              style={p.id ? { cursor: "pointer" } : undefined}
-              title={
-                `${p.n}${p.t ? "  ·  " + p.t : ""}` +
-                (p.tip ? `\n${p.tip}` : "") +
-                `\nStatus: ${p.state === "hurt" ? "injured" : p.state === "busy" ? "deployed" : "ready"}`
-              }
-            >
-              <span className="roster-avatar">{<Avatar p={p} />}</span>
-              <span className="roster-name">{p.n}</span>
-              <span className="roster-tag">{p.t}</span>
-            </div>
-          ))}
-          {ROSTER.length > 9 && (
-            <div
-              className="roster-row"
-              style={{ opacity: 0.6, fontStyle: "italic" }}
-              title={`${ROSTER.length - 9} more on the roster`}
-            >
-              <span className="roster-avatar">+{ROSTER.length - 9}</span>
-              <span className="roster-name">more…</span>
-              <span className="roster-tag" />
-            </div>
-          )}
-        </div>
-      </div>
     </aside>
   );
 }
@@ -383,6 +348,82 @@ function BedsRack() {
 // ───────────────────────────────────────────────────────────────
 // BOTTOM RIBBON — minimap + actions + tick speed
 // ───────────────────────────────────────────────────────────────
+// ───────────────────────────────────────────────────────────────
+// 👥 ROSTER PANEL — moved out of the left rail so both hero lists
+// (roster + beds) live together in the right rail. Row layout is
+// portrait / name+role / state pill.
+// ───────────────────────────────────────────────────────────────
+function RosterPanel() {
+  const ROSTER = (window.__BRIDGE && window.__BRIDGE.roster) || window.ROSTER || [];
+  const isImg = (s) => /^(https?:|data:|blob:|\/)/i.test(String(s || ""));
+  const openCard = (id) => {
+    if (!id) return;
+    try { window.parent.postMessage({ type: "base:action", action: "card", id }, window.location.origin); } catch (e) {}
+  };
+  const CAP = 12;
+  const stateOf = (st) => st === "hurt" ? { label: "INJURED",  cls: "hurt" }
+                        : st === "busy" ? { label: "DEPLOYED", cls: "busy" }
+                        :                 { label: "READY",    cls: "ready" };
+  return (
+    <div className="right-section roster" title="Your owned units & hired workers stationed at the camp">
+      <div className="sec-hd">
+        Roster <span className="count">{ROSTER.length}</span>
+      </div>
+      <div className="roster-list">
+        {ROSTER.slice(0, CAP).map((p, idx) => {
+          const st = stateOf(p.state);
+          return (
+            <div
+              className={`roster-row ${st.cls}`}
+              key={idx}
+              onClick={() => openCard(p.id)}
+              onContextMenu={(e) => { if (!p.id) return; e.preventDefault(); openCard(p.id); }}
+              style={p.id ? { cursor: "pointer" } : undefined}
+              title={
+                `${p.n}${p.t ? "  ·  " + p.t : ""}` +
+                (p.tip ? `\n${p.tip}` : "") +
+                `\nStatus: ${st.label.toLowerCase()}`
+              }
+            >
+              <span className="roster-avatar">
+                {isImg(p.icon)
+                  ? <img src={p.icon} alt={p.n} className="roster-art" />
+                  : <span>{p.icon || p.i}</span>}
+              </span>
+              <span className="roster-id">
+                <span className="roster-name">{p.n}</span>
+                <span className="roster-tag">{p.t}</span>
+              </span>
+              <span className={`roster-state ${st.cls}`}>{st.label}</span>
+            </div>
+          );
+        })}
+        {ROSTER.length === 0 && (
+          <div className="roster-empty">
+            No one stationed yet — assign a unit or hire a worker at a room.
+          </div>
+        )}
+        {ROSTER.length > CAP && (
+          <div className="roster-more" title={`${ROSTER.length - CAP} more on the roster`}>
+            +{ROSTER.length - CAP} more…
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// The docked right rail. Grid track 3 on desktop, an overlay rail on
+// narrow screens (see .hud-right in styles.css).
+function RightColumn() {
+  return (
+    <aside className="hud-right">
+      <RosterPanel />
+      <BedsRack />
+    </aside>
+  );
+}
+
 function BottomBar({ activeId, onSelect, speed, setSpeed, paused, setPaused }) {
   const minimapCells = window.ROOMS.map((r) => {
     const cls =
@@ -423,16 +464,22 @@ function BottomBar({ activeId, onSelect, speed, setSpeed, paused, setPaused }) {
           <span className="act-lbl">Build</span>
           <span className="act-hot">B</span>
         </button>
-        <a
+        {/* 🗺 ETHOS HEIGHTS. This was a link to the old standalone World Map
+            page (deleted 2026-09-03 with its world-*.jsx and world.css). The
+            city map that replaced the campaign list
+            in the game proper — districts, factions, the train, citizen
+            standing — lives in the PARENT (/src/missions), so the bunker asks
+            the parent to go there, the same seam Assign / Hire / Bunks use.
+            The map's "← Camp" brings the player back into the bunker. */}
+        <button
           className="act"
-          href="World Map.html"
-          style={{ textDecoration: "none" }}
-          title="Open the World Map — expeditions & roguelite runs (hotkey: W)"
+          title="Open Ethos Heights — the district map: raids, the train, and what the people think of you (hotkey: W)"
+          onClick={() => { try { window.parent.postMessage({ type: "base:action", action: "ethos" }, window.location.origin); } catch (e) {} }}
         >
           {Ic.scout}
-          <span className="act-lbl">World</span>
+          <span className="act-lbl">Ethos Heights</span>
           <span className="act-hot">W</span>
-        </a>
+        </button>
         <button
           className="act"
           title="Open Camp Ops — station units, assign Rest / Study / Raid, build & upgrade facilities (hotkey: A)"
@@ -450,6 +497,23 @@ function BottomBar({ activeId, onSelect, speed, setSpeed, paused, setPaused }) {
           {Ic.research}
           <span className="act-lbl">Hire</span>
           <span className="act-hot">H</span>
+        </button>
+        {/* 🛏 THE BUNKHOUSE HAD NO DOOR. Its logic, UI, purchase and persistence
+            all shipped, but this screen sits under a full-viewport iframe, so
+            nothing could open it — the design doc's "floor, works with no city"
+            was unreachable for every player without a Tier-1 city. Added as its
+            OWN button rather than by repurposing a room's CTA: panel.jsx renders
+            exactly one CTA per room, so reusing one would have deleted an
+            existing entry point. The overlay this opens renders above the
+            builder frame, which is why the postMessage seam works here. */}
+        <button
+          className="act"
+          title="Billet cards to train their Resonance (R)"
+          onClick={() => { try { window.parent.postMessage({ type: "base:action", action: "bunkhouse" }, window.location.origin); } catch (e) {} }}
+        >
+          {Ic.survivor}
+          <span className="act-lbl">Bunks</span>
+          <span className="act-hot">R</span>
         </button>
       </div>
 

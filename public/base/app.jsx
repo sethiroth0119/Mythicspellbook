@@ -52,6 +52,10 @@ function App() {
       if (e.key === "1")      setSpeed(1);
       if (e.key === "2")      setSpeed(2);
       if (e.key === "4")      setSpeed(4);
+      // W — Ethos Heights, the district map in the parent game (see hud.jsx).
+      if ((e.key === "w" || e.key === "W") && !e.ctrlKey && !e.metaKey && !e.altKey && !/^(INPUT|TEXTAREA|SELECT)$/.test((e.target && e.target.tagName) || "")) {
+        try { window.parent.postMessage({ type: "base:action", action: "ethos" }, window.location.origin); } catch (err) {}
+      }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -66,7 +70,7 @@ function App() {
     >
       <TopBar day="DAY 047" clock={clockStr} threat={38} />
       <LeftColumn />
-      <BedsRack />
+      <RightColumn />
 
       <main className="stage" onClick={(e) => {
         // background click closes panel
