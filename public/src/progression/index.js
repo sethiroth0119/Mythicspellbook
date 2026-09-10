@@ -68,6 +68,9 @@ import { makePanel } from './panel.js';
 
 let st = null, panel = null, ctx = null, ticker = null, _hostReaders = null;
 
+/* Open the tree from outside — the host uses it after a purchase return (bug-mtty05g7). */
+export function open() { try { if (panel && !panel.isOpen()) panel.open(true); return true; } catch (e) { return false; } }
+
 export function mount(host) {
   ctx = host || {};
 

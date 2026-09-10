@@ -44,8 +44,8 @@ const FN = fnText('_corpMemberCitiesFetch');
 {
   ok(/if \(nid === 'local-city' \|\| !nid\) return;/.test(FN),
     'the local save is dropped — it is not a node city and can never be one');
-  ok(/if \(owned && !owned\[String\(c\.owner_id\) \+ '\|' \+ nid\]\) return;/.test(FN),
-    'and a city on a node the member no longer owns is dropped');
+  ok(/if \(owned && !owned\[String\(c\.owner_id\) \+ '\|' \+ nid\]\) \{[\s\S]*?\n\s*return;\n\s*\}/.test(FN) && !/if \(owned && !owned\[String\(c\.owner_id\) \+ '\|' \+ nid\]\) return;/.test(FN),
+    'and a city on a node the member no longer owns is dropped from their cities (v121v100: kept aside as a SHARED row only when another roster member owns that node)');
   ok(/from\('economy_nodes'\)\.select\('id,owner_id'\)/.test(FN),
     'ownership is read from economy_nodes — the table that actually says who holds what');
   ok(/\.in\('owner_id', ids\)/.test(FN), 'for the members being listed, not the whole table');

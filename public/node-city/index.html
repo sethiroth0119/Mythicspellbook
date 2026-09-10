@@ -9,7 +9,7 @@
      believed the file was already live. Only a CONTENT change moves the hash
      and forces a re-upload, so bump this stamp whenever the city 404s, and
      probe it (grep NC_BUILD on the served page) to prove the deploy landed. -->
-<script>window.NC_BUILD = "v121v99-shopwhy";</script>
+<script>window.NC_BUILD = "v121v100-sweep3";</script>
 <!-- ════════════════════════════════════════════════════════════════════════
      NODE CITY — SimCity-style settlement layer for Mythic Spellbook.
      Three.js WebGPU (auto-falls back to WebGL2). Realistic sun/moon cycle.
@@ -40208,7 +40208,8 @@ async function openStashRebalance() {
       moveLabel + ') more than this city\'s output entitles them to' +
       (gain.rises ? ', and that surplus is what is choking the rest' : '') +
       '.<br><br>The Ops Vault could hold it for you, but ' +
-      (st.ready ? 'this bank account cannot hold resources yet — open the Bank of Ethos once to finish setting it up.'
+      (st.managed ? 'this is a city you manage for its owner — the vault is theirs, and it stays in their own Bank of Ethos.'
+                : st.ready ? 'this bank account cannot hold resources yet — open the Bank of Ethos once to finish setting it up.'
                 : 'the Bank of Ethos is not connected. Sign in on the main game, then reopen the city.') +
       '<br><br>Until then the only ways out are spending that surplus or buying Vault Containers in the ' +
       'Vendor Market.</div>';
@@ -50459,6 +50460,12 @@ async function _ncResourceNeeds() {
       buildingName: (t) => { try { return (BUILDINGS[t] || {}).name || null; } catch (e) { return null; } },
       confirm: (msg) => (typeof gcConfirm === 'function' ? gcConfirm(msg) : Promise.resolve(confirm(msg))),
     });
+    /* 🏙 bug-mtty05g7: the game reopened this city after a development-points
+       purchase and asked for the tree to be open when it lands. */
+    try {
+      const par = window.parent && window.parent !== window ? window.parent : null;
+      if (par && par.__ncBootOpen === 'progression') { par.__ncBootOpen = null; setTimeout(() => { try { gmod.open(); } catch (e) {} }, 900); }
+    } catch (e) {}
   } catch (e) { console.warn('[Progress] not mounted (non-fatal):', e); }
   try {
     await spawnAnchors();

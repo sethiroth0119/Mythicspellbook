@@ -975,13 +975,32 @@ export function pullWorstText(pull) {
    economy's own satisfaction and the shop that sells it. The short ones
    (below servicesGood) are named worst-first, at most four, each with its
    shop, and one fix sentence follows. */
-export const SERVICES_FIX = 'Each is sold by the shop named: found one from the Operations catalogue, staff it at the Job Fair, and keep it stocked — an unstaffed or empty shop serves nothing.';
+export const SERVICES_FIX = 'A shop only serves what the city makes or imports: build the producer named, then staff both at the Job Fair — a shop with empty shelves serves nothing.';
 export function servicesShortList(list, dm) {
   if (!Array.isArray(list) || !list.length) return '';
   const good = dm && dm.ui && dm.ui.servicesGood != null ? dm.ui.servicesGood : 0.75;
   const short = list.filter((r) => r && r.sat < good).sort((a, b) => a.sat - b.sat || b.want - a.want).slice(0, 4);
   if (!short.length) return '';
-  return 'Short: ' + short.map((r) => (r.ico ? r.ico + ' ' : '') + r.name + ' ' + Math.round(r.sat * 100) + '%' + (r.shop ? ' (' + r.shop + ')' : '')).join(', ') + '.';
+  return 'Short: ' + short.map((r) => (r.ico ? r.ico + ' ' : '') + r.name + ' ' + Math.round(r.sat * 100) + '%' + servicesWhy(r)).join('; ') + '.';
+}
+/* Why THIS category is short, from what index.js counted (bug-mtvgfy5s):
+   no shop of the kind → name it; shops but no stock → the shops are standing
+   and nothing here makes what they sell, so name the producer; stocked and
+   still short → residents could not pay. Rows from an older breakdown that
+   carry no counts keep the plain "(shop)" form. */
+const prettyId = (id) => String(id || '').replace(/([a-z])([A-Z])/g, '$1 $2').toLowerCase();
+export function servicesWhy(r) {
+  if (!r) return '';
+  if (r.shops == null) return r.shop ? ' (' + r.shop + ')' : '';
+  const shop = r.shop || 'shop';
+  if (!(r.shops > 0)) return ' (no ' + shop + ' here — found one)';
+  const n = r.shops + ' ' + shop + (r.shops > 1 ? 's' : '');
+  if (!(r.stock > 0.5)) {
+    const goods = (r.res || []).slice(0, 3).map(prettyId).join(', ');
+    const mk = (r.makers || []).length ? ' — found a ' + r.makers.join(' or ') : '';
+    return ' (' + n + ' standing with nothing to sell: nothing here makes ' + (goods || 'what they stock') + mk + ')';
+  }
+  return ' (' + n + ' stocked; residents could not pay — see wages)';
 }
 export function servicesShortText(list, dm) {
   const lead = 'Residents cannot buy what they need here, and word gets around. ';

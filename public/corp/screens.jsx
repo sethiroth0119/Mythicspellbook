@@ -1584,10 +1584,20 @@ function MemberCitiesPanel() {
                     </td>
                   );
                   if (cities.length === 0) {
+                    {/* 🤝 bug-mtqasoy6: a member with no node of their own who works in
+                        another member's corporation city is named as such. */}
+                    const shared = (m && Array.isArray(m.shared)) ? m.shared : [];
                     return (
                       <tr key={key}>
                         {nameCell}
-                        <td style={{ minWidth: 150 }}><span className="muted" style={{ fontSize: 12 }}>no city founded</span></td>
+                        <td style={{ minWidth: 150 }}>
+                          <span className="muted" style={{ fontSize: 12 }}>{shared.length ? 'no city of their own' : 'no city founded'}</span>
+                          {shared.length ? (
+                            <div className="mono muted" style={{ fontSize: 10.5, marginTop: 3 }}>
+                              works in {shared.slice(0, 3).map((s) => (s.name || 'unnamed city') + ' (' + s.ownerName + ')').join(', ')}{shared.length > 3 ? ' +' + (shared.length - 3) : ''}
+                            </div>
+                          ) : null}
+                        </td>
                         <td className="num mono"><span className="muted" style={{ fontSize: 12 }}>—</span></td>
                         <td style={{ minWidth: 240 }}><span className="muted" style={{ fontSize: 12 }}>—</span></td>
                         <td style={{ minWidth: 220 }}><span className="muted" style={{ fontSize: 12 }}>—</span></td>

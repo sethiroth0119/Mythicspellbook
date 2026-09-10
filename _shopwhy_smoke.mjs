@@ -40,9 +40,9 @@ ok(!/why: 'Residents cannot buy what they need here, and word gets around\.' \}\
   ];
   const t = P.servicesShortText(L, dm);
   ok(/^Residents cannot buy what they need here, and word gets around\. Short: /.test(t), 'keeps the verdict and adds the list');
-  ok(/⚕️ Healthcare 0% \(Pharmacy\), 🍞 Food 12% \(Grocery Store\), 💎 Luxury 30% \(Luxury Boutique\), 👕 Clothing 50% \(Clothing Store\)\./.test(t), 'worst first, each with its shop, at most four', t);
+  ok(/⚕️ Healthcare 0% \(Pharmacy\); 🍞 Food 12% \(Grocery Store\); 💎 Luxury 30% \(Luxury Boutique\); 👕 Clothing 50% \(Clothing Store\)\./.test(t), 'worst first, each with its shop, at most four', t);
   ok(!/Restaurants/.test(t) && !/Ouroboros/.test(t), 'the fifth-worst and the one above servicesGood are not listed');
-  ok(/found one from the Operations catalogue, staff it at the Job Fair, and keep it stocked/.test(t), 'and says how to fix each');
+  ok(/build the producer named, then staff both at the Job Fair/.test(t), 'and says how to fix each');
   ok(/has not reported which categories/.test(P.servicesShortText(null, dm)) && /has not reported which categories/.test(P.servicesShortText([], dm)), 'no breakdown → says so instead of inventing one');
   ok(P.servicesShortList([{ key: 'food', name: 'Food', sat: 0.9, want: 1 }], dm) === '', 'nothing short → empty list');
 }

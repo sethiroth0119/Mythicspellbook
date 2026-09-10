@@ -465,15 +465,29 @@ function servicesBreakdown(E, snap) {
     const unmet = (snap && snap.unmet) || {};
     const basket = Array.isArray(E && E.basket) ? E.basket : [];
     const inds = (E && E.industries) || {};
+    /* 🏪 bug-mtvgfy5s: "two Grocery Stores, five Power Plants, a Pharmacy, and it
+       reads 0 available". The shops ARE there; a shop sells what the city's
+       inventory holds, and satisfaction is take ÷ want — so a grocer with no
+       bread on the shelf and a city with no grocer both print 0%. Count the
+       shops standing and the stock on hand so the sentence can tell them apart. */
+    let firms = []; try { firms = (typeof E.firms === 'function' && E.firms()) || []; } catch (e) { firms = []; }
+    let inv = {}; try { inv = (typeof E.inventory === 'function' && E.inventory()) || {}; } catch (e) { inv = {}; }
+    const indOf = (E && E.recipes && typeof E.recipes.industryOf === 'function') ? E.recipes.industryOf : null;
     const out = [];
     for (const key in sat) {
       const s = Number(sat[key]);
       if (!isFinite(s)) continue;
       const b = basket.find((x) => x && x.key === key) || null;
       const ind = b && b.ind ? inds[b.ind] : null;
+      const res = (b && Array.isArray(b.res)) ? b.res : [];
+      let shops = 0; for (const f of firms) if (f && b && f.ind === b.ind) shops++;
+      let stock = 0; for (const id of res) stock += Math.max(0, Number(inv[id]) || 0);
+      const makers = [];
+      if (indOf) for (const id of res) { const m = inds[indOf(id)]; if (m && m.name && makers.indexOf(m.name) < 0 && m.name !== (ind && ind.name)) makers.push(m.name); if (makers.length >= 2) break; }
       out.push({ key, name: b ? b.name : key, ico: b ? b.ico : '', sat: Math.max(0, Math.min(1, s)),
                  want: Math.max(0, Number(want[key]) || 0), unmet: Math.max(0, Number(unmet[key]) || 0),
-                 ind: b ? b.ind : null, shop: ind && ind.name ? ind.name : (b && b.ind ? b.ind : null) });
+                 ind: b ? b.ind : null, shop: ind && ind.name ? ind.name : (b && b.ind ? b.ind : null),
+                 shops, stock, res, makers });
     }
     return out.length ? out : null;
   } catch (e) { return null; }

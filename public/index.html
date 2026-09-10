@@ -32738,7 +32738,15 @@
        always sit on top of their host iframe instead of being eclipsed by it. */
     z-index: 2147483647;
     animation: toast-in 0.25s ease-out;
+    /* 🚧 bug-mtvg7l39: a toast is a notice, not a control — nothing in one is
+       clickable, so clicks pass through to whatever it is floating over. The
+       daily-limit line sat on the city builder's Roads/Pipes/Zones bar for
+       nine seconds at a time and made the bar unusable while the city earned. */
+    pointer-events: none;
   }
+  /* …and while the city builder is open it floats at the TOP instead, off the build bar. */
+  .toast.toast-top { bottom: auto; top: 14px; }
+  .toast.toast-top.juice-toast-in, .toast.toast-top.juice-toast-out { animation: none; }
   @keyframes toast-in { from { opacity: 0; transform: translate(-50%, 10px); } to { opacity: 1; transform: translate(-50%, 0); } }
   /* Rich Kalon-transformation toast — bigger, cosmic-glow border, with the
      Kalon Source icon inline. Lives for ~3s after a Kalon fires. */
@@ -39386,7 +39394,7 @@ body:has(#pack-opener-frame) #chat-overlay {
   // the console. Bump this every deploy alongside sw.js's CACHE_VERSION. If two
   // machines show different stamps, the older one is on stale code (hard-refresh);
   // if they MATCH but content still differs, it is a DATA/publish issue, not code.
-  window.BUILD_VERSION = 'v121v99';
+  window.BUILD_VERSION = 'v121v100';
   try {
     console.info('%cMythic Spellbook ' + window.BUILD_VERSION + '%c — build check: run  __mg.version',
       'font-weight:700;color:#b48cff', 'color:#7d7499');
@@ -63131,7 +63139,8 @@ const Wallet = { rpcMissing: false, lastFetchAt: 0, _err: null, _bootAt: Date.no
    player the number.
    ⚠ It is the SERVER that decides what is held and what is released — this
      never computes an amount, it only repeats one. Same stance as gift_claim. */
-let _walletHoldsT = 0, _walletHoldsBusy = false, _walletHoldsLastHeld = -1;
+let _walletHoldsT = 0, _walletHoldsBusy = false, _walletHoldsLastHeld = -1, _walletHoldsLastToast = 0;
+const WALLET_HOLDS_TOAST_EVERY = 30 * 60 * 1000;   // bug-mtvg7l39: the bell gets every change; the toast, one per half hour
 async function walletHoldsCheck() {
   if (_walletHoldsBusy) return;
   try {
@@ -63153,7 +63162,7 @@ async function walletHoldsCheck() {
       let when = '';
       try { if (j.frees_at) when = ' Next release around ' + new Date(j.frees_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) + '.'; } catch (e) {}
       const line = '⏳ ' + held.toLocaleString() + ' Cinder is over your ' + (Number(j.cap) || 4500000).toLocaleString() + ' daily limit and is being held. It moves into your wallet over the next 24 hours.' + when;
-      showToast(line, 9000);
+      if (Date.now() - _walletHoldsLastToast > WALLET_HOLDS_TOAST_EVERY) { _walletHoldsLastToast = Date.now(); showToast(line, 9000); }
       // …and it stays in the bell, so a toast they blinked through is not the only record.
       try { if (typeof notify === 'function') notify(line, { kind: 'wallet' }); } catch (e) {}
     }
@@ -66533,6 +66542,7 @@ async function _profReferralPaint() {
            to retype a code that can never work. */
         showToast(res.error === 'self_referral' ? '⚠ That’s your own code — share it instead!'
           : res.error === 'already_redeemed' ? '⚠ This account already redeemed a code.'
+          : res.error === 'referrer_newer' ? '⚠ That code belongs to a player who joined AFTER you, so they can’t have invited you. If you invited them, they redeem YOUR code from their own profile — nothing was used up.'
           : res.error === 'mutual_referral' ? '⚠ Referral not allowed — this player is already connected to your account through the referral system. Players can’t refer each other.'
           : res.error === 'referral_cycle' ? '⚠ Referral not allowed — that would loop your referral chain back to your own account.'
           : res.error === 'same_ip' ? '⚠ A referral was already redeemed from this network.'
@@ -85603,7 +85613,10 @@ function _resourceNeeds() {
 }
 /* The city iframe asks for this at boot. Exposed on window because node-city
    reaches the host through window accessors (see cityGetRes/citySpendRes). */
-try { window.cityResourceNeeds = () => { try { return JSON.parse(JSON.stringify(_resourceNeeds())); } catch (e) { return {}; } }; } catch (e) {}
+try { window.cityResourceNeeds = () => { try {
+  /* 🏛 The needs list is the MAYOR's own Forge setting; a managed city gets none (bug-mtvg7q4f). */
+  try { if ((typeof CityMgr !== 'undefined' && CityMgr && CityMgr.active) || (typeof _cityMgrStalled === 'function' && _cityMgrStalled())) return {}; } catch (e) {}
+  return JSON.parse(JSON.stringify(_resourceNeeds())); } catch (e) { return {}; } }; } catch (e) {}
 
 function _applyResourceCustomization() {
   try {
@@ -93609,12 +93622,17 @@ async function _corpMemberCitiesFetch() {
          syncBuildings() states for its own reconcile: a bad read must never
          look like a deletion. */
     let owned = null;
+    /* 🤝 node → owner, for the rows below that are somebody ELSE's city (bug-mtqasoy6). */
+    const nodeOwner = Object.create(null);
+    const shared = {};
+    const nameOf = Object.create(null);
+    roster.forEach(function (m) { if (m && m.userId) nameOf[String(m.userId)] = (m.name || 'Member'); });
     try {
       const nr = await Cloud.client.from('economy_nodes').select('id,owner_id').in('owner_id', ids).limit(500);
       if (nr && !nr.error && Array.isArray(nr.data)) {
         owned = Object.create(null);
         nr.data.forEach(function (n) {
-          if (n && n.id != null && n.owner_id) owned[String(n.owner_id) + '|' + String(n.id)] = 1;
+          if (n && n.id != null && n.owner_id) { owned[String(n.owner_id) + '|' + String(n.id)] = 1; nodeOwner[String(n.id)] = String(n.owner_id); }
         });
       }
     } catch (e) { owned = null; }
@@ -93625,7 +93643,27 @@ async function _corpMemberCitiesFetch() {
       /* The local save is named, populated and updated like any other row, so
          it can only be told apart by its id. It is never a corp city. */
       if (nid === 'local-city' || !nid) return;
-      if (owned && !owned[String(c.owner_id) + '|' + nid]) return;
+      if (owned && !owned[String(c.owner_id) + '|' + nid]) {
+        /* 🤝 bug-mtqasoy6 (reopened): "all of the other cities against my
+           corporation members state no city founded". MEASURED on the live
+           table for the reporter's corporation: the CEO owns six nodes and has
+           five published cities on them; the other four members own NO node,
+           and their city_profiles rows sit on the CEO's nodes — they opened and
+           published the CEO's cities while working in them. The rule (a city
+           on a node the member still owns) is right and filtered those out,
+           which left the panel saying the members had founded nothing, when
+           what they have is a hand in a corporation city. Kept as SHARED rows,
+           named with the owner, so the panel can say that instead. */
+        const ownerId = nodeOwner[nid];
+        if (ownerId && ownerId !== String(c.owner_id) && nameOf[ownerId]) {
+          (shared[c.owner_id] = shared[c.owner_id] || []).push({
+            nodeId: nid, ownerId, ownerName: nameOf[ownerId],
+            name: (typeof c.city_name === 'string' && c.city_name.trim()) ? c.city_name.trim() : '',
+            at: c.updated_at || null,
+          });
+        }
+        return;
+      }
       (by[c.owner_id] = by[c.owner_id] || []).push({
         nodeId: c.node_id != null ? String(c.node_id) : '',
         // The city's own published name, verbatim. Never an owner id (that is
@@ -93643,7 +93681,8 @@ async function _corpMemberCitiesFetch() {
     });
     Corp.memberCities = roster.map(function (m) {
       const uid = (m && m.userId) || '';
-      return { userId: uid, name: (m && m.name) || 'Member', role: (m && m.role) || 'member', cities: by[uid] || [] };
+      const sh = (shared[uid] || []).slice().sort(function (a, b) { return String(b.at || '').localeCompare(String(a.at || '')); });
+      return { userId: uid, name: (m && m.name) || 'Member', role: (m && m.role) || 'member', cities: by[uid] || [], shared: sh };
     });
     Corp.memberCitiesState = 'ok';
   } catch (e) {
@@ -134940,6 +134979,7 @@ function showToast(msg, ms, opts) {
   if (el) el.remove();
   el = document.createElement('div');
   el.className = 'toast juice-toast-in';   // 🧃 slide-up entrance via CSS
+  try { if (document.getElementById('node-city-frame')) el.classList.add('toast-top'); } catch (e) {}   // bug-mtvg7l39
   // 🔥 → 🪙 Cinder icon — toasts that talk about Cinder currency historically
   // used the system fire emoji. The new icon is `.cinder-icon` (background
   // image). Auto-swap here so every spend/gain/balance toast shows the new
@@ -192878,7 +192918,10 @@ function payReturnRemember() {
   try {
     const sc = String((typeof App !== 'undefined' && App.screen) || '');
     if (!sc) return;
-    localStorage.setItem(PAY_RETURN_KEY, JSON.stringify({ screen: sc, hub: (typeof App !== 'undefined' && App.titleHub) || null, at: Date.now() }));
+    /* 🏙 bug-mtty05g7: bought from inside a city, the return must land back in
+       THAT city with the Progression tree open — not on the title. */
+    let city = null; try { if (document.getElementById('node-city-frame') && App._cityNodeId) city = String(App._cityNodeId); } catch (e) {}
+    localStorage.setItem(PAY_RETURN_KEY, JSON.stringify({ screen: sc, hub: (typeof App !== 'undefined' && App.titleHub) || null, city, at: Date.now() }));
   } catch (e) {}
 }
 /* Answers whether it actually moved the player, so the caller can decide
@@ -192898,7 +192941,13 @@ function payReturnRestore() {
     const at = Number(v.at) || 0;
     if (!(Date.now() - at < PAY_RETURN_TTL)) return false;
     if (typeof App === 'undefined') return false;
-    if (String(App.screen || '') === v.screen) return false;   // already there
+    /* 🏙 bug-mtty05g7: reopen the city the purchase was made from, and ask it to
+       open the Progression tree once it has booted (node-city reads the flag). */
+    if (v.city) {
+      try { window.__ncBootOpen = 'progression'; } catch (e) {}
+      setTimeout(() => { try { if (typeof _openNodeCity === 'function') _openNodeCity(String(v.city)); } catch (e) {} }, 700);
+    }
+    if (String(App.screen || '') === v.screen) return !!v.city;   // already there
     App.screen = v.screen;
     if (v.hub) App.titleHub = v.hub;
     return true;
@@ -210953,6 +211002,20 @@ function _rlcDeckKeys(deckId) {
   if (keys.length < DECK_SIZE) { const b = keys.slice(0); let i = 0; while (keys.length < DECK_SIZE) { keys.push(b[i % b.length]); i++; } }
   return keys;
 }
+/* The hero a chosen deck belongs to — a player deck or an owned starter deck —
+   or null for an admin-curated deck that names none (bug-mtvgyt59). */
+function _rlcDeckHero(deckId) {
+  try {
+    let hid = null;
+    const sd = (typeof getAllStarterDecks === 'function' ? getAllStarterDecks() : []).find(d => d && d.id === deckId);
+    if (sd && sd.heroId) hid = sd.heroId;
+    if (!hid && typeof getDeckById === 'function') { const pd = getDeckById(deckId); if (pd && pd.heroId) hid = pd.heroId; }
+    if (!hid && Array.isArray(Profile.decks)) { const pd = Profile.decks.find(d => d && d.id === deckId); if (pd && pd.heroId) hid = pd.heroId; }
+    if (!hid) return null;
+    if (typeof findHeroById === 'function' && !findHeroById(hid)) return null;
+    return hid;
+  } catch (e) { return null; }
+}
 function _rlcStartNodes(camp) {
   const nodes = camp.nodes || [];
   const incoming = new Set();
@@ -213362,6 +213425,10 @@ function renderRlcDeckPick() {
     </div>`;
   document.querySelectorAll('[data-rlc-pickdeck]').forEach(b => b.onclick = () => {
     run.deck = _rlcDeckKeys(b.dataset.rlcPickdeck).slice(0);
+    /* 🦸 bug-mtvgyt59: rlcStartRun fixed the hero BEFORE this screen (first hero
+       in the roster unless the campaign pins one), so every run fought as
+       Cedric whatever deck was chosen. A deck built for a hero brings that hero. */
+    try { const _h = _rlcDeckHero(b.dataset.rlcPickdeck); if (_h) run.heroId = _h; } catch (e) {}
     try { saveProfile(); } catch (e) {}
     showToast('🃏 Deck chosen — your run begins!', 2200);
     App.screen = 'rlcMap'; render();
@@ -243712,7 +243779,12 @@ window.MythicMercBridge = {
 function cityGetResMany(ids) {
   const out = {};
   try {
-    const R = _ensureResources();
+    /* 🏛 MANAGING (bug-mtvg7q4f, critical): this read fell through to the
+       MAYOR's own ledger while cityGetRes beside it answered for the owner —
+       the city's bulk reads (stock panel, bottleneck plan) therefore printed
+       the mayor's vault in a client city. Same three answers as cityGetRes. */
+    if (_cityMgrStalled()) { (Array.isArray(ids) ? ids : []).forEach(id => { out[id] = 0; }); return out; }
+    const R = CityMgr.active ? (CityMgr.salvage || {}) : _ensureResources();
     (Array.isArray(ids) ? ids : []).forEach(id => { out[id] = R[id] | 0; });
   } catch (e) {}
   return out;
@@ -244548,6 +244620,9 @@ try {
    mean two divergent code paths over real player property. */
 window.cityVaultState = function () {
   try {
+    /* 🏛 The Bank of Ethos vault is the MAYOR's account. In a city managed for
+       somebody else it must not be offered as that city's vault (bug-mtvg7q4f). */
+    if (CityMgr.active || _cityMgrStalled()) return { ready: false, canBank: false, bank: {}, managed: true };
     return {
       ready: !!(BankEthos && BankEthos.ready),
       // The bank needs its extended columns before it can hold resources at all.
@@ -244567,6 +244642,7 @@ window.cityVaultState = function () {
 };
 window.cityVaultMove = async function (id, qty, dir) {
   try {
+    if (CityMgr.active || _cityMgrStalled()) return false;   // the vault is not this city's (bug-mtvg7q4f)
     const n = Math.floor(Number(qty) || 0);
     if (!id || !(n > 0)) return false;
     const ok = (dir === 'withdraw')
@@ -263941,8 +264017,8 @@ render();
        that works everywhere except the one early path nobody tested. It is
        2KB with no dependencies. -->
 <script src="src/econ/peg.js?v=v121q51"></script>
-<script src="src/battle/effects.js?v=v121v99" defer></script>
-<script src="src/phone/handset.js?v=v121v99" defer></script>
+<script src="src/battle/effects.js?v=v121v100" defer></script>
+<script src="src/phone/handset.js?v=v121v100" defer></script>
 <script src="src/battle/combat.js?v=120m4" defer></script>
 <script src="src/battle/targeting.js?v=121e3hex" defer></script>
 <link rel="stylesheet" href="src/sprites/frames.css?v=120k3">
