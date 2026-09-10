@@ -39386,7 +39386,7 @@ body:has(#pack-opener-frame) #chat-overlay {
   // the console. Bump this every deploy alongside sw.js's CACHE_VERSION. If two
   // machines show different stamps, the older one is on stale code (hard-refresh);
   // if they MATCH but content still differs, it is a DATA/publish issue, not code.
-  window.BUILD_VERSION = 'v121v93';
+  window.BUILD_VERSION = 'v121v94';
   try {
     console.info('%cMythic Spellbook ' + window.BUILD_VERSION + '%c — build check: run  __mg.version',
       'font-weight:700;color:#b48cff', 'color:#7d7499');
@@ -42712,6 +42712,24 @@ const RESOURCES = [
   { id: 'catGasoline',             name: 'Cat Gasoline',              icon: '🔥', color: '#e0a060' },
   { id: 'hydrotreatedCut',         name: 'Hydrotreated Cut',          icon: '🧼', color: '#e0b8c8' },
   { id: 'reprocessedSlop',         name: 'Reprocessed Slop',          icon: '🌀', color: '#b06bff' },
+  /* 🐄 THE HOMESTEAD FARM'S LEDGER (FARM_HANDOFF §3, RESOURCES_NEXT.md): every id the
+     farm pays out or eats, promoted together with the producer that makes it, LAST in this list because the
+     gauntlet pins the order: 14 legacy ids, the derivation, then the mini-game ids — the
+     farm module itself (src/farm) and the Feed Operation (OPS_ECON.feed). Grade-2
+     goods (goldEggs, primeMeat, richMilk, fineWool) come only from better breeds. */
+  { id: 'animalFeed',               name: 'Animal Feed',                 icon: '🌾', color: '#d9c46a' },
+  { id: 'eggs',                     name: 'Eggs',                        icon: '🥚', color: '#f2e8d5' },
+  { id: 'feathers',                 name: 'Feathers',                    icon: '🪶', color: '#e8e0d0' },
+  { id: 'rawMilk',                  name: 'Raw Milk',                    icon: '🥛', color: '#f4f1ea' },
+  { id: 'meat',                     name: 'Meat',                        icon: '🥩', color: '#c25a3a' },
+  { id: 'wool',                     name: 'Wool',                        icon: '🧶', color: '#faf6ee' },
+  { id: 'hide',                     name: 'Hide',                        icon: '🟫', color: '#8a6a50' },
+  { id: 'leather',                  name: 'Leather',                     icon: '🧥', color: '#a0704a' },
+  { id: 'fertilizer',               name: 'Fertilizer',                  icon: '💩', color: '#6a4a3a' },
+  { id: 'goldEggs',                 name: 'Golden Eggs',                 icon: '🥚', color: '#f2c14e' },
+  { id: 'primeMeat',                name: 'Prime Cuts',                  icon: '🥩', color: '#d85a2a' },
+  { id: 'richMilk',                 name: 'Rich Milk',                   icon: '🥛', color: '#e8f0ff' },
+  { id: 'fineWool',                 name: 'Fine Wool',                   icon: '🧶', color: '#ffd24a' },
 
   /* 🛣 ✈️ WHAT THE CUTS TURN INTO. Both were already in the chain catalogue
      with a full recipe and NO PRODUCER ANYWHERE — the inert case this list's
@@ -50963,6 +50981,8 @@ async function cloudSyncProfile() {
       __jbLocalOps__:      Array.isArray(Profile.jbLocalOps) ? Profile.jbLocalOps : [],
       // 💸 Household wage pool — a balance, newest stamp wins on merge.
       __wagePool__:        (Profile.wagePool && typeof Profile.wagePool === 'object') ? Profile.wagePool : null,
+      // 🐄 Homestead Farm state — one save, newest `ts` wins on merge.
+      __farm__:            (Profile.farm && typeof Profile.farm === 'object') ? Profile.farm : null,
       // 🥋 Dojo — the business licence + the owner's unlisted move stock.
       __dojoUnlocked__:    !!Profile.dojoUnlocked,
       __dojoStock__:       (Profile.dojoStock && typeof Profile.dojoStock === 'object') ? Profile.dojoStock : {},
@@ -52506,6 +52526,13 @@ async function cloudFetchProfile() {
           _lo.forEach((x) => { if (x && x.id) _seen[x.id] = 1; });
           f.__jbLocalOps__.forEach((x) => { if (x && x.id && !_seen[x.id]) _lo.push(x); });
           Profile.jbLocalOps = _lo;
+        } catch (e) {}
+      }
+      // 🐄 Farm — newest `ts` wins; a farm is one save, never a union.
+      if (f.__farm__ && typeof f.__farm__ === 'object') {
+        try {
+          const _cf = f.__farm__, _lf = Profile.farm;
+          if (!_lf || typeof _lf !== 'object' || (Number(_cf.ts) || 0) > (Number(_lf.ts) || 0)) Profile.farm = _cf;
         } catch (e) {}
       }
       // 💸 Wage pool — newest stamp wins. It is a balance: a union would double it.
@@ -85273,6 +85300,13 @@ const SALVAGE_RES = [
   { id: "herbs",                   name: "Herbs",                       icon: "🌾",  wt: 1.1 },
   { id: "animalFeed",              name: "Animal Feed",                 icon: "🌾",  wt: 1.1 },
   { id: "livestock",               name: "Livestock",                   icon: "🌾",  wt: 1.1 },
+  { id: "feathers",                 name: "Feathers",                    icon: "🪶",  wt: 1 },
+  { id: "wool",                     name: "Wool",                        icon: "🧶",  wt: 1 },
+  { id: "hide",                     name: "Hide",                        icon: "🟫",  wt: 1.1 },
+  { id: "goldEggs",                 name: "Golden Eggs",                 icon: "🥚",  wt: 1 },
+  { id: "primeMeat",                name: "Prime Cuts",                  icon: "🥩",  wt: 1.1 },
+  { id: "richMilk",                 name: "Rich Milk",                   icon: "🥛",  wt: 1.1 },
+  { id: "fineWool",                 name: "Fine Wool",                   icon: "🧶",  wt: 1 },
   { id: "poultry",                 name: "Poultry",                     icon: "🌾",  wt: 1.1 },
   { id: "eggs",                    name: "Eggs",                        icon: "🌾",  wt: 1.1 },
   { id: "rawMilk",                 name: "Raw Milk",                    icon: "🌾",  wt: 1.1 },
@@ -91462,6 +91496,15 @@ const OPS_ECON = {
        review is done and the real module is wired, so that file was deleted:
        two publishers of one global is how a half-built object wins the race. */
   transport:    { startup: 650000, ratePerWorkerHr: 1000, salaryPerWorkerHr: 300, maxWorkers: 10, yields: {}, inputs: { fuel: 1.4 } },
+  /* 🌾 THE FEED OPERATION. Asked for by name: "create a Feed Operation, make it cost
+     55 Aza or 1,500,000 Cinder." A feed mill at industrial scale: rations and water
+     in, Animal Feed out — the one input every pen on the Homestead Farm eats, and
+     the Bulk Feed the Truck Yard's feed rigs were built to haul. `azaStartup` is
+     the ONE alternate price in this table (the bank's MT stake is settled server-
+     side and not priced here); the Just Business card shows both and the opFound
+     branch charges whichever button was pressed. Yield sized so a full crew makes
+     30 feed/hr against 10 food + 8 water — the farm's own mill ratio, at scale. */
+  feed:         { startup: 1500000, azaStartup: 55, ratePerWorkerHr: 900, salaryPerWorkerHr: 240, maxWorkers: 10, yields: { animalFeed: 3.0 }, inputs: { food: 1.0, water: 0.8 } },
   // 🏦 Bank — the licence to run a LENDING house. Founding it is only the
   // premises; the charter itself is bought in MT at the Office of the Mint and
   // is what actually lets you lend. Workers here are BANK TELLERS: they staff
@@ -91755,6 +91798,7 @@ const OP_LABELS = {
   restaurant: 'Restaurant',
   // 🚛 Same rule again — without this the shop sells a company called 'transport'.
   transport: 'Transportation Company',
+  feed: 'Feed Operation',
   // 🚌🚆 The transit licences. Same rule as genelab above — an operation with
   // no label here is buyable but shows up in the shop as "bus".
   bus: 'Bus Company',
@@ -97406,6 +97450,18 @@ function _jbHandleAction(a) {
     //    entry. Leaves the Just Business iframe and navigates the parent
     //    to the maritime ops screen. Same animation as the standard back-
     //    out, but then routes to woodsFishing instead of title.
+    /* 🐄 The Homestead Farm, from the Feed Operation's row in My Companies. Same
+       leave-the-iframe choreography as the fishing and haulage rows. */
+    if (a.kind === 'openFarm') {
+      _jbLeaving = true;
+      try { const ff = document.getElementById('jb-frame'); if (ff) { ff.style.opacity = '0'; ff.style.transform = 'scale(.986)'; } } catch (e) {}
+      setTimeout(function () {
+        _jbLeaving = false;
+        setTimeout(_jbDropFrame, 0);
+        try { App.screen = 'farm'; App._farmReturn = 'title'; if (typeof render === 'function') render(); } catch (e) {}
+      }, 360);
+      return;
+    }
     if (a.kind === 'openWoodsFishing') {
       _jbLeaving = true;
       try {
@@ -98838,6 +98894,28 @@ function _jbHandleAction(a) {
         try {
           const e = _opEcon(a.op);
           if (!e) { showToast('⚠ Unknown operation type: ' + a.op, 3600); _jbSendData(); return; }
+          /* ◈ FOUNDED WITH AZA. Only an operation that carries `azaStartup` offers
+             the button, and the Aza is spent through spendSovereigns like the
+             Weapon Smith's blueprints: charged, awaited against the server
+             ledger, refunded if the charge never settled, and only THEN is the
+             row written. Nothing Cinder-side is touched on this branch. */
+          if (a.pay === 'aza') {
+            const azaPrice = (e.azaStartup | 0);
+            const nice = (OP_LABELS && OP_LABELS[a.op]) || (a.op.charAt(0).toUpperCase() + a.op.slice(1));
+            if (azaPrice <= 0) { showToast('⚠ That operation has no Aza price.', 3600); _jbSendData(); return; }
+            if (_ownsOp(a.op) || (Operations.list || []).some(function (x) { return x && x.op_type === a.op; })) { showToast('You already operate that.', 3400); _jbSendData(); return; }
+            if ((Profile.sovereigns | 0) < azaPrice) { showToast('⚠ Not enough Aza — need ◈ ' + azaPrice + ', have ◈ ' + (Profile.sovereigns | 0) + '.', 4200); _jbSendData(); return; }
+            const okA = await showGameConfirm({ title: '◈ Found ' + nice + ' for ' + azaPrice + ' Aza?',
+              bodyHtml: '<div class="small-text">Aza is spent instead of the ' + (e.startup | 0).toLocaleString() + ' 🔥 startup. The charter is filed to your corporation like any other founding.</div>' });
+            if (!okA) { _jbSendData(); return; }
+            if (!spendSovereigns(azaPrice, 'Founded ' + nice)) { showToast('⚠ The Aza charge was refused.', 3600); _jbSendData(); return; }
+            let ledgerId = null;
+            try { ledgerId = _sovLastCharge ? await _sovLastCharge.promise : null; } catch (e2) { ledgerId = null; }
+            if (!ledgerId) { try { refundSovereigns(azaPrice); } catch (e2) {} showToast('⚠ The Aza charge did not settle — refunded.', 4200); _jbSendData(); return; }
+            try { await _opCreateLocal(a.op, 0, 'aza'); } catch (e2) {}
+            showToast('✅ ' + nice + ' founded for ◈ ' + azaPrice + ' Aza.', 4200);
+            _jbSendData(); return;
+          }
 
           /* 🏗 A ZERO-PRICE LICENCE IS ISSUED, NOT SOLD — take the money paths
              out of the way before either of them can run.
@@ -133422,6 +133500,7 @@ function _renderImpl() {
     }
   }
   if (App.screen === 'traders')       return renderTraderHub();
+  if (App.screen === 'farm')          return renderFarm();
   if (App.screen === 'woodsFishing')  return renderWoodsFishing();
   if (App.screen === 'princePortfolios') return renderPrincePortfolios();
   if (App.screen === 'vehicleMarket')    return renderVehicleMarket();
@@ -183231,6 +183310,10 @@ const RESOURCE_CINDER_VALUE = {
   // above their own inputs and turns the farm into a Cinder faucet — the gate
   // caught exactly that at 1.077x and named both ids.
   livestock: 2,
+  // 🐄 the farm's goods — priced by hand off the Feed Mill's own recipe (8 food +
+  //    6 water → 24 feed ≈ 1.2, rounded up so feed is never cheaper than the ration
+  //    it is milled from) and each product's place above it; grade-2 goods double.
+  animalFeed: 2, eggs: 2, feathers: 1, rawMilk: 2, meat: 3, wool: 2, hide: 2, leather: 4, fertilizer: 1, goldEggs: 4, primeMeat: 6, richMilk: 4, fineWool: 4,
   beverages: 2, boosterPacks: 2, bread: 2, cannedFood: 2, cardStock: 2,
   cardboard: 2, constructionComponents: 2, electricity: 2, freshWater: 2, gasoline: 2,
   lumber: 2, metalComponents: 2, packagingMaterial: 2, pigIron: 2, preparedMeals: 2,
@@ -204843,13 +204926,25 @@ function playPageGuide(guide, opts) {
     _reveal = revealControls;
     const full = String(b.text || '');
     const speed = Math.max(8, Math.min(120, b.typingSpeed || guide.typingSpeed || 26));
+    /* 🔊 A voiced bubble plays in full. Reported: "the audio is overlapping
+       each other". The previous clip was never stopped when the next bubble
+       started, and the next bubble started on a typing timer that knew
+       nothing about the clip. Now the last clip is stopped first, and a
+       bubble with a voice line moves on when the line ENDS (unless it has
+       choices) — Next still cuts it short and starts the next one. */
+    const _voiceBusy = () => { const a = RPGGuide._audio; return !!(a && a.src && !a.ended && !a.paused); };
     const start = () => {
-      // 🔊 Play this line's voice/audio (synced with the text reveal). Any
-      // prior clip was already stopped by _clearGuideTimers() above.
+      _stopGuideAudio();
+      const myIdx = i;
       if (b.audioUrl) {
         try {
           const a = new Audio(b.audioUrl);
           RPGGuide._audio = a;
+          a.addEventListener('ended', () => {
+            if (RPGGuide._audio !== a || idx !== myIdx || RPGGuide._typeTimer) return;
+            if (Array.isArray(b.choices) && b.choices.length) return;
+            RPGGuide._advTimer = setTimeout(() => advance(), 500);
+          });
           const p2 = a.play();
           if (p2 && typeof p2.catch === 'function') p2.catch(() => {});
         } catch (e) {}
@@ -204865,9 +204960,9 @@ function playPageGuide(guide, opts) {
         if (p >= full.length) {
           clearInterval(RPGGuide._typeTimer); RPGGuide._typeTimer = null;
           revealControls();
-          if (!hasChoices && b.autoAdvance) {
+          if (!hasChoices && !_voiceBusy() && (b.autoAdvance || b.audioUrl)) {
             RPGGuide._advTimer = setTimeout(() => advance(), Math.max(400, b.autoAdvanceDelay || 1800));
-          }
+          }   // a clip still speaking advances from its own 'ended' handler
         }
       }, speed);
     };
@@ -204884,7 +204979,7 @@ function playPageGuide(guide, opts) {
       textEl.innerHTML = escapeHtml(String(b.text || '')).replace(/\n/g, '<br>');
       if (_reveal) _reveal();
       const hc = Array.isArray(b.choices) && b.choices.length > 0;
-      if (!hc && b.autoAdvance) RPGGuide._advTimer = setTimeout(() => advance(), Math.max(400, b.autoAdvanceDelay || 1800));
+      if (!hc && !_voiceBusy() && (b.autoAdvance || b.audioUrl)) RPGGuide._advTimer = setTimeout(() => advance(), Math.max(400, b.autoAdvanceDelay || 1800));
       return;
     }
     // Choice bubbles are resolved only via their buttons.
@@ -239369,6 +239464,26 @@ function _openClientCity() {
   } catch (e) { try { console.warn('[openClientCity]', e); } catch (_) {} }
 }
 
+/* 🐄 THE HOMESTEAD FARM SCREEN. The module (src/farm/index.js, window.MythicFarm)
+   owns everything inside #farm-root; this shell only gives it a root and a way
+   back. Mounted a tick after render so the element exists; the module's own
+   mount() unmounts a previous instance first, so re-rendering is safe. */
+function renderFarm() {
+  setTimeout(function () {
+    try {
+      if (App.screen !== 'farm') return;
+      const el = document.getElementById('farm-root');
+      if (!el) return;
+      if (window.MythicFarm && typeof window.MythicFarm.mount === 'function') window.MythicFarm.mount(el);
+      else el.innerHTML = '<div class="ink-dim" style="padding:2rem;text-align:center">🐄 The Homestead Farm module did not load — try a hard refresh.</div>';
+    } catch (e) { try { console.warn('[farm] mount', e); } catch (_) {} }
+  }, 0);
+  return '<div class="screen" style="display:flex;flex-direction:column;min-height:100vh">'
+    + '<div style="display:flex;align-items:center;gap:10px;padding:8px 12px;background:rgba(10,8,4,0.9);border-bottom:1px solid rgba(212,175,55,0.35)">'
+    + '<button class="btn-mini" onclick="try{if(window.MythicFarm&&window.MythicFarm.unmount){window.MythicFarm.unmount()}}catch(e){};App.screen=App._farmReturn||\'title\';App._farmReturn=null;render()">← Back</button>'
+    + '<b style="color:#ffcf5a">🐄 Homestead Farm</b><span class="small-text" style="color:#8d8168">every pen eats Animal Feed — the Feed Operation mills it</span></div>'
+    + '<div id="farm-root" style="flex:1 1 auto;min-height:70vh"></div></div>';
+}
 async function _openMyCity() {
   try {
     const n = await _resolveMyCityNode(true);
@@ -240248,6 +240363,80 @@ function _cityMgrRefuse() {
   } catch (e) {}
   return false;
 }
+/* 🛣️ HIGHWAY HAUL and 🐄 HOMESTEAD FARM — the seams (CLAUDE.md: the globals trap).
+   Both modules were lifted from their branches' bundles (see the header of each
+   src/haul/index.js and src/farm/index.js); each reads NOTHING but its bridge. Every entry is an accessor
+   over the real ledger, wallet, corp and cloud, guarded so a missing helper
+   degrades to the module's own practice/offline mode rather than a throw. */
+window.MythicHaulBridge = {
+  cloud: (typeof Cloud !== 'undefined') ? Cloud : null,
+  signedIn: () => { try { return !!(Profile.cloud && Profile.cloud.signedIn); } catch (e) { return false; } },
+  userId: () => { try { return (Profile.cloud && Profile.cloud.userId) || null; } catch (e) { return null; } },
+  displayName: () => { try { return (Profile.cloud && Profile.cloud.displayName) || Profile.handle || Profile.displayName || 'Survivor'; } catch (e) { return 'Survivor'; } },
+  gems: () => { try { return Profile.gems | 0; } catch (e) { return 0; } },
+  refreshWallet: async () => { try { if (typeof walletReconcile === 'function') await walletReconcile(); } catch (e) {} },
+  resources: () => { try { return RESOURCES; } catch (e) { return []; } },
+  meta: (id) => { try { return Object.assign({ id }, _meta(id)); } catch (e) { return { id, name: id, icon: '📦' }; } },
+  getRes: (id) => { try { return getRes(id) | 0; } catch (e) { return 0; } },
+  spendRes: (id, n) => { try { const c = {}; c[id] = n | 0; return !!spendResources(c); } catch (e) { return false; } },
+  addRes: (id, n) => { try { addRes(id, n | 0); return true; } catch (e) { return false; } },
+  refundRes: (id, n) => { try { addRes(id, n | 0); return true; } catch (e) { return false; } },
+  /* The city map. Node rows carry no coordinates the module can route on, so it
+     falls back to its built-in 16-city map (practice mode) until they do. */
+  cities: () => [],
+  econ: () => null,
+  myCorp: () => { try { return (typeof Corp !== 'undefined' && Corp.mine) || null; } catch (e) { return null; } },
+  amCorpFounder: () => { try { return !!(typeof Corp !== 'undefined' && Corp.amOwner); } catch (e) { return false; } },
+  corpRoster: () => { try { return (typeof Corp !== 'undefined' && Corp.members) || []; } catch (e) { return []; } },
+  corpEnsure: async () => {},
+  transportOp: async () => { try { return (typeof _opsRowsOf === 'function' ? _opsRowsOf('transport') : [])[0] || null; } catch (e) { return null; } },
+  corpTreasuryRefresh: async () => { try { await corpTreasuryFetch(); } catch (e) {} try { return _jbNum(Corp.treasury); } catch (e) { return 0; } },
+  corpTreasury: () => { try { return _jbNum(Corp.treasury); } catch (e) { return 0; } },
+  nodeOwnersRefresh: async () => { try { if (typeof tw_cloudFetchNodeOwners === 'function') await tw_cloudFetchNodeOwners(); } catch (e) {} },
+  rigs: () => { try { return (typeof _ppRigsOwned === 'function') ? _ppRigsOwned() : [{ id: 'issued_hauler', name: 'Scrap Hauler', kind: 'issued' }]; } catch (e) { return [{ id: 'issued_hauler', name: 'Scrap Hauler', kind: 'issued' }]; } },
+  toast: (m, ms) => { try { showToast(m, ms || 3600); } catch (e) {} },
+  confirm: async (m) => { try { return await gcConfirm(m); } catch (e) { return false; } },
+  saveProfile: () => { try { saveProfile(); } catch (e) {} },
+  isAdmin: () => { try { return isAdmin(); } catch (e) { return false; } },
+};
+window.MythicFarmBridge = {
+  resources: (typeof RESOURCES !== 'undefined') ? RESOURCES : [],
+  getRes: (id) => { try { return getRes(id) | 0; } catch (e) { return 0; } },
+  addRes: (id, n) => { try { addRes(id, n | 0); } catch (e) {} },
+  refundRes: (id, n) => { try { addRes(id, n | 0); } catch (e) {} },
+  spendRes: (id, n) => { try { const c = {}; c[id] = n | 0; return !!spendResources(c); } catch (e) { return false; } },
+  gems: () => { try { return Profile.gems | 0; } catch (e) { return 0; } },
+  spendGems: (n) => { try { return !!spendGems(n | 0, 'Homestead Farm'); } catch (e) { return false; } },
+  addGems: (n) => { try { addGems(n | 0, 'Homestead Farm'); } catch (e) {} },
+  farmState: () => { try { return Profile.farm || null; } catch (e) { return null; } },
+  setFarmState: (st) => { try { Profile.farm = st; return true; } catch (e) { return false; } },
+  save: () => { try { return saveProfile() !== false; } catch (e) { return false; } },
+  toast: (m, ms) => { try { showToast(m, ms || 3600); } catch (e) {} },
+  confirm: (m) => { try { return Promise.resolve(gcConfirm(m)); } catch (e) { return Promise.resolve(false); } },
+  back: () => { try { if (window.MythicFarm && window.MythicFarm.unmount) window.MythicFarm.unmount(); } catch (e) {} try { App.screen = App._farmReturn || 'title'; App._farmReturn = null; render(); } catch (e) {} },
+  isAdmin: () => { try { return isAdmin(); } catch (e) { return false; } },
+  /* Workforce and rig seams the branch read from the Reconstruction roster and
+     the garage; neither table is bridged here yet, so the farm runs without
+     hired hands and hauls with a carrier. */
+  farmers: () => 0, builders: () => 0, bestRig: () => null,
+  rivals: () => ['Camp Ember', 'Sludge Hollow', 'Rustwater Reach'],
+  collectCdMs: (typeof OP_COLLECT_CD_MS !== 'undefined') ? OP_COLLECT_CD_MS : 6 * 3600000,
+  accrualCapH: (typeof OP_ACCRUAL_CAP_H !== 'undefined') ? OP_ACCRUAL_CAP_H : 36,
+  cloud: {
+    ready: () => { try { return !!(Cloud && Cloud.client && Profile.cloud && Profile.cloud.signedIn); } catch (e) { return false; } },
+    userId: () => { try { return (Profile.cloud && Profile.cloud.userId) || null; } catch (e) { return null; } },
+    userName: () => { try { return (Profile.cloud && Profile.cloud.displayName) || Profile.handle || 'You'; } catch (e) { return 'You'; } },
+    corp: () => { try { const c = (typeof Corp !== 'undefined' && Corp.mine) || null; return c ? { id: c.id, name: c.name, tag: c.tag } : null; } catch (e) { return null; } },
+    rpc: async (name, args) => { try { return await Cloud.client.rpc(name, args || {}); } catch (e) { return { data: null, error: e }; } },
+    select: async (table, o) => {
+      try {
+        let q = Cloud.client.from(table).select('*');
+        if (o && o.eq) for (const k in o.eq) q = q.eq(k, o.eq[k]);
+        return await q;
+      } catch (e) { return { data: [], error: e }; }
+    },
+  },
+};
 window.cityAddCinders = (n, why) => {
   try {
     n = Math.floor(n) || 0; if (!n) return;
@@ -242950,6 +243139,10 @@ window.MythicCityBridge = {
   nodeTierRate: () => { try { const r = _nodePaidRate(); return (Number.isFinite(r) && r > 0) ? r : 0.5; } catch (e) { return 0.5; } },
   // 👷 Camp crew. Production reads this as the city's base labour pool.
   workerPool: () => { try { return Array.isArray(Camp && Camp.workers) ? Camp.workers.length : 0; } catch (e) { return 0; } },
+  /* 💰 Cinder value per unit, from RESOURCE_CINDER_VALUE — the weight
+     inputTerroirScale uses to keep a two-yield building (the Smelting Foundry:
+     metal + ingots) value-neutral on dealt ground. */
+  resValue: (id) => { try { return _resCinderValue(id); } catch (e) { return 0; } },
   /* 🍔 WALK INTO YOUR OWN RESTAURANT. node-city shows an action button on a
      building when its type matches a branch there, and that branch calls a
      method here. openMarket and queueDuel are called by node-city and do NOT
@@ -244427,7 +244620,7 @@ async function haulOpenBoard() {
     '<option value="' + esc(x.id) + '">' + esc(x.name) + (_haulGate ? (_haulHasDepot(x.id) ? ' 🚛 depot' : ' · no depot') : '') + '</option>').join('');
   const html = '<div id="haul-modal" style="position:fixed;inset:0;z-index:2147483400;background:rgba(6,5,3,0.86);display:flex;align-items:center;justify-content:center;padding:20px">'
     + '<div style="max-width:900px;width:100%;max-height:86vh;overflow:auto;background:#15110b;border:1px solid rgba(212,175,55,0.45);border-radius:6px;padding:18px 20px">'
-    + '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px"><h2 style="margin:0;color:#ffcf5a">🚛 Haulage Board</h2><button class="btn-mini" id="haul-close">✕</button></div>'
+    + '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px"><h2 style="margin:0;color:#ffcf5a">🚛 Haulage Board</h2><span style="display:flex;gap:6px"><button class="btn-mini btn-primary" id="haul-drive" title="Drive a shipment yourself — Highway Haul" onclick="try{if(window.MythicHaul&&window.MythicHaul.open){window.MythicHaul.open()}else{showToast(\'🛣️ Highway Haul did not load — try a hard refresh.\',4200)}}catch(e){}">🛣️ Drive it</button><button class="btn-mini" id="haul-close">✕</button></span></div>'
     + '<div class="small-text" style="color:#a2977c;margin-bottom:14px">Companies move freight for each other. Post what you need shipped and what you will pay; a carrier with the right key level takes it.</div>'
     + (err ? '<div style="color:#ff9d8a;border:1px solid rgba(255,120,90,0.4);border-radius:4px;padding:10px;margin-bottom:14px">⚠ ' + esc(err) + '</div>' : '')
     + '<h3 style="color:#ffcf5a;margin:4px 0 8px">Post a request</h3>'
@@ -262706,6 +262899,8 @@ render();
      ⚠ Bump ?v= on every change — the service worker caches /src/* like any
        other static asset, and a missed bump ships invisibly. -->
 <script type="module" src="src/mercenary/index.js?v=v121v66merc1"></script>
+<script type="module" src="src/haul/index.js?v=v121v94haul1"></script>
+<script type="module" src="src/farm/index.js?v=v121v94farm1"></script>
 <!-- 🍔 MYTHIC KITCHEN — the fast-food / drive-thru sim. Registers
      window.MythicKitchen (+ __mk) and is INERT until the title tile opens it:
      no DOM, no RAF loop, no Supabase call happens on load. Everything it can
@@ -262812,7 +263007,7 @@ render();
        the safe state to ship a data layer in.
      ⚠ Bump ?v= on every change — the service worker caches /src/* like any
        other static asset, and a missed bump ships invisibly. -->
-<script type="module" src="src/resources/chain.js?v=v120w6chain2"></script>
+<script type="module" src="src/resources/chain.js?v=v121v94chain3"></script>
 <!-- 🎖 INFLUENCE — the standing track for a player and their camp, and the
      envoys it brings to the gate (Cinder / a card / a recruit / a convoy).
      Registers window.MythicInfluence. index.html's half of the seam is
@@ -263097,8 +263292,8 @@ render();
        that works everywhere except the one early path nobody tested. It is
        2KB with no dependencies. -->
 <script src="src/econ/peg.js?v=v121q51"></script>
-<script src="src/battle/effects.js?v=v121v93" defer></script>
-<script src="src/phone/handset.js?v=v121v93" defer></script>
+<script src="src/battle/effects.js?v=v121v94" defer></script>
+<script src="src/phone/handset.js?v=v121v94" defer></script>
 <script src="src/battle/combat.js?v=120m4" defer></script>
 <script src="src/battle/targeting.js?v=121e3hex" defer></script>
 <link rel="stylesheet" href="src/sprites/frames.css?v=120k3">

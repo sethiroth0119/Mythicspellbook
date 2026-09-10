@@ -231,6 +231,10 @@ const COMPANY_PAGES = {
      gate every entry above uses. It opens the haulage board, which is the
      function a haulier actually needs: see contracts, take one, track it. */
   transport:   { label: 'Haulage Board',     ico: '🚛', action: 'openHaulBoard' },
+  /* 🌾 Keyed on the OPS_ECON op id like every row above: the Homestead Farm
+     appears the moment a Feed Operation is founded. 'openFarm' is handled in
+     index.html's JB_action. */
+  feed:        { label: 'Homestead Farm',     ico: '🐄', action: 'openFarm' },
   /* 🍔 Keyed on the OPS_ECON op id, so the entry appears the moment a
      Restaurant is founded and never before — the same gate the licence uses
      rather than a second copy of that rule. 'openMythicKitchen' is handled

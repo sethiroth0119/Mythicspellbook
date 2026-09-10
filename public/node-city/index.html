@@ -9,7 +9,7 @@
      believed the file was already live. Only a CONTENT change moves the hash
      and forces a re-upload, so bump this stamp whenever the city 404s, and
      probe it (grep NC_BUILD on the served page) to prove the deploy landed. -->
-<script>window.NC_BUILD = "v121v93-nocardcraft";</script>
+<script>window.NC_BUILD = "v121v94-farmhaul";</script>
 <!-- ════════════════════════════════════════════════════════════════════════
      NODE CITY — SimCity-style settlement layer for Mythic Spellbook.
      Three.js WebGPU (auto-falls back to WebGL2). Realistic sun/moon cycle.
@@ -2692,7 +2692,7 @@
      a separate window, so it needs its own registration.
      ⚠ Bump ?v= in BOTH places when the catalogue changes — here and in
        index.html — or one window ships a stale table. -->
-<script type="module" src="../src/resources/chain.js?v=v120w6chain2"></script>
+<script type="module" src="../src/resources/chain.js?v=v121v94chain3"></script>
 
 <script type="module">
 import * as THREE from 'three';
@@ -43821,6 +43821,11 @@ const OP_BP = {
                   desc: 'Fields at industrial scale. The water draw is brutal — a city of farms needs reclamation.' },
   fishing:      { label: 'Fishing Company',   ico: '🎣',  mesh: 'purifier',   pop: 3, crew: 3, powerNeed: 0.30, use: { fuel: 0.50 },
                   desc: 'Boats, ice and a landing dock. Food that does not need a field.' },
+  /* 🌾 The Feed Operation's city tile — keyed 'feed', matching the OPS_ECON id, so
+     the palette offers it the moment the charter is held. Draws rations and water
+     off the grid; the feed itself is corp output, not city stock. */
+  feed:         { label: 'Feed Operation',    ico: '🌾',  mesh: 'farm',       pop: 3, crew: 3, powerNeed: 0.50, use: { water: 0.80, food: 0.60 },
+                  desc: 'A feed mill at industrial scale. Rations and water go in; Animal Feed comes out — every pen on a Homestead Farm eats it, and the Truck Yard\'s bulk-feed rigs haul it.' },
   medical:      { label: 'Medical Corp.',     ico: '💊',  mesh: 'clinic',     pop: 2, crew: 3, powerNeed: 0.70, use: { remedies: 0.30, water: 0.80 },
                   svc: { need: 'health', supply: 1.2 },
                   desc: 'A corporate hospital wing. Draws remedies and clean water, and stands in the city\'s Health coverage.' },
@@ -44014,6 +44019,11 @@ const OP_ECO_MAP = {
   oil:          { out: ['crudeOil', 'naturalGas'],                                     ind: 'oilfield' },
   agri:         { out: ['wheat', 'corn', 'rice', 'potatoes', 'soybeans', 'vegetables'], ind: 'farm' },
   fishing:      { out: ['freshFish', 'seafood', 'shellfish', 'seaweed'],                ind: 'fishery' },
+  /* 🌾 The Feed Operation's firm — a mill making animalFeed, the recipe the ranch,
+     poultry, egg and dairy firms already draw on (recipes.js :266-270). Keyed on
+     the OPS_ECON id like every row here; _opscheck asserts a blueprint implies a
+     business, and this is the business. */
+  feed:         { out: ['animalFeed'],             ind: 'mill' },
   /* The Anomaly Site is the only industry the black market could honestly run,
      and the ground gates it: a Smuggling Network on a node with no anomalous
      deposit founds no firm, which is the correct answer rather than a bug. */

@@ -2806,6 +2806,11 @@ const OPERATIONS = [
      Restaurant, and this one caught before it shipped rather than after.
      ⚠ Trucks are NOT bought with this licence. The charter buys the right to
        haul; rigs come from Prince Portfolios or the player vehicle market. */
+  /* 🌾 THE FEED OPERATION — priced two ways (OPS_ECON.feed: 1,500,000 🔥 or 55 ◈).
+     Added HERE as well as in OPS_ECON, for the reason the Transportation Company
+     row below records: a charter that is priced and labelled but not in this
+     catalogue cannot be bought. */
+  { id: 'feed',         cat: 'Agriculture', icon: '🌾', tip: 'Mill rations and water into Animal Feed at industrial scale. Every pen on the Homestead Farm eats it, the Truck Yard\'s bulk-feed rigs haul it, and the farm itself opens from this row in My Companies. Founded for 1,500,000 Cinder — or 55 Aza.', focus: 'Feed the farms', risk: 'Low' },
   { id: 'transport',    cat: 'Logistics', icon: '🚛', tip: 'Haul freight between cities for a fee. The charter is the licence to operate — TRUCKS are bought separately from Prince Portfolios or the player vehicle market. Burns 1.4 fuel per worker-hour, so a haulier depends on another player running a Fuel Rig.', focus: 'Move freight for other companies', risk: 'Medium' },
   // 🏦 The only operation with an ALTERNATE price: the Cinder figure the card
   // prints comes from OPS_ECON like every other row, OR a $200 stake in
@@ -3163,6 +3168,15 @@ function OperationsScreen({ econ }) {
                 </button>
               );
             })()}
+            {hasCorp && !owned && isOwner && oe && (oe.azaStartup | 0) > 0 && (
+              /* ◈ The alternate price. Only an operation carrying azaStartup shows
+                 it; index.html's opFound branch charges the Aza. */
+              <button className="btn" style={{ width: '100%', marginTop: 6 }}
+                title={'Found it with Aza instead of Cinder — ' + (oe.azaStartup | 0) + ' ◈'}
+                onClick={() => act({ kind: 'opFound', op: o.id, pay: 'aza' })}>
+                {'◈ Found for ' + (oe.azaStartup | 0) + ' Aza'}
+              </button>
+            )}
             {owned && (() => {
               /* 👷 STAFFING, AND WHO IS ALLOWED TO DO IT.
                  🔴 THIS BLOCK WAS GATED ON `hasCorp` AND DISABLED ON `!isOwner`

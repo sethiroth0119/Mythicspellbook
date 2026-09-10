@@ -9670,6 +9670,9 @@ const stripComments = (src) => {
         resourceCap: () => 1e9, resourceUnits: () => 0,
         workerPool: () => 100000,
         collectCdMs: 6 * HOUR, accrualCapH: 36,
+        /* 💰 The value seam index.html's bridge carries (resValue → _resCinderValue),
+           so inputTerroirScale weights a two-yield building the way it does live. */
+        resValue: (k) => V(k),
       };
     };
     /* One 36 h collect (6 cycles) of one building on one ground, measured off
@@ -9687,7 +9690,28 @@ const stripComments = (src) => {
       host.setState(st);
       const out = Object.keys(def.yields)[0];
       const p = st.placed[1];
-      const tf = PSMOD.terroirFactor(host, p, out);
+      /* 🔴 THE FACTOR THE CHARGE IS JUDGED AGAINST IS THE ONE THE MODULE CHARGES BY.
+         This read terroirFactor(out) — the FIRST yield's factor — and for a
+         two-yield building (the Foundry: metal + ingots, since v121v70) that is
+         not what a value-neutral charge scales by. It stayed green while the deal
+         happened to tier both yields alike and went red the day the ledger grew
+         (144 ids per the stockfarm note; 156 here: "foundry @dealt over-charged
+         264🔥 > one unit per leg (4🔥)"). The module now charges at the
+         value-weighted mean of its yields' factors (inputTerroirScale), which is
+         the ONLY tf_in that keeps Σ yield×tf×V ÷ (inputs×tf_in×V) at the
+         catalogue ratio — and `amp` below independently asserts that ratio does
+         not rise, so this line is not the gate trusting the code under test: it
+         is the drift check measuring the rule against the charge, with the
+         neutrality of the rule itself measured one line up. Single-yield
+         buildings are unchanged: the weighted mean of one factor is that factor. */
+      const tf = (typeof PSMOD.inputTerroirScale === 'function')
+        ? PSMOD.inputTerroirScale(host, p, def)
+        : PSMOD.terroirFactor(host, p, out);
+      /* …and the forced yield's OWN factor, which is what the two ground checks
+         ("the seam really is the worst ground", "unsurveyed really is 1.000") are
+         claims about. A two-yield building's charge factor at the seam is by
+         construction below TF_MAX — its other yield is not on the seam. */
+      const tfOut = PSMOD.terroirFactor(host, p, out);
       const promised = PSMOD.pending(host, p);
       const before = { ...host.led };
       const r = PSMOD.collect(host, 'sub');
@@ -9697,7 +9721,7 @@ const stripComments = (src) => {
         const d = (host.led[k] | 0) - (before[k] | 0);
         if (d > 0) outV += d * V(k); else if (d < 0) { inV += -d * V(k); spent[k] = -d; }
       }
-      return { ok: !!r.ok, why: r.why, tf, promised: promised.cycles | 0, paid: r.cycles | 0,
+      return { ok: !!r.ok, why: r.why, tf, tfOut, promised: promised.cycles | 0, paid: r.cycles | 0,
                inV, outV, spent, ratio: inV > 0 ? outV / inV : (outV > 0 ? Infinity : 0) };
     };
 
@@ -9752,13 +9776,13 @@ const stripComments = (src) => {
 
       /* The harness must genuinely stand on the worst ground, or "≤ 1.000× at
          MAX_TF" is a claim about somewhere else. */
-      const notMax = M.filter(m => Math.abs(m.seam.tf - TF_MAX) > 1e-9)
-        .map(m => m.def + ' tf ' + m.seam.tf.toFixed(3));
+      const notMax = M.filter(m => Math.abs(m.seam.tfOut - TF_MAX) > 1e-9)
+        .map(m => m.def + ' tf ' + m.seam.tfOut.toFixed(3));
       chk('the seam run really is the WORST GROUND — measured tf === TF_MAX (tier ×' + MAX_TIER_MUL.toFixed(3) +
           ' × seam ×' + TER.SEAM_BONUS_MUL.toFixed(3) + ' × rank-1 stack ×' + STACK1.toFixed(3) +
           ' = ' + TF_MAX.toFixed(3) + ') for all ' + M.length,
           notMax.length === 0, notMax.slice(0, 5).join(', '));
-      const notOne = M.filter(m => Math.abs(m.flat.tf - 1) > 1e-9).map(m => m.def + ' tf ' + m.flat.tf.toFixed(3));
+      const notOne = M.filter(m => Math.abs(m.flat.tfOut - 1) > 1e-9).map(m => m.def + ' tf ' + m.flat.tfOut.toFixed(3));
       chk('…and the unsurveyed run is EXACTLY tf 1.000 — the identity terroir.js promises for a player with no node',
           notOne.length === 0, notOne.slice(0, 5).join(', '));
 

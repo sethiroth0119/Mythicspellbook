@@ -34,7 +34,7 @@
 /* 🧰 The catalogue, for the chain producers appended at the bottom of this file.
    🔴 THE QUERY STRING IS DELIBERATE AND MUST MATCH index.html's <script> tag for
       chain.js EXACTLY. An ES module is keyed by URL, so `../resources/chain.js`
-      and `../resources/chain.js?v=v120w6chain2` are TWO instances of the same
+      and `../resources/chain.js?v=v121v94chain3` are TWO instances of the same
       file: both parse, both register window.MythicResourceChain, and the second
       one to run wins. That is harmless today (the module is pure data) but it is
       2× the parse of a 258-entry table on every load and it is the kind of thing
@@ -42,7 +42,7 @@
       round0p of tools/economy-tests/run.mjs asserts the two strings match, so a
       bump in index.html that forgets this line turns the gate red instead of
       silently double-loading. */
-import { CHAIN_BY_ID } from '../resources/chain.js?v=v120w6chain2';
+import { CHAIN_BY_ID } from '../resources/chain.js?v=v121v94chain3';
 
 /* 📦 UI ORDER IS LOAD-BEARING — THE WAREHOUSE IS FIRST ON PURPOSE.
    Production halts at full storage. A player who builds a Hydroponics Bay first
@@ -532,6 +532,10 @@ export const MINIGAME_IDS = [
   'naphtha', 'kerosene', 'diesel', 'gasOil', 'heavyOil', 'slop', 'ethanol',
   'reformate', 'alkylate', 'butane', 'catGasoline', 'hydrotreatedCut',
   'reprocessedSlop',
+  /* 🐄 The Homestead Farm's thirteen (v121v94). Farm output, not tile output, so
+     they belong here beside the refinery's ids and not in the derived list below. */
+  'animalFeed', 'eggs', 'feathers', 'rawMilk', 'meat', 'wool', 'hide', 'leather', 'fertilizer',
+  'goldEggs', 'primeMeat', 'richMilk', 'fineWool',
 ];
 
 /* 🧱 THE FOURTH SET: ids promoted out of the CITY'S OWN STOCK.

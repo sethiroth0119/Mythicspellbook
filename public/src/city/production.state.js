@@ -82,15 +82,43 @@ export function chainCeilingFor(resId) { return chainCeiling(resId); }
    Water" bug documented at the inputCap loop below. So all three go through
    these two functions and nothing multiplies by `tf` by hand.
 
-   ⚠ MAX over the yields, not the first one. Every building in CITY_PRODUCTION is
-   single-output today, so max === the only value; the loop is written for the
-   general case, and MAX is the conservative side — charging by the largest
-   factor can only make the cycle's ratio ≤ the catalogue's, never more. */
+   🔴 THE VALUE-WEIGHTED MEAN OVER THE YIELDS — NOT THE MAX, AND NOT THE FIRST.
+   This used to take MAX, under a comment that said every building was
+   single-output "today". The Smelting Foundry has yielded metal AND ingots since
+   v121v70, and on DEALT ground those two ids can land on different tiers. MAX
+   then charged the fuel at ingots' factor while most of the value came out at
+   metal's — a cycle that, priced, returned LESS than the catalogue ratio: the
+   stealth nerf the gauntlet's "never more than one unit per leg over" line
+   exists to catch. It stayed green by luck of the deal until the ledger grew
+   (measured: 143 ids green, 144 red — the stockfarm note; 156 red, foundry @dealt
+   over-charged 264🔥 against a bound of 4🔥). The ledger composition only exposed
+   it; the rule was wrong for any two-yield building.
+   Value-neutral means: Σ yield_k × tf_k × V_k ÷ (inputs × tf_in × V_in) must
+   equal the catalogue ratio on every ground. Solving for tf_in gives the mean of
+   the yields' factors weighted by each yield's CINDER VALUE (units × value per
+   unit). With one yield it is that yield's factor exactly; with equal per-unit
+   values it is the unit-weighted mean; the max is never right unless the
+   factors are equal. `host.resValue` is the seam (index.html's
+   _resCinderValue, the same table §1b prices by); a host without it falls back
+   to unit weighting, which is still neutral for equal-value yields and still
+   never the max. */
 export function inputTerroirScale(host, p, def) {
   try {
     const ys = (def && def.yields) ? Object.keys(def.yields) : [];
-    let m = 0;
-    for (const k of ys) m = Math.max(m, terroirFactor(host, p, k));
+    if (!ys.length) return 1;
+    const valueOf = (k) => {
+      try { const v = (host && typeof host.resValue === 'function') ? Number(host.resValue(k)) : NaN; return (isFinite(v) && v > 0) ? v : 1; }
+      catch (e) { return 1; }
+    };
+    let num = 0, den = 0;
+    for (const k of ys) {
+      const w = Math.max(0, Number(def.yields[k]) || 0) * valueOf(k);
+      if (!(w > 0)) continue;
+      const tf = terroirFactor(host, p, k);
+      num += w * ((typeof tf === 'number' && isFinite(tf) && tf > 0) ? tf : 1);
+      den += w;
+    }
+    const m = den > 0 ? num / den : 1;
     return (typeof m === 'number' && isFinite(m) && m > 0) ? m : 1;
   } catch (e) { return 1; }
 }
