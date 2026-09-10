@@ -134,7 +134,7 @@ export function reset() {
   S.acc = { in: 0, out: 0, grad: 0, evicted: 0, died: 0, days: 0 };
   S.day = { in: 0, out: 0, grad: 0, evicted: 0, died: 0 };
   S.rate = { in: 0, out: 0 };
-  S.rentIndex = 1; S.attract = 0; S.causes = []; S.limit = null;
+  S.rentIndex = 1; S.attract = 0; S.causes = []; S.limit = null; S.pull = null;
   S.seeded = false; S.lastInMix = null;
 }
 reset();
@@ -632,6 +632,12 @@ export function step(days, ctx) {
         at the same city do not see the same city. */
   const inMix = { low: 0, mid: 0, high: 0, total: 0 };
   let attractSum = 0, attractW = 0;
+  /* 📊 THE THREE DRAWS, MEASURED SEPARATELY. bug-mtvblyi9: the panel told a
+     player to look in the Survey tab for the worst one, and the only Survey tab
+     is the deposit survey. Every household that LOOKED is scored here — the
+     ones rent or work turned away included, at the score that turned them
+     away — so the weakest draw is the one the sentence can name. */
+  let pJobs = 0, pJobsW = 0, pRent = 0, pRentW = 0;
   let vacantTotal = 0, blockedRent = 0, blockedJobs = 0, considered = 0;
   const plan = [];
   for (const zid of Z.zoneIds()) {
@@ -656,6 +662,8 @@ export function step(days, ctx) {
         const income = A.incomeOf(a, e, fit[e]);
         const burden = income > 0 ? rent / income : 99;
         considered += bagW * ew;
+        pRent += clamp01(1 - burden / dm.rent.burdenMax) * bagW * ew; pRentW += bagW * ew;
+        if (A.workersPer(a) > 0) { pJobs += clamp01(fit[e]) * bagW * ew; pJobsW += bagW * ew; }
         if (burden > dm.rent.burdenMax) { blockedRent += bagW * ew; continue; }
         if (fit[e] < dm.arrival.jobFloor && A.workersPer(a) > 0) { blockedJobs += bagW * ew; continue; }
         /* 📊 THE ATTRACTIVENESS OF THIS CITY TO THIS HOUSEHOLD. Three signed
@@ -771,6 +779,7 @@ export function step(days, ctx) {
         it prints this list beside it, in the register the reference demand
         panel uses: a meter with a SIGNED CAUSAL LIST. */
   S.attract = attractW > 0 ? attractSum / attractW : 0;
+  S.pull = pullTerms(pJobsW > 0 ? pJobs / pJobsW : null, pRentW > 0 ? pRent / pRentW : null, services, dm.arrival.weight);
   /* 🔴 A CAUSE HAS TO BE MATERIAL OR IT IS NOISE. Some household type is turned
      away from some zone in every city that has ever existed — students cannot
      afford detached houses anywhere — and reporting that as a limit made a
@@ -811,7 +820,7 @@ export function step(days, ctx) {
   if (capped) {
     const roomToBuild = vacantTotal > 0.5 && !full;
     causes.push(roomToBuild
-      ? { sign: '−', label: 'Nobody is moving in', why: 'There are ' + Math.round(vacantTotal) + ' empty homes waiting, so housing is not what is stopping this city — too few people want to come. Wages, rents, jobs and services are what move that; the Survey tab shows which one is worst.' }
+      ? { sign: '−', label: 'Nobody is moving in', why: 'There are ' + Math.round(vacantTotal) + ' empty homes waiting, so housing is not what is stopping this city — too few people want to come. ' + pullWorstText(S.pull) }
       : { sign: '−', label: 'City population cap', why: 'The city itself supports no more residents yet — build Housing, or zone more land. Nobody can move into a city with nowhere to put them.' });
   }
   if (rentBlocked && blockedRent >= blockedJobs) {
@@ -921,4 +930,34 @@ export function load(raw) {
   S.rentIndex = Math.max(1, num(raw.rent, 1));
   S.seeded = !!raw.seeded || households() > 0;
   return true;
+}
+
+/* ── THE THREE DRAWS ─────────────────────────────────────────────────────────
+   What moves the meter, one term each, so the panel can show which is weakest
+   instead of sending the player to a tab that does not have it (bug-mtvblyi9).
+   `jobs`/`rent`/`services` are 0..1 means over the households that looked;
+   null when nobody of that kind looked. `worst` is the LOWEST score — the one
+   a player should fix first — and `worstText` is the sentence for it. */
+export function pullTerms(jobs, rent, services, W) {
+  const w = W || { jobs: 0.5, rent: 0.3, services: 0.2 };
+  const terms = [
+    { id: 'jobs', label: 'Work to be found', v: jobs, w: w.jobs || 0 },
+    { id: 'rent', label: 'Rents against wages', v: rent, w: w.rent || 0 },
+    { id: 'services', label: 'Shops and utilities', v: services == null ? null : clamp01(services), w: w.services || 0 },
+  ];
+  let worst = null;
+  for (const t of terms) {
+    if (t.v == null) continue;
+    if (!worst || t.v < worst.v - 1e-9 || (Math.abs(t.v - worst.v) <= 1e-9 && t.w > worst.w)) worst = t;
+  }
+  return { terms, worst: worst ? worst.id : null, worstText: worst ? worstSentence(worst) : '' };
+}
+function worstSentence(t) {
+  const p = Math.round((t.v || 0) * 100) + '%';
+  if (t.id === 'jobs') return 'Weakest right now: work — the households your zoning draws rate the job market here at ' + p + '. Post more jobs they qualify for: found operations, staff them at the Job Fair, and raise the education mix.';
+  if (t.id === 'rent') return 'Weakest right now: rents against wages — arriving households can afford this city\'s rents at only ' + p + '. Raise wages at the Job Fair, or zone cheaper housing (low rent, or high density).';
+  return 'Weakest right now: services — the shops and utilities meet only ' + p + ' of what residents ask. Found a Clinic, a Market and utilities, and staff them.';
+}
+export function pullWorstText(pull) {
+  return pull && pull.worstText ? pull.worstText : 'Wages, rents, jobs and services are what move that; the row under this meter shows which one is weakest.';
 }

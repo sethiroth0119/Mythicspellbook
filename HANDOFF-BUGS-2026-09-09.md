@@ -395,3 +395,10 @@ Woods Fishing round 2, written from WOODS_FISHING_HANDOFF into the existing live
 - Suite: `_fishing2_smoke.mjs` (52) lifts the block into a vm with a stubbed engine and runs a scripted trip through every path.
 
 A session cron (156f74e7, hourly at :23, 7-day expiry) sweeps the tracker for NEW reports and fixes them without being asked — the standing order of 2026-09-10. Recreate it in a new session.
+
+## v121v98 — shipped 2026-09-10, full-gated, edge-verified
+
+bug-mtvblyi9 (ClareyV, med): the Zone Demand residential tab at ~71% said "Nobody is moving in… Wages, rents, jobs and services are what move that; the Survey tab shows which one is worst" — and the only Survey tab (Econ → Survey) is the deposit survey. Real cause: `src/demographics/pipeline.js` folded the three draws (work × 0.5, rent-against-wages × 0.3, services × 0.2) into ONE meter and never published the parts, so the sentence promised a breakdown that nothing printed.
+- pipeline.js: the arrival loop now accumulates the three draws over every household that looked (a household the rent or job gate turned away counts at the score that turned it away); `pullTerms()` publishes `{ terms, worst, worstText }` as `S.pull`. The cause line keeps its housing verdict and appends "Weakest right now: work / rents against wages / services — …" with the percentage and the fix (Job Fair wages, cheaper zoning, operations, Clinic/Market). No score at all → "the row under this meter shows which one is weakest".
+- index.js publishes `pull`; render.js prints a "📊 What draws people here" row under the Move-in pressure meter (three bars, weakest in red) with the sentence beneath. Nothing was added to the Survey tab; the breakdown lives where the sentence is.
+- Suite: `_pullrow_smoke.mjs` (24) runs pullTerms and renders the panel. Six knobs → v121v98-pullrow (the demographics module imports at `?v=NC_BUILD`).

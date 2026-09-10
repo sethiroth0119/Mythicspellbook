@@ -60,6 +60,16 @@ export const DEMOG_CSS = `
 .dg-gate .gn{color:#cfd6e4;font-variant-numeric:tabular-nums}
 .dg-gate .gn.bad{color:#e0556a;font-weight:700}
 .dg-gate .gt{margin-left:auto;color:#5b6376}
+.dg-pull{display:grid;grid-template-columns:auto 1fr auto;gap:3px 8px;align-items:center;margin:2px 0 8px;
+  padding:5px 8px;border-radius:6px;background:#14161d;border:1px solid #242833;font-size:10px}
+.dg-pull .ph{grid-column:1 / -1;font-weight:700;color:#8fa0b8;letter-spacing:.04em}
+.dg-pull .pn{color:#cfd6e4;white-space:nowrap}
+.dg-pull .pb{height:7px;border-radius:4px;background:#242833;overflow:hidden}
+.dg-pull .pb i{display:block;height:100%;background:#6f8fd0}
+.dg-pull .pv{color:#cfd6e4;font-variant-numeric:tabular-nums;min-width:34px;text-align:right}
+.dg-pull .worst .pn,.dg-pull .worst .pv{color:#e0556a;font-weight:700}
+.dg-pull .worst .pb i{background:#e0556a}
+.dg-pull .pt{grid-column:1 / -1;color:#5b6376}
 `;
 
 const TIER_COLOR = { low: '#7a6a4a', mid: '#6f8fd0', high: '#9ad17a' };
@@ -87,6 +97,21 @@ function meter(title, v, caption, why, tone) {
     }
     h.push('</ul>');
   }
+  h.push('</div>');
+  return h.join('');
+}
+
+/* The three draws under the meter: work, rents against wages, services. */
+function pullRow(p) {
+  const h = ['<div class="dg-pull"><span class="ph">📊 What draws people here</span>'];
+  for (const t of p.terms) {
+    const worst = t.id === p.worst;
+    const cls = 'pr' + (worst ? ' worst' : '');
+    h.push('<span class="' + cls + '"><span class="pn">' + esc(t.label) + (worst ? ' — weakest' : '') + '</span></span>' +
+      '<span class="' + cls + '"><span class="pb"><i style="width:' + (t.v == null ? 0 : pct(t.v)) + '"></i></span></span>' +
+      '<span class="' + cls + '"><span class="pv">' + (t.v == null ? '—' : pct(t.v)) + '</span></span>');
+  }
+  if (p.worstText) h.push('<span class="pt">' + esc(p.worstText) + '</span>');
   h.push('</div>');
   return h.join('');
 }
@@ -140,6 +165,11 @@ export function renderPanel(r) {
     r.attract, pct(r.attract), r.causes,
     r.attract < 0.25 ? 'b' : r.attract < 0.5 ? 'w' : ''));
   if (r.limitText) h.push('<div class="eco-tag">Limiting growth right now: <b>' + esc(r.limitText) + '</b></div>');
+  /* 📊 THE THREE DRAWS, WEAKEST IN RED. bug-mtvblyi9: the cause line used to
+     say "the Survey tab shows which one is worst" — there is no such tab. These
+     are pipeline.pullTerms(), the same three terms the meter above is the
+     weighted sum of, so a player reads the sum and its parts on one card. */
+  if (r.pull && r.pull.terms && r.pull.terms.length) h.push(pullRow(r.pull));
   /* 🚦 THE HOST'S GROWTH GATE, AS THREE NUMBERS AGAINST ONE LINE.
      The sentence above already says which one is short and what raises it; this
      row is the reading it was made from, so a player can watch the gap close

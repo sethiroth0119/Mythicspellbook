@@ -518,6 +518,8 @@ function report() {
       occupancy: sv && sv.totalHomes > 0 ? P.households() / sv.totalHomes : 0,
       netPerDay: st.rate.in - st.rate.out,
       attract: st.attract, causes: withGateCause(st.causes),
+      /* 📊 The three draws behind `attract`, weakest named — see pipeline.pullTerms(). */
+      pull: st.pull || null,
       limit: st.limit, limitText: limitText(st.limit),
       /* 🚦 THE HOST'S GROWTH GATE, PUBLISHED. The whole verdict — which of
          Food/Water/Health is short, by how much, and the cheapest tile that
