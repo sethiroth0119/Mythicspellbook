@@ -39394,7 +39394,7 @@ body:has(#pack-opener-frame) #chat-overlay {
   // the console. Bump this every deploy alongside sw.js's CACHE_VERSION. If two
   // machines show different stamps, the older one is on stale code (hard-refresh);
   // if they MATCH but content still differs, it is a DATA/publish issue, not code.
-  window.BUILD_VERSION = 'v121v100';
+  window.BUILD_VERSION = 'v121v101';
   try {
     console.info('%cMythic Spellbook ' + window.BUILD_VERSION + '%c — build check: run  __mg.version',
       'font-weight:700;color:#b48cff', 'color:#7d7499');
@@ -64779,6 +64779,15 @@ async function boeAutoSettle() {
 // player's owned-hero levels (1 Aza per 5 hero levels summed). Repaid in
 // Cinder at the canonical peg on a weekly installment schedule.
 const BOE_LOAN_MAX_AZA = 20;
+/* 🏦 THE STARTER LOAN (owner's rule, 2026-09-10): once per account, 40,000 🔥
+   into the bank, no hero collateral, repaid weekly like any other loan. The
+   row is an ordinary boe_loans loan (aza_amount is 40,000 ÷ 5,000 = 8 ◈, which
+   the table's check constraint needs to be > 0) tagged note = 'starter', and
+   that tag is the once-only rule: a second application finds the first row. */
+const BOE_STARTER_LOAN_CINDER = 40000;
+const BOE_STARTER_LOAN_INSTALLMENTS = 4;
+const BOE_STARTER_NOTE = 'starter';
+function boeStarterLoanUsed() { try { return (BankEthos.loans || []).some(l => l && l.note === BOE_STARTER_NOTE); } catch (e) { return false; } }
 const BOE_LOAN_AZA_PER_HERO_LEVELS = 5;
 function boeHeroLevelTotal() {
   try {
@@ -64798,6 +64807,27 @@ async function boeFetchLoans() {
     const r = await t.select('*').eq('user_id', Profile.cloud.userId).order('started_at', { ascending: false }).limit(20);
     BankEthos.loans = (r && !r.error && Array.isArray(r.data)) ? r.data : [];
   } catch (e) {}
+}
+async function boeCreateStarterLoan() {
+  if (!BankEthos.ready) { showToast('Bank not ready.', 2600); return false; }
+  if (!BankEthos._extCols) { showToast('Run the updated api.sql to enable loans.', 5200); return false; }
+  await boeFetchLoans();
+  if (boeStarterLoanUsed()) { showToast('🏦 The starter loan is once per account — you have already taken it.', 4800); return false; }
+  if ((BankEthos.loans || []).some(l => l && l.status === 'active')) { showToast('You already have an active loan — pay it off first.', 4600); return false; }
+  const cinderOwed = BOE_STARTER_LOAN_CINDER;
+  const azaAmt = Math.max(1, Math.round(cinderOwed / AZA_TO_CINDER));
+  const prevBal = BankEthos.balance;
+  try {
+    const t = _boeTbl('boe_loans'); if (!t) return false;
+    const ins = await t.insert({ user_id: Profile.cloud.userId, aza_amount: azaAmt, cinder_owed: cinderOwed, cinder_paid: 0, installments: BOE_STARTER_LOAN_INSTALLMENTS, period_days: 7, status: 'active', hero_capacity_aza: 0, note: BOE_STARTER_NOTE }).select('*').maybeSingle();
+    if (ins && ins.error) throw ins.error;
+    const mv = await _boeDisburseLoan((ins && ins.data && ins.data.id) || ins.id);
+    if (!mv.ok) throw new Error(mv.reason || 'principal not credited');
+  } catch (e) { BankEthos.balance = prevBal; showToast('⚠ Starter loan failed.', 4200); return false; }
+  try { boeLog('loan_principal', cinderOwed, 0, 'Starter loan principal → bank', ''); } catch (e) {}
+  showToast('🏦 Starter loan approved — +' + cinderOwed.toLocaleString() + ' 🔥 to bank. Repay ' + Math.ceil(cinderOwed / BOE_STARTER_LOAN_INSTALLMENTS).toLocaleString() + ' 🔥 × ' + BOE_STARTER_LOAN_INSTALLMENTS + '.', 6200);
+  await boeFetchLoans();
+  return true;
 }
 async function boeCreateLoan(azaAmt, installments) {
   azaAmt = Math.floor(azaAmt);
@@ -67380,6 +67410,8 @@ function openBankOfEthos() {
           // hero-collateralized loans + the player's current capacity
           loans: Array.isArray(BankEthos.loans) ? BankEthos.loans : [],
           loanCap: { aza: boeLoanCapacityAza(), max: BOE_LOAN_MAX_AZA, perLv: BOE_LOAN_AZA_PER_HERO_LEVELS, heroLv: boeHeroLevelTotal(), perCinder: AZA_TO_CINDER },
+          // 🏦 the once-only starter loan, and whether this account has had it
+          starterLoan: { cinder: BOE_STARTER_LOAN_CINDER, installments: BOE_STARTER_LOAN_INSTALLMENTS, used: boeStarterLoanUsed() },
           // business loans from owned operations (Black River Petroleum, etc.)
           // Mirrors any live business-owned loans into the Ethos Loans page so
           // the player sees them update in real time as they take/pay them.
@@ -67465,6 +67497,7 @@ function openBankOfEthos() {
       const fin = (p) => { Promise.resolve(p).then(() => {}).catch(() => {}).finally(() => { _loanBusy = false; paint(); postSeed(); try { if (typeof render === 'function') render(); } catch (e) {} }); };
       try {
         if (d.op === 'apply') fin(boeCreateLoan(Math.floor(Number(d.aza) || 0), Math.floor(Number(d.installments) || 4)));
+        else if (d.op === 'starter') fin(boeCreateStarterLoan());
         else if (d.op === 'pay') fin(boePayInstallment(d.id));
         else if (d.op === 'payoff') fin(boePayLoanFull(d.id));
         else { _loanBusy = false; }
@@ -91439,7 +91472,9 @@ const OPS_ECON = {
     it. They are not free: each one draws salaryPerWorkerHr against the
     business's own books, so a 25-strong crew is a real payroll and not just
     a bigger number. */
-  construction: { startup: 0,      ratePerWorkerHr: 800,  salaryPerWorkerHr: 200, maxWorkers: 25, yields: { metal: 2.0 }, inputs: { fuel: 0.5 } },
+  /* 🏗 THE CHEAPEST COMPANY, BY THE OWNER'S RULE (2026-09-10): 20,000 🔥 or
+     10 ◈ Aza, open to every player. A mayor builds for clients with it. */
+  construction: { startup: 20000,  azaStartup: 10, ratePerWorkerHr: 800,  salaryPerWorkerHr: 200, maxWorkers: 25, yields: { metal: 2.0 }, inputs: { fuel: 0.5 } },
   medical:      { startup: 450000, ratePerWorkerHr: 1000, salaryPerWorkerHr: 260, maxWorkers: 10, yields: { medicine: 0.9 }, inputs: { food: 0.8 } },
   agri:         { startup: 300000, ratePerWorkerHr: 700,  salaryPerWorkerHr: 170, maxWorkers: 14, yields: { food: 2.4 } },
   research:     { startup: 700000, ratePerWorkerHr: 1700, salaryPerWorkerHr: 430, maxWorkers: 8,  yields: { memoryShards: 0.25 }, inputs: { metal: 0.6, fuel: 0.3 } },
@@ -91932,7 +91967,15 @@ function getOpsEconOverrides() {
    ⚠ Free means free to ACQUIRE. Wages, inputs and the operation's own economy
      are untouched, and the city still charges a 15-minute build and a crew slot
      to SITE one. This must never be read as "the business is free to run". */
-const OPS_FREE_LICENCE = { construction: 1 };
+const OPS_FREE_LICENCE = {};
+/* 🏗 PINNED PRICES (owner's rule, 2026-09-10). The Construction Co. was FREE
+   (h016, above) and is now the CHEAPEST company at 20,000 🔥 or 10 ◈ Aza —
+   open to every player, who must found it from Operations in Just Business.
+   The clamp keeps its job in the new shape: a published catalog that still
+   carries construction:{startup:350000} (or :0) must not reprice it, so for a
+   pinned row the TABLE's startup and azaStartup are the last word through any
+   override. Everything else on the row (workers, yields, wages) still merges. */
+const OPS_PINNED_PRICE = { construction: 1 };
 function _opEcon(t) {
   const base = OPS_ECON[t] || null;
   if (!base) return null;
@@ -91958,6 +92001,7 @@ function _opEcon(t) {
   // is what keeps every call site (Just Business, the city manifest, the city
   // build menu) honest without one of them hardcoding a zero.
   if (OPS_FREE_LICENCE[t]) merged.startup = 0;
+  if (OPS_PINNED_PRICE[t]) { merged.startup = base.startup; if ('azaStartup' in base) merged.azaStartup = base.azaStartup; else delete merged.azaStartup; }
   return merged;
 }
 try { window.__mg = window.__mg || {}; window.__mg.opsEcon = { table: OPS_ECON, live: _opEcon, computed: _opComputed }; } catch (e) {}
@@ -93347,7 +93391,11 @@ const CITY_LICENSES = [
      is meant to be materials and standing, not cash.
      ⚠ THIS IS THE ONLY LICENCE WITH cinder: 0. The other eight are unchanged
        and deliberately so — do not "tidy" them to match. */
-  { id: 'construction', name: 'Construction License', icon: '🏗', cinder: 0,      res: { metal: 300 },                              minCompliance: 55, blurb: 'Permits Manufacturing & Storage nodes.' },
+  /* 🏗 FREE AND OPEN (owner's rule, 2026-09-10): no fee, no materials, no
+     compliance floor. What a player must do is own the business — found a
+     Construction Co. from Operations in Just Business — and owning one holds
+     this licence outright (cityHoldsLicense → _ownsConstructionCo). */
+  { id: 'construction', name: 'Construction License', icon: '🏗', cinder: 0,      res: {},                                          minCompliance: 0,  blurb: 'Permits Manufacturing & Storage nodes. Free — own a Construction Co. and it is yours.' },
   { id: 'medical',      name: 'Medical License',      icon: '⚕️', cinder: 90000,  res: { medicine: 60, supplies: 120 },             minCompliance: 50, blurb: 'Permits Supply Reserve nodes.' },
   { id: 'agriculture',  name: 'Agriculture License',  icon: '🌾', cinder: 60000,  res: { water: 200, food: 150 },                   minCompliance: 40, blurb: 'Food & biomass operations (ops update).' },
   { id: 'logistics',    name: 'Logistics License',    icon: '🚚', cinder: 70000,  res: { fuel: 180, supplies: 120 },                minCompliance: 45, blurb: 'Permits Convoy Reserve nodes.' },
@@ -93436,11 +93484,28 @@ function _ownsAnyCityNode(userId) {
 function cityLicensePaid(id) {
   try { return !!(Profile.paidLicences && Profile.paidLicences[id]); } catch (e) { return false; }
 }
+/* 🏗 Does this player's corporation own a Construction Co.? Operations.list is
+   the corp_operations read Just Business already keeps (opFetch). */
+function _ownsConstructionCo() {
+  try { return (typeof Operations !== 'undefined' && Array.isArray(Operations.list)) && Operations.list.some(o => o && o.op_type === 'construction'); } catch (e) { return false; }
+}
+/* 👷 …and how many build gangs that Co. brings: one for the Company and one per
+   worker on its roster (the city's own slots rule, node-city bldSlots). Read by
+   the city iframe while a MAYOR manages a client's city, so the mayor's own
+   Company raises the client's build ceiling the way a sited Co. would. */
+window.cityMayorBuildCo = () => {
+  try {
+    const rows = (typeof Operations !== 'undefined' && Array.isArray(Operations.list)) ? Operations.list.filter(o => o && o.op_type === 'construction') : [];
+    let w = 0; rows.forEach(o => { w += Math.max(0, o.workers | 0); });
+    return { co: rows.length, workers: w };
+  } catch (e) { return { co: 0, workers: 0 }; }
+};
 function cityHoldsLicense(id) {
   try {
     if (cityLicensePaid(id)) return true;
     if ((Corp.licenses || []).indexOf(id) >= 0) return true;
     if (id !== 'construction') return false;
+    if (_ownsConstructionCo()) return true;   // 🏗 owning the business IS the licence
     if (((FoundationReserve && FoundationReserve.nodes) || []).length > 0) return true;
     // 🏙 …and a claimed CITY node earns it on the same reasoning: a player who
     //    already operates a node has cleared the bar the permit exists to test.
@@ -93453,7 +93518,7 @@ function cityLicenseByNodes(id) {
   try {
     if (id !== 'construction') return false;
     if ((Corp.licenses || []).indexOf(id) >= 0) return false;   // filed for it — say so honestly
-    return ((FoundationReserve && FoundationReserve.nodes) || []).length > 0 || _ownsAnyCityNode();
+    return _ownsConstructionCo() || ((FoundationReserve && FoundationReserve.nodes) || []).length > 0 || _ownsAnyCityNode();
   } catch (e) { return false; }
 }
 /* WHICH node earned it — the row said "you operate a Reserve node" flat out,
@@ -93463,6 +93528,7 @@ function cityLicenseByNodes(id) {
    this player's own claim lapses. */
 function cityLicenseNodeReason() {
   try {
+    if (_ownsConstructionCo()) return 'a Construction Co.';
     if (((FoundationReserve && FoundationReserve.nodes) || []).length > 0) return 'a Reserve node';
     if (_ownsAnyCityNode()) return 'a claimed city node';
   } catch (e) {}
@@ -240118,11 +240184,19 @@ function renderFarm() {
       else el.innerHTML = '<div class="ink-dim" style="padding:2rem;text-align:center">🐄 The Homestead Farm module did not load — try a hard refresh.</div>';
     } catch (e) { try { console.warn('[farm] mount', e); } catch (_) {} }
   }, 0);
-  return '<div class="screen" style="display:flex;flex-direction:column;min-height:100vh">'
+  /* 🔴 EVERY SCREEN RENDERER WRITES #app ITSELF (renderWoodsFishing,
+     renderPrincePortfolios… all end in `root.innerHTML = …`); render() does
+     not paint a returned string. This one RETURNED its markup, so opening
+     the Feed Operation / Homestead Farm cleared the page and painted nothing
+     — the black screen. Reproduced on the live build: App.screen='farm',
+     render() → #app empty, no error. */
+  const html = '<div class="screen" style="display:flex;flex-direction:column;min-height:100vh">'
     + '<div style="display:flex;align-items:center;gap:10px;padding:8px 12px;background:rgba(10,8,4,0.9);border-bottom:1px solid rgba(212,175,55,0.35)">'
     + '<button class="btn-mini" onclick="try{if(window.MythicFarm&&window.MythicFarm.unmount){window.MythicFarm.unmount()}}catch(e){};App.screen=App._farmReturn||\'title\';App._farmReturn=null;render()">← Back</button>'
     + '<b style="color:#ffcf5a">🐄 Homestead Farm</b><span class="small-text" style="color:#8d8168">every pen eats Animal Feed — the Feed Operation mills it</span></div>'
     + '<div id="farm-root" style="flex:1 1 auto;min-height:70vh"></div></div>';
+  try { const r0 = document.getElementById('app'); if (r0) r0.innerHTML = html; } catch (e) {}
+  return html;
 }
 async function _openMyCity() {
   try {
@@ -253716,7 +253790,7 @@ function _campRenderBoard() {
     <div class="cnp-modal-body">
       <div class="hint" style="margin-bottom:10px">Hire residents out of the player cities in ${escapeHtml(node.name)}. They travel to your camp and join its population — a bigger workforce trains your parked units faster. Every hire leaves that city one worker short (★ = the trade this node is richest in, and cheaper for it).</div>
       ${_campMarket.why ? `<div class="hint" style="margin-bottom:10px;color:#ffb8a0">${escapeHtml(_campMarket.why)}</div>`
-        : (!_campMarket.rows.length ? `<div class="hint" style="margin-bottom:10px;color:#ffb8a0">Nobody in ${escapeHtml(node.name)} is looking for work right now. You can only hire from OTHER players' cities in the node your camp is registered to — if you own this node, register with someone else's to hire.</div>` : '')}
+        : (!_campMarket.rows.length ? `<div class="hint" style="margin-bottom:10px;color:#ffb8a0">Nobody can be hired out of ${escapeHtml(node.name)} yet: no player city on this node has residents to spare — its owner has not built a city there, or it has no residents yet. Once their city has people, they appear here by trade. You hire from the cities on the node your camp is registered to; if you own this node yourself, register with another player's node to hire.</div>` : '')}
       <div class="cnp-emp-stat">Camp population: <b>${_campWorkforceTotal()}</b> · Workforce bonus: <b>+${_campWorkforceXpPct()}% Camp XP</b></div>
       <div class="cnp-grid">${rows}</div>
     </div></div></div>`;
@@ -264017,8 +264091,8 @@ render();
        that works everywhere except the one early path nobody tested. It is
        2KB with no dependencies. -->
 <script src="src/econ/peg.js?v=v121q51"></script>
-<script src="src/battle/effects.js?v=v121v100" defer></script>
-<script src="src/phone/handset.js?v=v121v100" defer></script>
+<script src="src/battle/effects.js?v=v121v101" defer></script>
+<script src="src/phone/handset.js?v=v121v101" defer></script>
 <script src="src/battle/combat.js?v=120m4" defer></script>
 <script src="src/battle/targeting.js?v=121e3hex" defer></script>
 <link rel="stylesheet" href="src/sprites/frames.css?v=120k3">

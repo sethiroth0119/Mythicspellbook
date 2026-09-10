@@ -3049,7 +3049,7 @@ function OperationsScreen({ econ }) {
           const fmtH = (ms) => { ms = ms || 0; if (ms <= 0) return 'ready'; const h = Math.floor(ms / 3600000), m = Math.floor((ms % 3600000) / 60000); return h > 0 ? h + 'h ' + m + 'm' : m + 'm'; };
           const act = (p) => { try { window.JB_action && window.JB_action(p); } catch (e) {} };
           return (
-          <div key={o.id} className="card" style={{ padding: 14 }}>
+          <div key={o.id} className="card" style={{ padding: 14, display: 'flex', flexDirection: 'column' }}>
             <div className="row" style={{ gap: 12, alignItems: 'flex-start' }}>
               <div style={{ width: 46, height: 46, borderRadius: 6, display: 'grid', placeItems: 'center', fontSize: 24, background: 'var(--bg-3)', border: '1px solid var(--line-soft)', overflow: 'hidden' }}>
                 {photo ? <img src={photo} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : o.icon}
@@ -3060,7 +3060,7 @@ function OperationsScreen({ econ }) {
               </div>
               {adm && <button className="btn sm" onClick={() => window.JB_uploadArt('op', o.id)}>📷</button>}
             </div>
-            <div className="muted" title={o.tip || o.focus} style={{ fontSize: 12.5, margin: '10px 0' }}>{o.focus}</div>
+            <div className="muted" title={o.tip || o.focus} style={{ fontSize: 12.5, margin: '10px 0', minHeight: 18 }}>{o.focus}</div>
             {/* Product chips are OPS_ECON.yields, labelled — nothing else. An op
                 with no resource yield has no chips, and before the payload
                 lands there are none either: an empty row, not a guess. */}
@@ -3069,9 +3069,11 @@ function OperationsScreen({ econ }) {
                 {view.produces.map(p => <span key={p} className="chip flat" style={{ fontSize: 10.5 }}>{p}</span>)}
               </div>
             )}
-            <div className="card flat" style={{ padding: 10, fontSize: 11.5 }}>
+            {/* 🧹 The stat block sits at the bottom of a flex column so neighbouring
+                cards line up; rows share one dashed rule and one padding. */}
+            <div className="card flat" style={{ padding: 10, fontSize: 11.5, marginTop: 'auto' }}>
               {!owned && (
-                <div className="row" style={{ justifyContent: 'space-between', padding: '3px 0' }}>
+                <div className="row" style={{ justifyContent: 'space-between', padding: '4px 0', borderBottom: '1px dashed var(--line-soft)' }}>
                   <span className="muted">Startup (Treasury)</span>
                   <span className="mono" title={oe ? '' : 'Price arrives with the economy payload'}
                     style={{ color: view.startup === 0 ? 'var(--aza)' : undefined }}>{view.startupText}</span>
@@ -3082,19 +3084,19 @@ function OperationsScreen({ econ }) {
                   React unmounted the WHOLE app — a blank Just Business, not a
                   missing line. `| 0` costs nothing and cannot crash. */}
               {oe && (
-                <div className="row" style={{ justifyContent: 'space-between', padding: '3px 0' }}>
+                <div className="row" style={{ justifyContent: 'space-between', padding: '4px 0', borderBottom: '1px dashed var(--line-soft)' }}>
                   <span className="muted">Wages</span>
                   <span className="mono">{(oe.salaryPerWorkerHr | 0).toLocaleString()} 🔥 / worker·hr</span>
                 </div>
               )}
               {oe && (
-                <div className="row" style={{ justifyContent: 'space-between', padding: '3px 0' }}>
+                <div className="row" style={{ justifyContent: 'space-between', padding: '4px 0', borderBottom: '1px dashed var(--line-soft)' }}>
                   <span className="muted">Output</span>
                   <span className="mono">{(oe.ratePerWorkerHr | 0).toLocaleString()} 🔥 / worker·hr</span>
                 </div>
               )}
               {oe && oe.yields && (
-                <div className="row" style={{ justifyContent: 'space-between', padding: '3px 0' }}>
+                <div className="row" style={{ justifyContent: 'space-between', padding: '4px 0', borderBottom: '1px dashed var(--line-soft)' }}>
                   <span className="muted">Resource yield</span>
                   <span className="mono" style={{ color: 'var(--toxic)' }}>{Object.keys(oe.yields).map(k => oe.yields[k] + ' ' + k).join(' · ')} / wkr·hr</span>
                 </div>
@@ -3103,7 +3105,7 @@ function OperationsScreen({ econ }) {
                   when short. Without these rows a player sees reduced output and no
                   cause — which is worse than not having the mechanic at all. */}
               {oe && oe.inputs && (
-                <div className="row" style={{ justifyContent: 'space-between', padding: '3px 0' }}>
+                <div className="row" style={{ justifyContent: 'space-between', padding: '4px 0', borderBottom: '1px dashed var(--line-soft)' }}>
                   <span className="muted">Consumes</span>
                   <span className="mono" style={{ color: 'var(--warn, #e0a86a)' }}>{Object.keys(oe.inputs).map(k => oe.inputs[k] + ' ' + k).join(' · ')} / wkr·hr</span>
                 </div>
@@ -3111,7 +3113,7 @@ function OperationsScreen({ econ }) {
               {owned && (
                 <React.Fragment>
                   {typeof owned.supplyPct === 'number' && owned.supplyPct < 100 ? (
-                    <div className="row" style={{ justifyContent: 'space-between', padding: '3px 0' }}>
+                    <div className="row" style={{ justifyContent: 'space-between', padding: '4px 0', borderBottom: '1px dashed var(--line-soft)' }}>
                       <span className="muted">⚠ Supply</span>
                       <span className="mono" style={{ color: owned.supplyPct === 0 ? '#e24842' : '#e0a86a' }}>
                         {owned.supplyPct === 0
@@ -3124,7 +3126,7 @@ function OperationsScreen({ econ }) {
                       build menu tells a city player that operations exist, and this
                       tells an operations player that the city exists. An unsited op
                       is unchanged in every number above — siting only ever adds. */}
-                  <div className="row" style={{ justifyContent: 'space-between', padding: '3px 0' }}>
+                  <div className="row" style={{ justifyContent: 'space-between', padding: '4px 0', borderBottom: '1px dashed var(--line-soft)' }}>
                     <span className="muted">🏙 City plot</span>
                     <span className="mono" style={{ color: owned.sited ? 'var(--aza)' : 'var(--muted, #8a8272)' }}>
                       {owned.sited
@@ -3132,23 +3134,23 @@ function OperationsScreen({ econ }) {
                         : 'not sited — place it in your city for a plot bonus'}
                     </span>
                   </div>
-                  <div className="row" style={{ justifyContent: 'space-between', padding: '3px 0' }}>
+                  <div className="row" style={{ justifyContent: 'space-between', padding: '4px 0', borderBottom: '1px dashed var(--line-soft)' }}>
                     <span className="muted">Net accrued</span>
                     <span className="mono" style={{ color: 'var(--aza)' }}>+{(owned.net | 0).toLocaleString()} 🔥</span>
                   </div>
                   {owned.yieldStr ? (
-                    <div className="row" style={{ justifyContent: 'space-between', padding: '3px 0' }}>
+                    <div className="row" style={{ justifyContent: 'space-between', padding: '4px 0', borderBottom: '1px dashed var(--line-soft)' }}>
                       <span className="muted">Resources accrued</span>
                       <span className="mono" style={{ color: 'var(--toxic)' }}>{owned.yieldStr}</span>
                     </div>
                   ) : null}
                   {owned.inputStr ? (
-                    <div className="row" style={{ justifyContent: 'space-between', padding: '3px 0' }}>
+                    <div className="row" style={{ justifyContent: 'space-between', padding: '4px 0', borderBottom: '1px dashed var(--line-soft)' }}>
                       <span className="muted">Will consume</span>
                       <span className="mono" style={{ color: '#e0a86a' }}>{owned.inputStr}</span>
                     </div>
                   ) : null}
-                  <div className="row" style={{ justifyContent: 'space-between', padding: '3px 0' }}>
+                  <div className="row" style={{ justifyContent: 'space-between', padding: '4px 0', borderBottom: '1px dashed var(--line-soft)' }}>
                     <span className="muted">Settles in</span>
                     <span className="mono">{fmtH(owned.cdLeftMs)}</span>
                   </div>

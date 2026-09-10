@@ -9,7 +9,7 @@
      believed the file was already live. Only a CONTENT change moves the hash
      and forces a re-upload, so bump this stamp whenever the city 404s, and
      probe it (grep NC_BUILD on the served page) to prove the deploy landed. -->
-<script>window.NC_BUILD = "v121v100-sweep3";</script>
+<script>window.NC_BUILD = "v121v101-ownerlist";</script>
 <!-- ════════════════════════════════════════════════════════════════════════
      NODE CITY — SimCity-style settlement layer for Mythic Spellbook.
      Three.js WebGPU (auto-falls back to WebGL2). Realistic sun/moon cycle.
@@ -3002,7 +3002,17 @@ const MythicCityBridge = (() => {
       if (foreign) return [];
       try {
         const FR = P.FoundationReserve;
-        if (FR && Array.isArray(FR.nodes) && FR.nodes.length) return FR.nodes.map(anchorRow);
+        /* 🏳 THE VIEWER'S OWN NODES ONLY (owner's rule, 2026-09-10): "players
+           registered to other nodes, or joining players' guilds — random PRN
+           nodes are spawning in players' cities". FoundationReserve.nodes is
+           the whole CORPORATION's reserve, so joining a corp rang a member's
+           own city with the founder's anchors. A city is rung with the nodes
+           its owner licensed; a row with no owner_id (older schema) is kept. */
+        let me = null; try { me = (P.cityOwnerIdentity() || {}).viewerId || null; } catch (e) {}
+        if (FR && Array.isArray(FR.nodes) && FR.nodes.length) {
+          const mine = FR.nodes.filter(n => n && (!me || !n.owner_id || String(n.owner_id) === String(me)));
+          return mine.map(anchorRow);
+        }
       } catch (e) {}
       return [];
     }
@@ -31636,16 +31646,36 @@ function bldHasCo() { return bldCoTiles().length > 0 || bldNodeCo() || bldMayorC
 /* 0 when the manifest is unavailable, which is SAFE here and only here: this
    is read at order time and never re-anchors a live deadline. */
 function bldWorkersOf(k) { try { return (opsRowForKey(k) || {}).workers | 0; } catch (e) { return 0; } }
+/* 🏗 THE MAYOR'S OWN COMPANY, COUNTED WHILE MANAGING (owner's rule, 2026-09-10:
+   "the client may not have a construction co., which means the mayor will
+   not be able to build for their clients"). bldMayorCo() already lifts the
+   duration CEILING off the mayor's business; this brings its build gangs and
+   speed too, from the parent's live corp_operations read (cityMayorBuildCo),
+   with the same per-Co / per-worker arithmetic a sited Co. gets. Only while
+   gov.isOwner is exactly false — in the mayor's own city the sited rule holds. */
+function bldMayorCoStats() {
+  try {
+    if (!gov || gov.isOwner !== false) return { co: 0, workers: 0 };
+    const par = (window.parent && window.parent !== window) ? window.parent : null;
+    if (par && typeof par.cityMayorBuildCo === 'function') { const s = par.cityMayorBuildCo() || {}; return { co: s.co | 0, workers: s.workers | 0 }; }
+    const all = (typeof opsRowsOf === 'function') ? (opsRowsOf('construction').all || []) : [];
+    let w = 0; all.forEach(r => { w += Math.max(0, (r && r.workers) | 0); });
+    return { co: all.length, workers: w };
+  } catch (e) { return { co: 0, workers: 0 }; }
+}
 function bldSlots() {
   const C = bldCfg(); if (!C) return 0;
   let n = C.municipal.slots;                                     // the free crew
   for (const [k] of bldCoTiles()) n += C.slots.perCo + Math.floor(bldWorkersOf(k) / C.slots.perWorkerStep);
+  /* typeof-guarded: tools/economy-tests lifts bldSlots/bldSpeed without their neighbours. */
+  const mc = (typeof bldMayorCoStats === 'function') ? bldMayorCoStats() : { co: 0, workers: 0 }; if (mc.co > 0) n += C.slots.perCo + Math.floor(mc.workers / C.slots.perWorkerStep);
   return Math.min(C.slots.max, n);                               // 2 → 5 with a 12-worker Co. → 6 capped
 }
 function bldSpeed() {
   const C = bldCfg(); if (!C) return 1;
   let m = 1;
   for (const [k] of bldCoTiles()) m += C.speed.perCo + bldWorkersOf(k) * C.speed.perWorker;
+  const mc = (typeof bldMayorCoStats === 'function') ? bldMayorCoStats() : { co: 0, workers: 0 }; if (mc.co > 0) m += C.speed.perCo + mc.workers * C.speed.perWorker;
   return Math.min(C.speed.maxMul, m);                            // 1.0 → 1.50 → 2.0
 }
 function bldActive() { let n = 0; for (const t of Object.values(game.tiles)) if (t && t.bld) n++; return n; }
@@ -46932,7 +46962,11 @@ const CIT_APT = [
    city would be full of Farmers with no Doctors at all and nothing would fail. */
 function citAptOf(id) { return CIT_APT[(citSeqOf(id) * 7 + 3) % CIT_APT.length]; }
 
-/* 🏕 THE CITY'S UNEMPLOYED, COUNTED BY THE TRADE A CAMP WOULD ASK FOR.
+/* 🏕 THE CITY'S RESIDENTS, COUNTED BY THE TRADE A CAMP WOULD ASK FOR.
+   Owner's rule (2026-09-10): "in Reconstruction actually pull from the city
+   node that the player is registered to and hire from the NPC population
+   that they have there" — so every resident is on offer, not only the
+   jobless; a hire still leaves this city one person short (sql/088).
    ⚠ PEOPLE ON AN ERRAND ARE EXCLUDED. Somebody walking to a job or sitting in
      a classroom has no job yet, so they are on the work-seeker list — but they
      are not available to be hired away by a camp, and offering them would let
@@ -46941,7 +46975,6 @@ function citLabourByRole() {
   const out = {};
   try {
     for (const c of citizens) {
-      if (c.job) continue;
       if (citTaskOf(c.id)) continue;
       const r = citAptOf(c.id).role || 'Civilian';
       out[r] = (out[r] | 0) + 1;

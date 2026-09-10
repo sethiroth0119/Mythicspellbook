@@ -89,10 +89,15 @@ const CO_UNSITED = [{ type: 'construction' }];
   ok(q3('bldCoTiles().length') === 0, 'a Co. that is still a building site supervises nothing');
 }
 
-/* ── the ceiling only: no crews, no speed, from a Co. that is not here ── */
-ok(/for \(const \[k\] of bldCoTiles\(\)\) n \+= C\.slots\.perCo/.test(NC), 'bldSlots still iterates bldCoTiles alone — no borrowed crews');
-ok(/for \(const \[k\] of bldCoTiles\(\)\) m \+= C\.speed\.perCo/.test(NC), 'bldSpeed still iterates bldCoTiles alone — no borrowed speed');
-ok(!/bldSlots[\s\S]{0,200}bldMayorCo/.test(NC), 'bldMayorCo is nowhere near the crew maths');
+/* ── the sited rule for tiles; the mayor's Co. through ONE guarded reader ──
+   v121v101 (owner, 2026-09-10): "the client may not have a construction co.,
+   which means the mayor will not be able to build for their clients" — so the
+   mayor's own Company now ADDS gangs and speed while managing, via
+   bldMayorCoStats() (parent-published counts, gov.isOwner === false only).
+   The ceiling predicate bldMayorCo() itself is still not in the crew maths. */
+ok(/for \(const \[k\] of bldCoTiles\(\)\) n \+= C\.slots\.perCo/.test(NC), 'bldSlots still iterates bldCoTiles for sited Companies');
+ok(/for \(const \[k\] of bldCoTiles\(\)\) m \+= C\.speed\.perCo/.test(NC), 'bldSpeed still iterates bldCoTiles for sited Companies');
+ok(!/bldSlots\(\) \{[\s\S]{0,400}bldMayorCo\(\)/.test(NC) && /bldSlots\(\) \{[\s\S]{0,400}bldMayorCoStats\(\)/.test(NC), 'the crew maths reads the mayor\'s Co. through bldMayorCoStats only — never the ceiling predicate bldMayorCo()');
 
 /* ── one predicate, three callers ── */
 ok(/const needsCo = over && !bldHasCo\(\);/.test(NC), 'the shop card asks bldHasCo, the same question the gates ask');

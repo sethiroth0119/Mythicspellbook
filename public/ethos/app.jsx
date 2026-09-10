@@ -467,6 +467,8 @@ function App() {
           // Hero-collateralized loans + the player's current capacity.
           loans: Array.isArray(d.loans) ? d.loans : ((prev && prev.loans) || []),
           loanCap: (d.loanCap && typeof d.loanCap === 'object') ? d.loanCap : ((prev && prev.loanCap) || { aza: 0, max: 20, perLv: 5, heroLv: 0, perCinder: 5000 }),
+          // 🏦 the once-only starter loan (40,000 🜂), and whether it has been taken
+          starterLoan: (d.starterLoan && typeof d.starterLoan === 'object') ? d.starterLoan : ((prev && prev.starterLoan) || { cinder: 40000, installments: 4, used: false }),
           // 🏢 Business loans from owned operations (Black River Petroleum,
           //    Ethos Fuel Command, etc.). Mirrored from BankEthos.businessLoans
           //    on the parent. NO hero-level gate — these are corporate, not
@@ -2362,6 +2364,8 @@ function PageLoans({ account }) {
   const active = loans.filter(l => l && l.status === "active");
   const past = loans.filter(l => l && l.status !== "active");
   const canApply = cap.aza > 0 && active.length === 0;
+  const starter = (account && account.starterLoan) || { cinder: 40000, installments: 4, used: false };
+  const canStarter = !starter.used && active.length === 0;
   return (
     <div>
       {applyOpen && <ApplyLoanModal account={account} onClose={() => setApplyOpen(false)} />}
@@ -2371,6 +2375,10 @@ function PageLoans({ account }) {
           <div className="page-title display">Loans & Credit Lines</div>
         </div>
         <div className="page-actions">
+          <button className="btn" disabled={!canStarter} onClick={() => boeLoan("starter", {})}
+            title={starter.used ? "The starter loan is once per account — you have already taken it" : active.length > 0 ? "Pay off your active loan first" : "No hero collateral needed. " + fmt(starter.cinder) + " 🜂 into your bank, repaid in " + starter.installments + " weekly installments. Once per account."}>
+            <Icon name="plus" size={14}/> Starter loan · {fmt(starter.cinder)} 🜂 {starter.used ? "(taken)" : "(once)"}
+          </button>
           <button className="btn primary" disabled={!canApply} onClick={() => setApplyOpen(true)} title={!canApply ? (active.length > 0 ? "Pay off your active loan first" : "Train heroes to unlock loan capacity") : ""}>
             <Icon name="plus" size={14}/> Apply for Loan
           </button>

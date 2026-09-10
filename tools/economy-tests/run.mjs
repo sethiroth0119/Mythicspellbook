@@ -10506,11 +10506,12 @@ const stripComments = (src) => {
     const SRC8 = {
       table:  srcBlockAfter(idxSrc, 'const OPS_ECON = {'),
       free:   /const OPS_FREE_LICENCE = \{[^\n]*\};/.exec(idxSrc),
+      pinned: /const OPS_PINNED_PRICE = \{[^\n]*\};/.exec(idxSrc),
       econ:   srcBlockAfter(idxSrc, 'function _opEcon(t)'),
       ovr:    srcBlockAfter(idxSrc, 'function getOpsEconOverrides()'),
     };
     const got8 = chk('§8 OPS_ECON, OPS_FREE_LICENCE and _opEcon are all readable out of public/index.html',
-        !!SRC8.table && !!SRC8.free && !!SRC8.econ && !!SRC8.ovr,
+        !!SRC8.table && !!SRC8.free && !!SRC8.pinned && !!SRC8.econ && !!SRC8.ovr,
         'table=' + !!SRC8.table + ' freeList=' + JSON.stringify(SRC8.free && SRC8.free[0]) +
         ' _opEcon=' + !!SRC8.econ + ' overrides=' + !!SRC8.ovr +
         ' — a deleted OPS_FREE_LICENCE IS the h016 revert, seen from here');
@@ -10535,29 +10536,42 @@ const stripComments = (src) => {
       const mkEcon = (overrides) => new Function('__ov', 'return (function () {' +
         '  const OPS_ECON = ' + table + ';' +
         '  ' + SRC8.free[0] +
+        '  ' + SRC8.pinned[0] +
         '  function getOpsEconOverrides() { return __ov; }' +
         '  function _opEcon(t) ' + econ +
-        '  return { _opEcon, OPS_ECON, OPS_FREE_LICENCE };' +
+        '  return { _opEcon, OPS_ECON, OPS_FREE_LICENCE, OPS_PINNED_PRICE };' +
         '})();')(overrides || null);
 
       const E = mkEcon(null);
       const co = E._opEcon('construction');
-      chk('§8 THE CONSTRUCTION CO. LICENCE IS FREE — startup 0, from the shipped table',
-          !!co && (co.startup | 0) === 0,
-          'startup = ' + JSON.stringify(co && co.startup) +
-          ' — this is the change that unblocks all city income; at any other number the feature is paywalled');
-      chk('§8 …and the free list is the documentation, so the table and the clamp cannot disagree',
-          !!E.OPS_FREE_LICENCE && E.OPS_FREE_LICENCE.construction === 1,
-          'OPS_FREE_LICENCE = ' + JSON.stringify(E.OPS_FREE_LICENCE));
+      /* 🏗 THE RULE CHANGED ON 2026-09-10 (owner): the Construction Co. is no
+         longer free — it is the CHEAPEST company, 20,000 🔥 or 10 ◈ Aza, open to
+         every player who founds it from Just Business. h016's clamp (free
+         through any override) became a PIN (the table's price through any
+         override); the stale-catalog hazard is the same and so is the guard. */
+      chk('§8 THE CONSTRUCTION CO. IS THE CHEAPEST COMPANY — 20,000 🔥 or 10 ◈, from the shipped table',
+          !!co && (co.startup | 0) === 20000 && (co.azaStartup | 0) === 10,
+          'startup = ' + JSON.stringify(co && co.startup) + ', azaStartup = ' + JSON.stringify(co && co.azaStartup) +
+          ' — the owner set this price on 2026-09-10; any other number is a regression');
+      chk('§8 …and it is the cheapest priced operation in the table',
+          !!co && Object.keys(E.OPS_ECON).every(t => !((E._opEcon(t).startup | 0) > 0) || (E._opEcon(t).startup | 0) >= 20000),
+          'something is priced under 20,000: ' + JSON.stringify(Object.keys(E.OPS_ECON).filter(t => (E._opEcon(t).startup | 0) > 0 && (E._opEcon(t).startup | 0) < 20000)));
+      chk('§8 …the free list is empty and the pin list is the documentation, so the table and the clamp cannot disagree',
+          !!E.OPS_FREE_LICENCE && Object.keys(E.OPS_FREE_LICENCE).length === 0 && !!E.OPS_PINNED_PRICE && E.OPS_PINNED_PRICE.construction === 1,
+          'OPS_FREE_LICENCE = ' + JSON.stringify(E.OPS_FREE_LICENCE) + ' OPS_PINNED_PRICE = ' + JSON.stringify(E.OPS_PINNED_PRICE));
       /* THE HALF THE TABLE CANNOT DO. A Catalog published before this change
          still carries construction:{startup:350000}; every player who has ever
          received it merges that on top. The clamp is what makes the table's 0
          true for them too. */
-      const stale = mkEcon({ construction: { startup: 350000 } });
-      chk('§8 …and a STALE PUBLISHED OVERRIDE cannot put the fee back',
-          (stale._opEcon('construction').startup | 0) === 0,
-          'a published catalog re-priced the licence at ' + stale._opEcon('construction').startup +
-          ' 🔥 — every player who has that catalog is paywalled and the city refuses itself with not-free');
+      const stale = mkEcon({ construction: { startup: 350000, azaStartup: 90 } });
+      chk('§8 …and a STALE PUBLISHED OVERRIDE cannot reprice it (350,000 → the pinned 20,000 / 10 ◈)',
+          (stale._opEcon('construction').startup | 0) === 20000 && (stale._opEcon('construction').azaStartup | 0) === 10,
+          'a published catalog re-priced the company at ' + stale._opEcon('construction').startup +
+          ' 🔥 / ' + stale._opEcon('construction').azaStartup + ' ◈ — every player who has that catalog pays the wrong price');
+      const stale0 = mkEcon({ construction: { startup: 0 } });
+      chk('§8 …nor make it free again (the h016 catalog, 0 → 20,000)',
+          (stale0._opEcon('construction').startup | 0) === 20000,
+          'startup = ' + stale0._opEcon('construction').startup);
       chk('§8 …while an override of anything ELSE on the same row still applies',
           stale._opEcon('construction').maxWorkers === E._opEcon('construction').maxWorkers &&
           mkEcon({ construction: { maxWorkers: 3 } })._opEcon('construction').maxWorkers === 3,
