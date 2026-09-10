@@ -39386,7 +39386,7 @@ body:has(#pack-opener-frame) #chat-overlay {
   // the console. Bump this every deploy alongside sw.js's CACHE_VERSION. If two
   // machines show different stamps, the older one is on stale code (hard-refresh);
   // if they MATCH but content still differs, it is a DATA/publish issue, not code.
-  window.BUILD_VERSION = 'v121v96';
+  window.BUILD_VERSION = 'v121v97';
   try {
     console.info('%cMythic Spellbook ' + window.BUILD_VERSION + '%c — build check: run  __mg.version',
       'font-weight:700;color:#b48cff', 'color:#7d7499');
@@ -178732,7 +178732,9 @@ function bindGameOverEvents() {
     }
     if (wasFishing) {
       const fa = App._fishingEncounterAfter; App._fishingEncounterAfter = null;
-      try { showToast(fa && fa.won ? ('🎣 ' + fa.name + ' defeated — +' + (fa.bounty | 0) + ' 🔥 bounty!') : ('🎣 ' + ((fa && fa.name) || 'The beast') + ' slipped away…'), 3600); } catch (e) {}
+      /* 🦈 A beaten attacker (round 2) drops its parts here, on the way back. */
+      try { if (fa && fa.won && (fa.parts | 0) > 0) { addSalvage({ monsterParts: fa.parts | 0 }); } } catch (e) {}
+      try { showToast(fa && fa.won ? ('🎣 ' + fa.name + ' defeated — +' + (fa.bounty | 0) + ' 🔥 bounty' + ((fa.parts | 0) > 0 ? ' · +' + (fa.parts | 0) + ' 🦈 Leviathan Parts' : '') + '!') : ('🎣 ' + ((fa && fa.name) || 'The beast') + ' slipped away…'), 3600); } catch (e) {}
       App.screen = 'woodsFishing'; render(); return;
     }
     if (wasDaily) {
@@ -179112,7 +179114,7 @@ function recordBattleProgress() {
   if (App.battlePrep && App.battlePrep.fishingEncounter) {
     const fe = App.battlePrep.fishingEncounter;
     if (won) { try { _wf3AwardFishingWin(fe); } catch (e) {} }
-    App._fishingEncounterAfter = { won: !!won, name: fe.enemyName || 'Encounter', bounty: won ? (fe.bounty | 0) : 0, xpRarity: fe.xpRarity };
+    App._fishingEncounterAfter = { won: !!won, name: fe.enemyName || 'Encounter', bounty: won ? (fe.bounty | 0) : 0, xpRarity: fe.xpRarity, parts: won ? (fe.parts | 0) : 0 };
   }
 
   const playerUnits = s.units.filter(u => u.owner === 'player');
@@ -221462,6 +221464,7 @@ function wfResolveExpedition(exp) {
   fearGain = Math.max(0, fearGain - luckyCount * 3 - hunterCount * 4);
 
   // Apply hull damage; if hull bottoms out, boat is damaged.
+  try { _wfExpCrewHurt(crew, hullDmg, exp.danger | 0, b); } catch (e) {}   // 🦈 round 2: injury, death, boat XP
   b.hull = Math.max(0, (b.hull | 0) - hullDmg);
   if (b.hull <= 0) {
     b.status = 'damaged';
@@ -221776,6 +221779,7 @@ function _wf3FlashLog(msg, cls) { const log = _wf3$('log'); if (!log) return; co
 function _wf3RenderHud() {
   if (!document.getElementById('wf3-overlay')) return;
   const L = _wf3Live(), s = _wf3S; if (!s) return;
+  try { _wf3ExpRenderHud(); } catch (e) {}
   const cin = _wf3$('cinder'); if (cin) cin.textContent = _wf3GetCinder().toLocaleString();
   const sc = _wf3$('shopCinder'); if (sc) sc.textContent = _wf3GetCinder().toLocaleString();
   const food = _wf3$('food'); if (food) food.textContent = (s.foodTrip | 0).toLocaleString();
@@ -221982,6 +221986,7 @@ function _wf3ReleaseCast() {
   const pw = _wf3$('power'); if (pw) pw.style.display = 'none'; G.predictor.visible = false;
   if (L.equippedBait && (L.baitStock[L.equippedBait] || 0) > 0) { L.baitStock[L.equippedBait]--; _wf3RenderHud(); }
   s.castsLeft = Math.max(0, s.castsLeft - 1); _wf3RenderHud();
+  try { _wf3ThreatOnCast(); } catch (e) {}
   const z = _wf3LandingZ(s.power);
   s.castFrom.copy(G.rodTip); s.castTo.set(0, 0, z); s.castT = 0; s.arcH = 4 + s.power * 5;
   const d = Math.abs(z - s.hotZ);
@@ -222018,7 +222023,7 @@ function _wf3UpdateBite(dt, t) {
   if (s.hookTimer <= 0) { s.G.biteMark.visible = false; _wf3FlashLog('It got away… −' + WF3_XP_LOSS_GETAWAY + ' XP', 'enc'); _wf3LoseXP(WF3_XP_LOSS_GETAWAY); _wf3ResetToIdle(); }
 }
 function _wf3AttemptHook() { const s = _wf3S; if (!s || !s.G) return; s.G.biteMark.visible = false; s.pending = _wf3RollCatch(); _wf3StartReel(); }
-function _wf3TotalLuck() { const b = _wf3Bait(); return _wf3Pole().luck + ((b && b.luck) || 0) + _wf3S.castLuckBonus; }
+function _wf3TotalLuck() { const b = _wf3Bait(); return _wf3Pole().luck + ((b && b.luck) || 0) + _wf3S.castLuckBonus + ((_wf3S && _wf3S.expLuck) || 0); }
 function _wf3WeightedPickLuck(list, luck) {
   const w = list.map(i => { let m = 1; if (i.rarity === 'Uncommon') m = 1 + luck; else if (i.rarity === 'Rare') m = 1 + luck * 2; else if (i.rarity === 'Legendary') m = 1 + luck * 3.2; return { i, w: i.weight * m }; });
   const total = w.reduce((s, o) => s + o.w, 0); let r = Math.random() * total;
@@ -222071,6 +222076,7 @@ function _wf3OnCatch(result) {
     _wf3FlashLog(Object.keys(banked).map((k) => '+' + _wfResLabel(k, banked[k])).join(' · ') + ' · ' + result.item.name, result.rarity !== 'Common' ? 'rare' : '');
     try { _wf3SpawnFish(result.rarity, result.item.id); } catch (e) {}
     result.banked = banked;
+    try { _wf3ExpOnCatch(result, banked); } catch (e) {}
     _wf3ShowFoodCard(result, cin, xp);
   } else if (result.type === 'barrel') {
     // 🛢 Oil barrel → fuel resource (+ a little XP). Floods the local fuel market a touch.
@@ -222244,6 +222250,7 @@ function _wf3Animate() {
   if (G.hotspot.visible) { const sc = s.ringScale * (1 + Math.sin(t * 3) * 0.07); G.hotspot.scale.set(sc, 1, sc); G.hotspot.position.y = 0.4 + Math.sin(t * 2) * 0.08; }
   if (s.state === 'CHARGING') _wf3UpdateCharge(dt); else if (s.state === 'CASTING') _wf3UpdateCast(dt);
   else if (s.state === 'WAITING') _wf3UpdateWaiting(dt, t); else if (s.state === 'BITE') _wf3UpdateBite(dt, t); else if (s.state === 'REELING') _wf3UpdateReel(dt, t);
+  try { _wf3ThreatTick(dt, t); } catch (e) {}
   // fish breach FX
   if (G.fx && G.fx.length) {
     for (let i = G.fx.length - 1; i >= 0; i--) { const fx = G.fx[i]; fx.t += dt; const k = fx.t / fx.dur;
@@ -222422,7 +222429,9 @@ function _wf3Open() {
     hotR: WF3_RING_BASE, powerRate: 0.9, ringScale: 1,
     waveAmp: (WF3_SWELL[L.currentBiome] || WF3_SWELL.shallows).wave,
     castsLeft: WF3_TRIP_CASTS, foodTrip: 0,
+    ...(_wf3ExpansionInit(boat)),   // 🦈 round 2: hull, threat, weather, hold, deckhand
   };
+  try { _wf3S.waveAmp *= Math.max(0.6, (_wf3S.weather.wave || 1) - (_wf3S.stats.stability || 0) * 0.5); } catch (e) {}
   // wire buttons
   const onClose = () => _wf3Close();
   wrap.querySelector('#wf3-exitBtn').onclick = onClose;
@@ -222464,12 +222473,380 @@ function _wf3Close() {
   try { if (s && s.G) s.G.dispose(); } catch (e) {}
   const o = document.getElementById('wf3-overlay'); if (o) o.remove();
   const haul = s ? (s.foodTrip | 0) : 0;
+  try { _wf3ExpOnClose(); } catch (e) {}
   _wf3S = null; _wf3Save();
   try { if (typeof render === 'function' && App.screen === 'woodsFishing') render(); } catch (e) {}
-  if (haul > 0) try { showToast('🐟 Trip banked — +' + haul + ' food to the camp stores.', 3400); } catch (e) {}
+  if (haul > 0) try { showToast('🐟 Trip banked — ' + haul + ' units iced in the hold, in your stores.', 3400); } catch (e) {}
 }
 
 // ── Admin .glb models (boat + per-rarity fish) ──────────────────────────────
+/* ═══════════════════════════════════════════════════════════════════════════
+   🦈 WOODS FISHING — ROUND 2 (WOODS_FISHING_HANDOFF: boats, sharks, crew, tournaments)
+   ═══════════════════════════════════════════════════════════════════════════
+   The branch that built this never reached the repo; this is the handoff's
+   spec written into the live trip that already exists (_wf3*). Everything below
+   hooks the engine at five seams — trip open, each frame, each cast, each catch,
+   trip close — and never redefines an engine function.
+
+   THE THREAT METER. Every cast stirs the water: threat rises per cast, scaled by
+   the biome, the weather and the boat's sonar, and decays while the line is
+   idle. At 100 something surfaces — a shark or an anomaly, weighted by biome —
+   and circles the boat, biting the hull every few seconds (armour soaks a share).
+   The player can HARPOON it (ammo per trip, hit chance 15–30% + 2×fishing level,
+   a Harpoon Mount adds more), FLEE (odds off the boat's speed and stability), or
+   FIGHT it in the card battle the trip already routes through. Hull at 0 is a
+   WRECK: the trip ends, the boat docks damaged. A kill drops Leviathan Parts.
+
+   BOATS have armour / sonar / stability by class, gain XP per trip and per
+   attacker killed, level up every WF_BOAT_XP_PER_LEVEL, and take refits in the
+   slots levels open (L2 / L4 / L6): Harpoon Mount, Reinforced Hull, Sonar Array,
+   Bilge Pumps. CREW gain rank with exp (Deckhand → Hand → Mate → Veteran →
+   Captain); a bad expedition or a bite hurts them, and at health 0 they roll to
+   survive (70%, veterans and hunters 90%) — a death is logged to the event feed.
+   WEATHER is rolled per trip and the clock decides day or night: fog and storms
+   feed the threat and the swell, night favours rare fish. The HOLD is the boat's
+   capacity × 12 units; a full hold ends the trip.
+
+   ⚠ NOTHING HERE MINTS. Parts come off an attacker the player beat; food comes
+     from fish the player caught; the tournament posts a weight, not a prize.
+   ═══════════════════════════════════════════════════════════════════════════ */
+const WF3_THREATS = [
+  { id: 'reef',      name: 'Reef Shark',     tier: 'Common',    hp: 30,  bite: 9,  every: 7, parts: [1, 2], weight: 40, min: 0 },
+  { id: 'mako',      name: 'Ash Mako',       tier: 'Uncommon',  hp: 55,  bite: 14, every: 6, parts: [2, 3], weight: 25, min: 0 },
+  { id: 'hammer',    name: 'Cinder Hammerhead', tier: 'Rare',   hp: 90,  bite: 20, every: 5.5, parts: [3, 5], weight: 14, min: 1 },
+  { id: 'anomaly',   name: 'Drowned Anomaly', tier: 'Rare',     hp: 120, bite: 26, every: 5, parts: [4, 7], weight: 9,  min: 2 },
+  { id: 'leviathan', name: 'Ash Leviathan',  tier: 'Legendary', hp: 220, bite: 38, every: 4.5, parts: [8, 14], weight: 4, min: 3 },
+];
+const WF3_THREAT_PER_CAST = 11;           // meter points per cast before multipliers
+const WF3_THREAT_DECAY = 0.7;             // points per second while nothing is hooked
+const WF3_HARPOON_AMMO = 4;               // per trip, before a Harpoon Mount
+const WF3_WEATHER = [
+  { id: 'clear', name: 'Clear',  icon: '☀️', weight: 45, threat: 1.0, wave: 1.0, luck: 0 },
+  { id: 'fog',   name: 'Fog',    icon: '🌫', weight: 25, threat: 1.35, wave: 1.0, luck: 0.05 },
+  { id: 'rain',  name: 'Rain',   icon: '🌧', weight: 20, threat: 1.1, wave: 1.25, luck: 0.08 },
+  { id: 'storm', name: 'Storm',  icon: '⛈', weight: 10, threat: 1.7, wave: 1.7, luck: 0.12 },
+];
+/* Per class: armour soaks that share of a bite, sonar cuts the threat per cast,
+   stability helps a flee and steadies the swell. Read beside WF_BOAT_CLASSES. */
+const WF3_BOAT_STATS = {
+  skiff:    { armor: 0.00, sonar: 0, stability: 0.05 },
+  trawler:  { armor: 0.15, sonar: 1, stability: 0.20 },
+  deepsea:  { armor: 0.20, sonar: 2, stability: 0.25 },
+  smuggler: { armor: 0.05, sonar: 1, stability: 0.10 },
+  cargo:    { armor: 0.12, sonar: 0, stability: 0.15 },
+  armored:  { armor: 0.45, sonar: 1, stability: 0.20 },
+  speed:    { armor: 0.00, sonar: 1, stability: 0.05 },
+  yacht:    { armor: 0.10, sonar: 2, stability: 0.30 },
+  anomaly:  { armor: 0.30, sonar: 3, stability: 0.25 },
+};
+const WF_BOAT_XP_PER_LEVEL = 100;
+const WF_BOAT_MODS = [
+  { id: 'harpoon', name: 'Harpoon Mount',   icon: '🎯', cost: { cinder: 3200, metal: 20 },  desc: '+3 harpoon shots a trip, +10% to hit.',      fx: { ammo: 3, hit: 10 } },
+  { id: 'hull',    name: 'Reinforced Hull', icon: '🛡', cost: { cinder: 4800, metal: 45 },  desc: 'Armour +20% — bites take a fifth less.',       fx: { armor: 0.20 } },
+  { id: 'sonar',   name: 'Sonar Array',     icon: '📡', cost: { cinder: 4000, metal: 15, supplies: 10 }, desc: 'Sonar +2 — the water stirs slower.',   fx: { sonar: 2 } },
+  { id: 'pumps',   name: 'Bilge Pumps',     icon: '⚙️', cost: { cinder: 2600, metal: 25 },  desc: 'Stability +20% — a flee is likelier, the swell gentler.', fx: { stability: 0.20 } },
+];
+const WF_CREW_RANKS = [
+  { id: 'deckhand', name: 'Deckhand', exp: 0,   luck: 0 },
+  { id: 'hand',     name: 'Hand',     exp: 40,  luck: 1 },
+  { id: 'mate',     name: 'Mate',     exp: 120, luck: 2 },
+  { id: 'veteran',  name: 'Veteran',  exp: 300, luck: 3 },
+  { id: 'captain',  name: 'Captain',  exp: 700, luck: 5 },
+];
+function _wfBoatSlots(level) { level = level | 0; return level >= 6 ? 3 : level >= 4 ? 2 : level >= 2 ? 1 : 0; }
+function _wfBoatLevel(b) { return 1 + Math.floor(((b && b.xp) | 0) / WF_BOAT_XP_PER_LEVEL); }
+function _wfBoatStats(b) {
+  const cls = (WF_BOAT_CLASSES.find((c) => c.id === (b && b.classId)) || WF_BOAT_CLASSES[0]);
+  const base = Object.assign({ speed: cls.speed || 1, cap: cls.cap || 2 }, WF3_BOAT_STATS[cls.id] || WF3_BOAT_STATS.skiff);
+  const out = { armor: base.armor, sonar: base.sonar, stability: base.stability, speed: base.speed, cap: base.cap, ammo: WF3_HARPOON_AMMO, hit: 0, level: _wfBoatLevel(b), slots: _wfBoatSlots(_wfBoatLevel(b)) };
+  for (const id of ((b && b.mods) || [])) {
+    const m = WF_BOAT_MODS.find((x) => x.id === id); if (!m) continue;
+    for (const k in m.fx) out[k] = (out[k] || 0) + m.fx[k];
+  }
+  out.armor = Math.min(0.8, out.armor);
+  return out;
+}
+function _wfBoatGainXp(b, n) {
+  if (!b) return; const before = _wfBoatLevel(b);
+  b.xp = ((b.xp | 0) + Math.max(0, n | 0));
+  const after = _wfBoatLevel(b);
+  if (after > before) { try { _wfLog('good', b.name + ' reached boat level ' + after + (_wfBoatSlots(after) > _wfBoatSlots(before) ? ' — a refit slot opened.' : '.')); } catch (e) {} }
+}
+function _wfInstallMod(boatId, modId) {
+  const f = ensureFishingCorp(); const b = (f.boats || []).find((x) => x && x.id === boatId); const m = WF_BOAT_MODS.find((x) => x.id === modId);
+  if (!b || !m) return false;
+  b.mods = Array.isArray(b.mods) ? b.mods : [];
+  if (b.mods.indexOf(modId) >= 0) { showToast('Already fitted.', 2200); return false; }
+  const st = _wfBoatStats(b);
+  if (b.mods.length >= st.slots) { showToast('No free refit slot — the boat opens one at level 2, 4 and 6.', 3400); return false; }
+  const cost = Object.assign({}, m.cost); const cin = cost.cinder | 0; delete cost.cinder;
+  if ((Profile.gems | 0) < cin) { showToast('Need ' + cin.toLocaleString() + ' 🔥.', 2600); return false; }
+  if (Object.keys(cost).length && (typeof spendResources !== 'function' || !spendResources(cost))) { showToast('Not enough materials for the ' + m.name + '.', 3000); return false; }
+  if (cin > 0 && typeof spendCinders === 'function') { if (!spendCinders(cin)) { try { for (const k in cost) addRes(k, cost[k]); } catch (e) {} showToast('Not enough Cinder.', 2600); return false; } }
+  b.mods.push(modId);
+  _wfLog('good', m.name + ' fitted to ' + b.name + '.');
+  try { saveProfile(); } catch (e) {}
+  return true;
+}
+function _wfOpenRefitModal(boatId) {
+  const f = ensureFishingCorp(); const b = (f.boats || []).find((x) => x && x.id === boatId); if (!b) return;
+  const st = _wfBoatStats(b); const mods = b.mods || [];
+  const html = '<div id="wf-refit" style="position:fixed;inset:0;z-index:2147483500;background:rgba(4,6,12,.82);display:flex;align-items:center;justify-content:center;padding:12px">' +
+    '<div style="width:min(560px,100%);background:#0f1118;border:1px solid rgba(127,185,201,.45);border-radius:12px;padding:16px;color:#e8e2d4;font-family:inherit">' +
+    '<div style="display:flex;justify-content:space-between;align-items:center"><h3 style="margin:0;color:#7fb9c9">⚓ ' + escapeHtml(b.name) + ' — REFIT</h3><button class="btn-mini" id="wf-refit-x">✕</button></div>' +
+    '<div class="small-text" style="color:#8d8168;margin:6px 0 10px">Boat level <b>' + st.level + '</b> · ' + mods.length + ' / ' + st.slots + ' slots · armour ' + Math.round(st.armor * 100) + '% · sonar ' + st.sonar + ' · stability ' + Math.round(st.stability * 100) + '% · ' + st.ammo + ' harpoons a trip · XP ' + ((b.xp | 0) % WF_BOAT_XP_PER_LEVEL) + ' / ' + WF_BOAT_XP_PER_LEVEL + '</div>' +
+    WF_BOAT_MODS.map((m) => {
+      const have = mods.indexOf(m.id) >= 0;
+      const cost = Object.keys(m.cost).map((k) => (k === 'cinder' ? m.cost[k].toLocaleString() + ' 🔥' : m.cost[k] + ' ' + ((_meta(k) || {}).name || k))).join(' + ');
+      return '<div style="display:flex;gap:10px;align-items:center;padding:8px 0;border-top:1px solid rgba(255,255,255,.06)"><span style="font-size:1.4rem">' + m.icon + '</span><div style="flex:1"><b>' + m.name + '</b><div class="small-text" style="color:#a8a8a8">' + m.desc + '</div><div class="small-text" style="color:#e6b660">' + cost + '</div></div>' +
+        (have ? '<span class="small-text" style="color:#a3d977">FITTED</span>' : '<button class="btn-mini btn-primary" data-wf-mod="' + m.id + '">Fit</button>') + '</div>';
+    }).join('') +
+    '<div class="small-text" style="color:#8d8168;margin-top:10px">Slots open at boat level 2, 4 and 6. Boats gain XP on every trip and expedition, and for every attacker they see off.</div>' +
+    '</div></div>';
+  const host = document.createElement('div'); host.innerHTML = html; document.body.appendChild(host.firstChild);
+  const close = () => { const el = document.getElementById('wf-refit'); if (el) el.remove(); };
+  document.getElementById('wf-refit-x').onclick = close;
+  document.getElementById('wf-refit').addEventListener('click', (e) => { if (e.target && e.target.id === 'wf-refit') close(); });
+  document.querySelectorAll('[data-wf-mod]').forEach((el) => { el.onclick = () => { if (_wfInstallMod(boatId, el.getAttribute('data-wf-mod'))) { close(); try { render(); } catch (e) {} _wfOpenRefitModal(boatId); } }; });
+}
+/* crew */
+function _wfCrewRank(c) { let r = WF_CREW_RANKS[0]; for (const k of WF_CREW_RANKS) if (((c && c.exp) | 0) >= k.exp) r = k; return r; }
+function _wfCrewLevel(c) { return _wfCrewRank(c).name; }
+function _wfCrewHurt(c, dmg, why) {
+  if (!c) return false;
+  if (typeof c.health !== 'number') c.health = 100;
+  c.health = Math.max(0, c.health - Math.max(0, dmg | 0));
+  if (c.health > 0) return false;
+  const tough = (c.traits || []).indexOf('veteran') >= 0 || (c.traits || []).indexOf('hunter') >= 0 || _wfCrewRank(c).id === 'veteran' || _wfCrewRank(c).id === 'captain';
+  const survive = Math.random() < (tough ? 0.9 : 0.7);
+  if (survive) { c.health = 25; _wfLog('warn', c.firstName + ' ' + c.lastName + ' was pulled from the water alive — ' + why + '. Laid up until healed.'); return false; }
+  const f = ensureFishingCorp();
+  f.crew = (f.crew || []).filter((x) => x !== c);
+  (f.dockSlots || []).forEach((sl) => { if (sl && Array.isArray(sl.crewIds)) sl.crewIds = sl.crewIds.filter((id) => id !== c.id); });
+  _wfLog('bad', '☠ ' + c.firstName + ' ' + c.lastName + ' (' + _wfCrewLevel(c) + ') was lost at sea — ' + why + '.');
+  try { showToast('☠ ' + c.firstName + ' ' + c.lastName + ' was lost at sea — ' + why + '.', 5200); } catch (e) {}
+  return true;
+}
+function _wfExpCrewHurt(crew, hullDmg, danger, b) {
+  for (const c of crew) {
+    c.exp = (c.exp | 0) + 6 + (danger | 0) * 3;
+    if (typeof c.health === 'number' && c.health < 100) c.health = Math.min(100, c.health + 10);
+    if (hullDmg > 0 && Math.random() < Math.min(0.6, hullDmg / 120)) _wfCrewHurt(c, Math.round(hullDmg * (0.4 + Math.random() * 0.6)), 'a bad expedition on ' + (b ? b.name : 'the boat'));
+  }
+  try { _wfBoatGainXp(b, 15 + (danger | 0) * 8); } catch (e) {}
+}
+function _wf3PickDeckhand() {
+  const f = ensureFishingCorp();
+  const free = (f.crew || []).filter((c) => c && c.status === 'idle' && (typeof c.health !== 'number' || c.health >= 40));
+  if (!free.length) return null;
+  free.sort((a, b) => ((b.exp | 0) + (b.luck | 0) * 10) - ((a.exp | 0) + (a.luck | 0) * 10));
+  return free[0];
+}
+/* weather + clock */
+function _wf3RollWeather() {
+  const total = WF3_WEATHER.reduce((a, w) => a + w.weight, 0); let r = Math.random() * total;
+  for (const w of WF3_WEATHER) { r -= w.weight; if (r < 0) return w; } return WF3_WEATHER[0];
+}
+function _wf3IsNight() { const h = new Date().getHours(); return h >= 20 || h < 6; }
+/* the trip state this round adds */
+function _wf3ExpansionInit(boat) {
+  const st = _wfBoatStats(boat || {});
+  const w = _wf3RollWeather(); const night = _wf3IsNight();
+  const hand = _wf3PickDeckhand();
+  return {
+    boatId: boat ? boat.id : null, boatName: boat ? boat.name : 'skiff',
+    hull: boat ? Math.max(1, boat.hull | 0) : 30, hullMax: boat ? Math.max(1, boat.hullMax | 0) : 30,
+    stats: st, threat: 0, attacker: null, harpoons: st.ammo, kills: 0,
+    weather: w, night, expLuck: (w.luck || 0) + (night ? 0.06 : 0) + (hand ? _wfCrewRank(hand).luck * 0.02 + (hand.luck | 0) * 0.01 : 0),
+    deckhandId: hand ? hand.id : null, deckhandName: hand ? (hand.firstName + ' ' + hand.lastName) : null,
+    hold: 0, holdCap: Math.max(12, st.cap * 12), bitTotal: 0,
+  };
+}
+function _wf3ExpMount() {
+  const panel = document.querySelector('#wf3-topleft .wf3-panel'); if (!panel || document.getElementById('wf3-exp')) return;
+  const d = document.createElement('div'); d.id = 'wf3-exp';
+  d.innerHTML = '<div class="wf3-stat">🌊 <b id="wf3-weather">—</b></div>' +
+    '<div class="wf3-stat">🚤 <b id="wf3-boatName">—</b> · hull <b id="wf3-hull">—</b></div>' +
+    '<div class="wf3-stat">📦 Hold: <b id="wf3-hold">0</b> / <span id="wf3-holdCap">0</span> · 🎯 Harpoons: <b id="wf3-harp">0</b></div>' +
+    '<div class="wf3-stat" id="wf3-handRow" style="display:none">🧑‍✈️ Deckhand: <b id="wf3-hand">—</b></div>' +
+    '<div class="wf3-stat" style="margin-top:4px">🦈 Threat</div><div class="wf3-xpbar"><div class="wf3-xpfill" id="wf3-threatFill" style="background:linear-gradient(90deg,#e6b660,#cf6868)"></div></div>' +
+    '<div id="wf3-attack" style="display:none;margin-top:6px;padding:8px;border:1px solid #cf6868;border-radius:8px;background:rgba(207,104,104,.12)">' +
+      '<div style="font-weight:800;color:#ffb3b3" id="wf3-attackName">—</div><div class="wf3-stat" id="wf3-attackHp">—</div>' +
+      '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px"><button class="wf3-btn" id="wf3-harpBtn">🎯 Harpoon</button><button class="wf3-btn" id="wf3-fleeBtn">🏃 Flee</button><button class="wf3-btn danger" id="wf3-fightBtn2">⚔ Fight</button></div></div>';
+  panel.appendChild(d);
+  d.querySelector('#wf3-harpBtn').onclick = _wf3Harpoon;
+  d.querySelector('#wf3-fleeBtn').onclick = _wf3Flee;
+  d.querySelector('#wf3-fightBtn2').onclick = _wf3FightAttacker;
+}
+function _wf3ExpRenderHud() {
+  const s = _wf3S; if (!s || !s.stats) return;
+  _wf3ExpMount();
+  const set = (id, v) => { const el = _wf3$(id); if (el) el.textContent = v; };
+  set('weather', (s.night ? '🌙 Night' : '☀️ Day') + ' · ' + s.weather.icon + ' ' + s.weather.name);
+  set('boatName', s.boatName); set('hull', s.hull + ' / ' + s.hullMax);
+  set('hold', s.hold); set('holdCap', s.holdCap); set('harp', s.harpoons);
+  const hr = _wf3$('handRow'); if (hr) { hr.style.display = s.deckhandName ? '' : 'none'; set('hand', s.deckhandName || '—'); }
+  const tf = _wf3$('threatFill'); if (tf) tf.style.width = _wf3Clamp(s.threat, 0, 100) + '%';
+  const at = _wf3$('attack'); if (at) at.style.display = s.attacker ? '' : 'none';
+  if (s.attacker) { set('attackName', s.attacker.def.name + ' — ' + s.attacker.def.tier); set('attackHp', 'HP ' + Math.max(0, Math.round(s.attacker.hp)) + ' / ' + s.attacker.def.hp + ' · bites every ' + s.attacker.def.every + 's'); }
+}
+function _wf3ThreatOnCast() {
+  const s = _wf3S; if (!s || !s.stats) return;
+  const biome = _wf3Live().currentBiome; const danger = biome === 'shallows' ? 0.8 : biome === 'deep' || biome === 'abyss' ? 1.4 : 1.0;
+  s.threat = _wf3Clamp(s.threat + WF3_THREAT_PER_CAST * danger * (s.weather.threat || 1) * Math.max(0.4, 1 - (s.stats.sonar || 0) * 0.08), 0, 100);
+  if (s.threat >= 100 && !s.attacker) _wf3SpawnAttacker();
+  _wf3ExpRenderHud();
+}
+function _wf3SpawnAttacker() {
+  const s = _wf3S; if (!s || s.attacker) return;
+  const biome = _wf3Live().currentBiome; const tier = biome === 'shallows' ? 0 : biome === 'deep' ? 2 : biome === 'abyss' ? 3 : 1;
+  const pool = WF3_THREATS.filter((t) => t.min <= tier);
+  const total = pool.reduce((a, t) => a + t.weight, 0); let r = Math.random() * total; let def = pool[0];
+  for (const t of pool) { r -= t.weight; if (r < 0) { def = t; break; } }
+  s.attacker = { def, hp: def.hp, biteTimer: def.every * 0.6 };
+  _wf3FlashLog('🦈 ' + def.name + ' surfaces — it is circling the boat!', 'enc');
+  _wf3SetPrompt('<b>' + escapeHtml(def.name) + '</b> is on the hull — <span class="wf3-hot">harpoon</span> it, <span class="wf3-hot">flee</span>, or <span class="wf3-hot">fight</span>.');
+  _wf3ExpRenderHud();
+}
+function _wf3ThreatTick(dt, t) {
+  const s = _wf3S; if (!s || !s.stats) return;
+  if (!s.attacker) { if (s.threat > 0 && (s.state === 'IDLE' || s.state === 'WAITING')) { s.threat = Math.max(0, s.threat - WF3_THREAT_DECAY * dt); if ((t | 0) % 2 === 0) { const tf = _wf3$('threatFill'); if (tf) tf.style.width = s.threat + '%'; } } return; }
+  s.attacker.biteTimer -= dt;
+  if (s.attacker.biteTimer <= 0) { _wf3Bite(); s.attacker.biteTimer = s.attacker.def.every * (0.8 + Math.random() * 0.5); }
+}
+function _wf3Bite() {
+  const s = _wf3S; if (!s || !s.attacker) return;
+  const raw = s.attacker.def.bite; const dmg = Math.max(1, Math.round(raw * (1 - (s.stats.armor || 0))));
+  s.hull = Math.max(0, s.hull - dmg); s.bitTotal += dmg;
+  _wf3FlashLog('🩸 ' + s.attacker.def.name + ' bites the hull −' + dmg, 'enc');
+  try { if (s.G && s.G.shipModel) { s.G.shipModel.rotation.z += 0.08; } } catch (e) {}
+  if (s.deckhandId && Math.random() < 0.25) { const f = ensureFishingCorp(); const c = (f.crew || []).find((x) => x && x.id === s.deckhandId); if (c) { if (_wfCrewHurt(c, Math.round(dmg * 1.5), 'a ' + s.attacker.def.name + ' on a live trip')) { s.deckhandId = null; s.deckhandName = null; } } }
+  _wf3ExpRenderHud();
+  if (s.hull <= 0) _wf3Wreck();
+}
+function _wf3Harpoon() {
+  const s = _wf3S; if (!s || !s.attacker) return;
+  if (s.harpoons <= 0) { _wf3FlashLog('🎯 No harpoons left — flee or fight.', 'enc'); return; }
+  s.harpoons--;
+  const chance = (15 + Math.random() * 15 + 2 * (_wf3Live().level | 0) + (s.stats.hit || 0)) / 100;
+  if (Math.random() < chance) {
+    const dmg = 18 + Math.round(Math.random() * 14) + (_wf3Live().level | 0);
+    s.attacker.hp -= dmg; _wf3FlashLog('🎯 Harpoon hits ' + s.attacker.def.name + ' −' + dmg, 'hot');
+    if (s.attacker.hp <= 0) return _wf3KillAttacker('harpooned');
+  } else _wf3FlashLog('🎯 The harpoon skips off the water.', 'enc');
+  _wf3ExpRenderHud();
+}
+function _wf3AttackerEscapeOdds() { const s = _wf3S; const st = s.stats || {}; return _wf3Clamp(0.22 + (st.speed || 1) * 0.11 + (st.stability || 0) * 0.5 - (s.attacker && s.attacker.def.tier === 'Legendary' ? 0.15 : 0), 0.1, 0.9); }
+function _wf3Flee() {
+  const s = _wf3S; if (!s || !s.attacker) return;
+  if (Math.random() < _wf3AttackerEscapeOdds()) {
+    _wf3FlashLog('🏃 ' + s.attacker.def.name + ' falls behind — you got away.', 'hot');
+    s.attacker = null; s.threat = 35; _wf3ResetToIdle(); _wf3ExpRenderHud();
+  } else { _wf3FlashLog('🏃 It is faster than the boat —', 'enc'); _wf3Bite(); }
+}
+function _wf3FightAttacker() {
+  const s = _wf3S; if (!s || !s.attacker) return;
+  const d = s.attacker.def; const parts = d.parts[0] + Math.floor(Math.random() * (d.parts[1] - d.parts[0] + 1));
+  _wf3GoToBattle({ rarity: d.tier, name: d.name });
+  try { if (App._fishingEncounterPending) App._fishingEncounterPending.parts = parts; } catch (e) {}
+}
+function _wf3KillAttacker(how) {
+  const s = _wf3S; if (!s || !s.attacker) return;
+  const d = s.attacker.def; const parts = d.parts[0] + Math.floor(Math.random() * (d.parts[1] - d.parts[0] + 1));
+  try { addSalvage({ monsterParts: parts }); } catch (e) { try { addRes('monsterParts', parts); } catch (_) {} }
+  try { if (typeof cxProduce === 'function') cxProduce({ monsterParts: parts }, 'fishing'); } catch (e) {}
+  s.kills++; s.attacker = null; s.threat = 20;
+  try { const f = ensureFishingCorp(); const b = (f.boats || []).find((x) => x && x.id === s.boatId); _wfBoatGainXp(b, d.hp); } catch (e) {}
+  _wf3FlashLog('🦈 ' + d.name + ' ' + how + ' — +' + parts + ' Leviathan Parts', 'hot');
+  _wf3RecordCatch('threat_' + d.id, d.name, d.tier, _wf3Biome().name);
+  _wf3ResetToIdle(); _wf3ExpRenderHud();
+  const card = _wf3$('card'); if (card) {
+    card.innerHTML = '<div class="wf3-icon">🦈</div><div class="wf3-rarity" style="color:' + (WF3_RARITY_COLOR[d.tier] || '#e6b660') + '">' + d.tier + ' · Threat</div><h2>' + escapeHtml(d.name) + '</h2><p>' + how.charAt(0).toUpperCase() + how.slice(1) + ' and hauled alongside. The rendery pays for what is left.</p><div class="wf3-reward">+' + parts + ' 🦈 Leviathan Parts</div><button class="wf3-btn" id="wf3-contBtn">Cast Again</button>';
+    const ov = _wf3$('overlayCard'); if (ov) ov.style.display = 'flex';
+    const cb = _wf3$('contBtn'); if (cb) cb.onclick = () => { if (ov) ov.style.display = 'none'; _wf3ResetToIdle(); };
+  }
+}
+function _wf3Wreck() {
+  const s = _wf3S; if (!s) return;
+  const f = ensureFishingCorp(); const b = (f.boats || []).find((x) => x && x.id === s.boatId);
+  if (b) { b.hull = 0; b.status = 'damaged'; }
+  _wfLog('bad', (s.boatName || 'The boat') + ' was WRECKED on a live trip — hull at 0. Repair needed at the DOCKS.');
+  const card = _wf3$('card'); if (card) {
+    card.innerHTML = '<div class="wf3-icon">🌊</div><div class="wf3-rarity" style="color:#cf6868">WRECKED</div><h2>' + escapeHtml(s.boatName || 'The boat') + ' goes under</h2><p>The hull gave out. You swim for it with what was iced — the boat limps home damaged.</p><button class="wf3-btn danger" id="wf3-wreckBtn">Back to dock</button>';
+    const ov = _wf3$('overlayCard'); if (ov) ov.style.display = 'flex';
+    const wb = _wf3$('wreckBtn'); if (wb) wb.onclick = () => _wf3Close();
+  }
+  s.attacker = null; s.state = 'IDLE'; s.castsLeft = 0;
+}
+/* the hold and the tournament, on every catch */
+const WF3_KG_MUL = { Common: 1, Uncommon: 1.6, Rare: 2.4, Legendary: 4 };
+function _wf3ExpOnCatch(result, banked) {
+  const s = _wf3S; if (!s || !s.stats) return;
+  const units = Object.keys(banked || {}).reduce((a, k) => a + (banked[k] | 0), 0);
+  s.hold += units;
+  if (s.hold >= s.holdCap) { s.castsLeft = 0; _wf3FlashLog('📦 Hold full — head back to dock.', 'buy'); }
+  const kg = Math.min(120, Math.max(0.5, Math.round((result.amount | 0) * (WF3_KG_MUL[result.rarity] || 1) * (0.8 + Math.random() * 0.5) * 10) / 10));
+  result.kg = kg;
+  try { _wfTourneySubmit(result.item.name, kg); } catch (e) {}
+  try { const f = ensureFishingCorp(); const b = (f.boats || []).find((x) => x && x.id === s.boatId); _wfBoatGainXp(b, 3); } catch (e) {}
+  _wf3ExpRenderHud();
+}
+function _wf3ExpOnClose() {
+  const s = _wf3S; if (!s || !s.stats) return;
+  const f = ensureFishingCorp(); const b = (f.boats || []).find((x) => x && x.id === s.boatId);
+  if (b && b.status !== 'damaged') { b.hull = Math.max(0, Math.min(b.hullMax | 0, s.hull | 0)); if (b.hull <= 0) b.status = 'damaged'; }
+  if (s.deckhandId) { const c = (f.crew || []).find((x) => x && x.id === s.deckhandId); if (c) c.exp = (c.exp | 0) + 4 + s.kills * 6; }
+  if (s.bitTotal > 0) _wfLog('warn', (s.boatName || 'The boat') + ' took ' + s.bitTotal + ' hull damage on the trip' + (s.kills ? ' and saw off ' + s.kills + ' attacker' + (s.kills === 1 ? '' : 's') : '') + '.');
+}
+/* the tournament */
+function _wfTourneyWeek(now) { return Math.floor((now || Date.now()) / 604800000); }
+function _wfTourneyLocal() { const L = _wf3Live(); if (!L.records || typeof L.records !== 'object') L.records = {}; return L.records; }
+function _wfTourneySubmit(species, kg) {
+  const week = _wfTourneyWeek(); const R = _wfTourneyLocal();
+  const cur = R[week];
+  if (cur && cur.kg >= kg) return;
+  R[week] = { species, kg, at: Date.now() };
+  _wf3FlashLog('🏆 Personal best this week: ' + species + ' ' + kg + ' kg', 'hot');
+  try {
+    if (Cloud && Cloud.client && Profile.cloud && Profile.cloud.signedIn) {
+      const name = (Profile.cloud && Profile.cloud.displayName) || Profile.handle || 'Survivor';
+      Cloud.client.rpc('fishing_record_submit', { p_species: String(species).slice(0, 60), p_kg: kg, p_display: String(name).slice(0, 40) }).then((r) => { if (r && r.error) { try { console.warn('[fishing] record not posted —', r.error.message); } catch (_) {} } }).catch(() => {});
+    }
+  } catch (e) {}
+}
+const _wfTourneyCache = { week: null, at: 0, rows: null, error: null };
+async function _wfTourneyFetch(force) {
+  const week = _wfTourneyWeek();
+  if (!force && _wfTourneyCache.week === week && _wfTourneyCache.rows && Date.now() - _wfTourneyCache.at < 60000) return _wfTourneyCache.rows;
+  try {
+    if (!(Cloud && Cloud.client && Profile.cloud && Profile.cloud.signedIn)) { _wfTourneyCache.error = 'offline'; return null; }
+    const r = await Cloud.client.rpc('fishing_records_top', { p_week: week, p_limit: 20 });
+    if (r && !r.error && Array.isArray(r.data)) { _wfTourneyCache.week = week; _wfTourneyCache.at = Date.now(); _wfTourneyCache.rows = r.data; _wfTourneyCache.error = null; return r.data; }
+    _wfTourneyCache.error = (r && r.error && r.error.message) || 'unavailable';
+  } catch (e) { _wfTourneyCache.error = String(e && e.message || e); }
+  return null;
+}
+function _wfRenderTournament(f) {
+  const week = _wfTourneyWeek(); const R = _wfTourneyLocal(); const mine = R[week] || null;
+  const rows = _wfTourneyCache.rows;
+  const left = (week + 1) * 604800000 - Date.now(); const dd = Math.floor(left / 86400000), hh = Math.floor((left % 86400000) / 3600000);
+  if (!rows && !_wfTourneyCache.error) { _wfTourneyFetch().then(() => { try { if (App.screen === 'woodsFishing' && App._wfTab === 'tournament') render(); } catch (e) {} }); }
+  const board = rows && rows.length
+    ? rows.map((r, i) => '<tr' + (r.mine ? ' style="color:#a3d977"' : '') + '><td>' + (i + 1) + '</td><td>' + escapeHtml(String(r.display_name || 'Survivor')) + '</td><td>' + escapeHtml(String(r.species || '')) + '</td><td class="wfa-num">' + Number(r.kg).toFixed(1) + ' kg</td></tr>').join('')
+    : '<tr><td colspan="4" class="wfa-empty-row">' + (rows ? '— NO RECORDS YET THIS WEEK — BE THE FIRST —' : (_wfTourneyCache.error === 'offline' ? '— SIGN IN TO SEE THE WORLD BOARD —' : _wfTourneyCache.error ? '— BOARD UNAVAILABLE (' + escapeHtml(_wfTourneyCache.error) + ') — LOCAL RECORDS ONLY —' : '— LOADING —')) + '</td></tr>';
+  return '<div class="wfa-storage">' +
+    '<div class="wfa-panel-header">TOURNAMENT  <span class="wfa-panel-crumb">WEEK ' + week + ' · HEAVIEST CATCH</span></div>' +
+    '<div class="wfa-grid-2-1">' +
+      '<div class="wfa-panel"><div class="wfa-panel-h"><h3>🏆 THE BOARD</h3><span>RESETS IN ' + dd + 'd ' + hh + 'h</span></div>' +
+        '<table class="wfa-table"><thead><tr><th>#</th><th>ANGLER</th><th>SPECIES</th><th>WEIGHT</th></tr></thead><tbody>' + board + '</tbody></table>' +
+        '<div style="margin-top:8px"><button class="btn-mini" id="wf-tourney-refresh">↻ Refresh</button></div></div>' +
+      '<div class="wfa-panel"><div class="wfa-panel-h"><h3>YOUR BEST</h3><span>THIS WEEK</span></div>' +
+        (mine ? '<div style="font-size:1.4rem;color:#a3d977">' + escapeHtml(mine.species) + ' · ' + mine.kg + ' kg</div>' : '<div class="muted">Nothing weighed in yet — every catch on a live trip is weighed automatically.</div>') +
+        '<div class="muted" style="font-size:0.7rem;letter-spacing:0.18em;margin-top:0.9rem">ONE RECORD PER ANGLER PER WEEK · THE SERVER CAPS A WEIGHT AT 120 KG</div></div>' +
+    '</div></div>';
+}
+function _wfBindTournament() { try { const b = document.getElementById('wf-tourney-refresh'); if (b) b.onclick = () => { _wfTourneyFetch(true).then(() => { try { render(); } catch (e) {} }); }; } catch (e) {} }
+
 const WF3_FISH_TIERS = ['Common', 'Uncommon', 'Rare', 'Legendary'];
 function _wf3AdminModelsHtml() {
   const m = _wf3AdminModels(); const ship = Array.isArray(m.ship) ? m.ship : []; const fish = (m.fish && typeof m.fish === 'object') ? m.fish : {};
@@ -222582,6 +222959,7 @@ function renderWoodsFishing() {
     manifest:    { title: 'CREW MANIFEST',  crumb: '// PERSONNEL' },
     storage:     { title: 'COLD STORAGE',   crumb: '// FOOD STOCKPILE' },
     contracts:   { title: 'CONTRACTS',      crumb: '// BUYERS · TIDES' },
+    tournament:  { title: 'TOURNAMENT',     crumb: '// HEAVIEST CATCH · WEEKLY' },
     catchlog:    { title: 'CATCH LOG',      crumb: '// SPECIES · TROPHIES' },
     log:         { title: 'EVENT LOG',      crumb: '// CHRONOLOGICAL' },
     admin:       { title: 'ADMIN',          crumb: '// PHOTOS · CONFIG' },
@@ -222596,6 +222974,7 @@ function renderWoodsFishing() {
   else if (tab === 'manifest')    body = _wfRenderManifest(f);
   else if (tab === 'storage')     body = _wfRenderStorage(f);
   else if (tab === 'contracts')   body = _wfRenderContracts(f);
+  else if (tab === 'tournament')  body = _wfRenderTournament(f);
   else if (tab === 'catchlog')    body = _wfRenderCatchLog(f);
   else if (tab === 'log')         body = _wfRenderEventLog(f);
   else if (tab === 'admin')       body = _wfRenderAdmin(f);
@@ -222626,6 +223005,7 @@ function renderWoodsFishing() {
     '<div class="wfa-nav-group">STOREHOUSE</div>' +
     navItem('storage',     'COLD STORAGE', null) +
     navItem('contracts',   'CONTRACTS', null) +
+    navItem('tournament',  'TOURNAMENT', null) +
     navItem('catchlog',    'CATCH LOG',   Object.keys((f.live && f.live.catchLog) || {}).length) +
     navItem('log',         'EVENT LOG',   f.log.length) +
     (isAdminUser ? '<div class="wfa-nav-group">ADMIN</div>' + navItem('admin', 'PHOTOS', null) : '');
@@ -222689,6 +223069,7 @@ function renderWoodsFishing() {
   else if (tab === 'manifest')    _wfBindManifest();
   else if (tab === 'storage')     _wfBindStorage();
   else if (tab === 'contracts')   _wfBindContracts();
+  else if (tab === 'tournament')  _wfBindTournament();
   else if (tab === 'catchlog')    _wfBindCatchLog();
   else if (tab === 'log')         _wfBindLog();
   else if (tab === 'admin')       _wfBindAdmin();
@@ -223086,6 +223467,7 @@ function _wfRenderDocks(f) {
       '<div class="wfa-slip-name">' + escapeHtml(b.name) + '</div>' +
       '<div class="wfa-slip-class">' + escapeHtml(cls.name) + '</div>' +
       '<div class="wfa-slip-foot">' + stt + '<span style="color:' + condCol + ';font-weight:700">' + hullPct + '%</span></div>' +
+      '<button class="wfa-mini-btn" data-wfa-refit="' + b.id + '" style="width:100%;margin-top:4px" title="Boat level, XP and refits">⚙ L' + _wfBoatLevel(b) + ' · REFIT ' + ((b.mods || []).length) + '/' + _wfBoatSlots(_wfBoatLevel(b)) + '</button>' +
       repairOverlay +
     '</div>';
   }).join('');
@@ -223149,6 +223531,7 @@ function _wfBindDocks() {
     render();
   };
   // 🛠 Repair buttons on damaged slips.
+  document.querySelectorAll('[data-wfa-refit]').forEach((el) => { el.onclick = () => _wfOpenRefitModal(el.getAttribute('data-wfa-refit')); });
   document.querySelectorAll('[data-wfa-repair]').forEach(b => {
     b.onclick = (e) => { e.stopPropagation(); _wfOpenRepairModal(b.dataset.wfaRepair); };
   });
@@ -263558,8 +263941,8 @@ render();
        that works everywhere except the one early path nobody tested. It is
        2KB with no dependencies. -->
 <script src="src/econ/peg.js?v=v121q51"></script>
-<script src="src/battle/effects.js?v=v121v96" defer></script>
-<script src="src/phone/handset.js?v=v121v96" defer></script>
+<script src="src/battle/effects.js?v=v121v97" defer></script>
+<script src="src/phone/handset.js?v=v121v97" defer></script>
 <script src="src/battle/combat.js?v=120m4" defer></script>
 <script src="src/battle/targeting.js?v=121e3hex" defer></script>
 <link rel="stylesheet" href="src/sprites/frames.css?v=120k3">

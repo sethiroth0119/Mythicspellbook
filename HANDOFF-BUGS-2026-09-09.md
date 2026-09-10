@@ -382,3 +382,16 @@ The bunker (public/base): asked for "remove all of these modals from the bunker 
 - Mayor reports (3): `cityResourceHeadroom` fell through to the MAYOR's own getResourceUnits in a client city — now the owner's units and an open vault (bug-mtul7bkt, bug-mtuqepq5); the crew picker read the mayor's cards — now `city_owner_cards_get` (sql/126, APPLIED) gated on the active mayoral contract, ids and counts only, empty roster on a failed read (bug-mtuqna3v). node_mayors data was checked: no self-owner rows, all match tw_node_owners.
 - Woods Fishing round 1: RESOURCES 158 (primeSeafood, monsterParts appended); the live trip banks Fresh Fish / Shellfish / Prime Seafood (+ seaweed 1 in 6); fleet drops land as fish; the Fishing Company yields 1.5 fresh + 0.6 shellfish + 0.3 seaweed; Fish Cannery op (400k, 2 fresh fish → 2.8 food/worker-hr) at every op site; Cold Storage bench (5 → 7 etc.); CONTRACTS tab (4 per 8h window, deterministic per user, 1.25–1.70 premium, paid only against fish held) under a weekly tide event.
 - Suite: `_fishing1_smoke.mjs` (51). Round 2 (threats, boats, crew, tournament) is the next build.
+
+## v121v97 — shipped 2026-09-10, full-gated, edge-verified
+
+Woods Fishing round 2, written from WOODS_FISHING_HANDOFF into the existing live trip (the branch never reached this repo). One block in index.html after `_wf3Close`, hooked at five seams (trip open, each frame, each cast, each catch, trip close) and never redefining an engine function:
+- THREATS: a meter rises per cast (biome × weather ÷ boat sonar), decays idle; at 100 a Reef Shark / Ash Mako / Cinder Hammerhead / Drowned Anomaly / Ash Leviathan surfaces (weighted by biome tier) and bites the hull on a timer, armour soaking a share. Harpoon (4 per trip + mount; 15–30% + 2×level + mods), Flee (speed + stability odds), Fight (the existing card-battle route; a WON fight pays Leviathan Parts on the way back via `_fishingEncounterAfter.parts`). Kill → parts drop. Hull 0 → WRECK: boat docks damaged, trip over.
+- BOATS: `WF3_BOAT_STATS` (armour / sonar / stability per class), XP per trip/expedition/kill, level every 100 (`WF_BOAT_XP_PER_LEVEL`), refit slots at L2/L4/L6, `WF_BOAT_MODS` (Harpoon Mount, Reinforced Hull, Sonar Array, Bilge Pumps) via a Docks refit modal (`data-wfa-refit`).
+- CREW: `WF_CREW_RANKS` by exp; `_wfCrewHurt` (health, survive roll 70% / veterans 90%, death removed + logged); `_wfExpCrewHurt` on expeditions; the best idle crewman ships as deckhand (luck) and can be bitten.
+- WEATHER + CLOCK per trip (`WF3_WEATHER`, night favours rare fish); HOLD = class capacity × 12, ends the trip when full.
+- TOURNAMENT tab: `fishing_record_submit` / `fishing_records_top` (sql/127, APPLIED — one record per angler per week, kg clamped ≤120 server-side, read-only to clients); local best kept offline.
+- Not built (no data in the handoff to build from): sonar/school VISUALS in the 3D scene, per-species day/night tables, the six fish city buildings, the anomaly hunter trait, coastal-claim luck. Documented, not faked.
+- Suite: `_fishing2_smoke.mjs` (52) lifts the block into a vm with a stubbed engine and runs a scripted trip through every path.
+
+A session cron (156f74e7, hourly at :23, 7-day expiry) sweeps the tracker for NEW reports and fixes them without being asked — the standing order of 2026-09-10. Recreate it in a new session.
