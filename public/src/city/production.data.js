@@ -536,6 +536,9 @@ export const MINIGAME_IDS = [
      they belong here beside the refinery's ids and not in the derived list below. */
   'animalFeed', 'eggs', 'feathers', 'rawMilk', 'meat', 'wool', 'hide', 'leather', 'fertilizer',
   'goldEggs', 'primeMeat', 'richMilk', 'fineWool',
+  /* 🎣 Woods Fishing (v121v96): the premium catch and what comes off the things that
+     attack boats. Mini-game output, like the refinery's cuts above. */
+  'primeSeafood', 'monsterParts',
 ];
 
 /* 🧱 THE FOURTH SET: ids promoted out of the CITY'S OWN STOCK.

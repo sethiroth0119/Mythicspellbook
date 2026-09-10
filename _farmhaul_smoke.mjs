@@ -130,7 +130,7 @@ const FARM_IDS = ['animalFeed', 'eggs', 'feathers', 'rawMilk', 'meat', 'wool', '
   for (const id of ['animalFeed', 'eggs', 'rawMilk', 'meat', 'fertilizer', 'leather'])
     ok(new RegExp("\\{ id: '" + id + "',[^\\n]*existing: true").test(CHAIN), 'chain.js marks ' + id + ' as existing in the ledger');
   const ids = (R.match(/^  \{ id: '([A-Za-z0-9_]+)'/gm) || []).map((m) => m.replace(/^  \{ id: '/, '').replace(/'$/, ''));
-  ok(ids.length === 156, 'RESOURCES is 156 ids (143 + 13)', ids.length);
+  ok(ids.length >= 156, 'RESOURCES is at least 156 ids (143 + 13; later builds append)', ids.length);
   ok(new Set(ids).size === ids.length, 'no RESOURCES id is duplicated');
   ok(/chain\.js\?v=v121v94chain3/.test(SRC) && /chain\.js\?v=v121v94chain3/.test(NC), 'chain.js is re-versioned in BOTH windows');
 }

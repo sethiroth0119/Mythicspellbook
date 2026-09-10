@@ -374,3 +374,11 @@ The bunker (public/base): asked for "remove all of these modals from the bunker 
 - hud.jsx: the bottom action row (Build, Ethos Heights, Assign, Hire, Bunks) is gone; the minimap cells no longer open rooms; two full-width doors (`.doors .door`) sit at the top of LeftColumn — Camp → `nav:campOps`, Ethos Heights → `ethos` — each with a `data-tip` tooltip rendered ABOVE the button (styles.css `.door::after`, 78px headroom reserved).
 - Measured in headless Chromium (tmp/_drive_bunker.mjs): 9 rooms, no panel on click, cursor default, no action row, two 235×99 doors at x=12 beside the bunker at x=319, both postMessages fire, tooltip opacity 1. Screenshot tmp/_bunker_v95.png.
 - Suite: `_bunkerdoors_smoke.mjs` (27). base/index.html busters bumped to the build.
+
+## v121v96 — shipped 2026-09-10, full-gated, edge-verified
+
+- Highway Haul: "Drive it" closes the Haulage Board first, then refuses without a FREIGHT truck bought from Prince Portfolios (the charter gift rig is minted `issued: true`; a legacy unflagged gift is discounted; oil/feed/livestock rigs do not count). Bridge `rigs()` lists the lot's freight trucks; `canDrive()` exposes the gate.
+- Feed Operation card prints "1,500,000 🔥 · or 55 ◈ Aza".
+- Mayor reports (3): `cityResourceHeadroom` fell through to the MAYOR's own getResourceUnits in a client city — now the owner's units and an open vault (bug-mtul7bkt, bug-mtuqepq5); the crew picker read the mayor's cards — now `city_owner_cards_get` (sql/126, APPLIED) gated on the active mayoral contract, ids and counts only, empty roster on a failed read (bug-mtuqna3v). node_mayors data was checked: no self-owner rows, all match tw_node_owners.
+- Woods Fishing round 1: RESOURCES 158 (primeSeafood, monsterParts appended); the live trip banks Fresh Fish / Shellfish / Prime Seafood (+ seaweed 1 in 6); fleet drops land as fish; the Fishing Company yields 1.5 fresh + 0.6 shellfish + 0.3 seaweed; Fish Cannery op (400k, 2 fresh fish → 2.8 food/worker-hr) at every op site; Cold Storage bench (5 → 7 etc.); CONTRACTS tab (4 per 8h window, deterministic per user, 1.25–1.70 premium, paid only against fish held) under a weekly tide event.
+- Suite: `_fishing1_smoke.mjs` (51). Round 2 (threats, boats, crew, tournament) is the next build.

@@ -9,7 +9,7 @@
      believed the file was already live. Only a CONTENT change moves the hash
      and forces a re-upload, so bump this stamp whenever the city 404s, and
      probe it (grep NC_BUILD on the served page) to prove the deploy landed. -->
-<script>window.NC_BUILD = "v121v95-bunkerdoors";</script>
+<script>window.NC_BUILD = "v121v96-fishing1";</script>
 <!-- ════════════════════════════════════════════════════════════════════════
      NODE CITY — SimCity-style settlement layer for Mythic Spellbook.
      Three.js WebGPU (auto-falls back to WebGL2). Realistic sun/moon cycle.
@@ -43826,6 +43826,10 @@ const OP_BP = {
      off the grid; the feed itself is corp output, not city stock. */
   feed:         { label: 'Feed Operation',    ico: '🌾',  mesh: 'farm',       pop: 3, crew: 3, powerNeed: 0.50, use: { water: 0.80, food: 0.60 },
                   desc: 'A feed mill at industrial scale. Rations and water go in; Animal Feed comes out — every pen on a Homestead Farm eats it, and the Truck Yard\'s bulk-feed rigs haul it.' },
+  /* 🥫 The Fish Cannery's tile — keyed 'cannery' (the OPS_ECON id). Draws water
+     off the grid to gut and pack the catch; the food is corp output. */
+  cannery:      { label: 'Fish Cannery',      ico: '🥫',  mesh: 'cannery',    pop: 3, crew: 3, powerNeed: 0.55, use: { water: 0.90 },
+                  desc: 'Gutting lines, brine tanks and a labelling belt. Turns the fleet\'s catch into rations that keep — and the docks smell of it for a mile.' },
   medical:      { label: 'Medical Corp.',     ico: '💊',  mesh: 'clinic',     pop: 2, crew: 3, powerNeed: 0.70, use: { remedies: 0.30, water: 0.80 },
                   svc: { need: 'health', supply: 1.2 },
                   desc: 'A corporate hospital wing. Draws remedies and clean water, and stands in the city\'s Health coverage.' },
@@ -44024,6 +44028,7 @@ const OP_ECO_MAP = {
      the OPS_ECON id like every row here; _opscheck asserts a blueprint implies a
      business, and this is the business. */
   feed:         { out: ['animalFeed'],             ind: 'mill' },
+  cannery:      { out: ['cannedFood'],             ind: 'foodPlant' },   // ↔ the city's own cannery
   /* The Anomaly Site is the only industry the black market could honestly run,
      and the ground gates it: a Smuggling Network on a node with no anomalous
      deposit founds no firm, which is the correct answer rather than a bug. */

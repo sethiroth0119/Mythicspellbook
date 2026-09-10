@@ -39386,7 +39386,7 @@ body:has(#pack-opener-frame) #chat-overlay {
   // the console. Bump this every deploy alongside sw.js's CACHE_VERSION. If two
   // machines show different stamps, the older one is on stale code (hard-refresh);
   // if they MATCH but content still differs, it is a DATA/publish issue, not code.
-  window.BUILD_VERSION = 'v121v95';
+  window.BUILD_VERSION = 'v121v96';
   try {
     console.info('%cMythic Spellbook ' + window.BUILD_VERSION + '%c — build check: run  __mg.version',
       'font-weight:700;color:#b48cff', 'color:#7d7499');
@@ -42730,6 +42730,11 @@ const RESOURCES = [
   { id: 'primeMeat',                name: 'Prime Cuts',                  icon: '🥩', color: '#d85a2a' },
   { id: 'richMilk',                 name: 'Rich Milk',                   icon: '🥛', color: '#e8f0ff' },
   { id: 'fineWool',                 name: 'Fine Wool',                   icon: '🧶', color: '#ffd24a' },
+  /* 🎣 WOODS FISHING (WOODS_FISHING_HANDOFF): the catch is a resource. freshFish,
+     shellfish and seaweed were already here; the premium catch and what comes
+     off the things that attack boats complete the five. */
+  { id: 'primeSeafood',            name: 'Prime Seafood',              icon: '🦞', color: '#e07a5f' },
+  { id: 'monsterParts',            name: 'Leviathan Parts',            icon: '🦈', color: '#8fb3c9' },
 
   /* 🛣 ✈️ WHAT THE CUTS TURN INTO. Both were already in the chain catalogue
      with a full recipe and NO PRODUCER ANYWHERE — the inert case this list's
@@ -85306,6 +85311,8 @@ const SALVAGE_RES = [
   { id: "goldEggs",                 name: "Golden Eggs",                 icon: "🥚",  wt: 1 },
   { id: "primeMeat",                name: "Prime Cuts",                  icon: "🥩",  wt: 1.1 },
   { id: "richMilk",                 name: "Rich Milk",                   icon: "🥛",  wt: 1.1 },
+  { id: "primeSeafood",            name: "Prime Seafood",               icon: "🦞",  wt: 1 },
+  { id: "monsterParts",            name: "Leviathan Parts",             icon: "🦈",  wt: 1.2 },
   { id: "fineWool",                 name: "Fine Wool",                   icon: "🧶",  wt: 1 },
   { id: "poultry",                 name: "Poultry",                     icon: "🌾",  wt: 1.1 },
   { id: "eggs",                    name: "Eggs",                        icon: "🌾",  wt: 1.1 },
@@ -91443,7 +91450,14 @@ const OPS_ECON = {
                   yields: { recycledMetal: 0.8, plastic: 0.6, glass: 0.5 }, inputs: { fuel: 0.5 } },
   gas:          { startup: 350000, ratePerWorkerHr: 850,  salaryPerWorkerHr: 200, maxWorkers: 12, yields: { fuel: 2.2 } },
   cars:         { startup: 450000, ratePerWorkerHr: 1100, salaryPerWorkerHr: 280, maxWorkers: 10, yields: { metal: 1.8 }, inputs: { metal: 1.2, fuel: 0.4 } },
-  fishing:      { startup: 300000, ratePerWorkerHr: 750,  salaryPerWorkerHr: 180, maxWorkers: 14, yields: { food: 2.4 }, inputs: { fuel: 0.6 } },
+  /* 🎣 Owners receive FISH, not food (WOODS_FISHING_HANDOFF: the same 2.4 units/hr,
+     split 1.5 fresh fish + 0.6 shellfish + 0.3 seaweed). The Cold Storage bench
+     converts 5 → 7 food and the Fish Cannery op below does it better. */
+  fishing:      { startup: 300000, ratePerWorkerHr: 750,  salaryPerWorkerHr: 180, maxWorkers: 14, yields: { freshFish: 1.5, shellfish: 0.6, seaweed: 0.3 }, inputs: { fuel: 0.6 } },
+  /* 🥫 THE FISH CANNERY — the op that eats the catch. 2 fresh fish an hour per
+     worker become 2.8 food: a better ratio than the bench's 5 → 7, which is what
+     makes it worth a charter. */
+  cannery:      { startup: 400000, ratePerWorkerHr: 700,  salaryPerWorkerHr: 170, maxWorkers: 10, yields: { food: 2.8 }, inputs: { freshFish: 2.0 } },
   cardshop:     { startup: 200000, ratePerWorkerHr: 500,  salaryPerWorkerHr: 120, maxWorkers: 6,  yields: {} },
   // 📦 WAREHOUSE — the storage business. It earns modestly on fees, but the
   // real product is CAPACITY: `storagePerWorker` raises the player's resource
@@ -91799,6 +91813,7 @@ const OP_LABELS = {
   // 🚛 Same rule again — without this the shop sells a company called 'transport'.
   transport: 'Transportation Company',
   feed: 'Feed Operation',
+  cannery: 'Fish Cannery',
   // 🚌🚆 The transit licences. Same rule as genelab above — an operation with
   // no label here is buyable but shows up in the shop as "bus".
   bus: 'Bus Company',
@@ -92637,6 +92652,7 @@ function _transportGrantStarterRig() {
       rarity: base.rarity,
       baseValue: base.baseValue,
       sellerRating: 5,
+      issued: true,   // 🚛 the charter's gift — not a purchase; see _ppOwnsFreightRig
       haul: true, rigId: base.id, lotSlots: base.lotSlots | 0 || 1,
       boughtAt: Date.now(),
       fuelLevel: 0,
@@ -183310,6 +183326,10 @@ const RESOURCE_CINDER_VALUE = {
   // above their own inputs and turns the farm into a Cinder faucet — the gate
   // caught exactly that at 1.077x and named both ids.
   livestock: 2,
+  // 🎣 the catch — a fish is a better ration than raw food (5 fresh fish → 7 food at
+  //    the Cold Storage bench), so it prices above food and below medicine;
+  //    Leviathan Parts are the rarest thing the sea gives up.
+  primeSeafood: 8, monsterParts: 12,
   // 🐄 the farm's goods — priced by hand off the Feed Mill's own recipe (8 food +
   //    6 water → 24 feed ≈ 1.2, rounded up so feed is never cheaper than the ration
   //    it is milled from) and each product's place above it; grade-2 goods double.
@@ -220694,9 +220714,12 @@ const WF_EVENTS = [
 // Fish → game salvage mapping. Every expedition produces a basket of these
 // resources, scaled by danger × duration × crew skill.
 const WF_FISH_DROPS = [
-  { id: 'common',  name: 'Common Fish',       salvage: 'food',           qty: [8, 22], weight: 32 },
-  { id: 'shell',   name: 'Shellfish',         salvage: 'food',           qty: [4, 10], weight: 18 },
-  { id: 'rare',    name: 'Rare Fish',         salvage: 'food',           qty: [2, 6],  weight: 9  },
+  /* 🎣 Round 1: the three fish rows land as FISH (the same three rows the handoff
+     names), at the same quantities they used to land as food. */
+  { id: 'common',  name: 'Common Fish',       salvage: 'freshFish',      qty: [8, 22], weight: 32 },
+  { id: 'shell',   name: 'Shellfish',         salvage: 'shellfish',      qty: [4, 10], weight: 18 },
+  { id: 'rare',    name: 'Rare Fish',         salvage: 'primeSeafood',   qty: [2, 6],  weight: 9  },
+  { id: 'kelp',    name: 'Seaweed',           salvage: 'seaweed',        qty: [3, 9],  weight: 10 },
   { id: 'mutant',  name: 'Mutated Fish',      salvage: 'dna',            qty: [1, 3],  weight: 5  },
   { id: 'deep',    name: 'Deep Sea Creature', salvage: 'memoryShards',   qty: [1, 2],  weight: 3  },
   { id: 'toxic',   name: 'Toxic Fish',        salvage: 'corruptedEssence', qty: [1, 4], weight: 4  },
@@ -221716,6 +221739,24 @@ function _wf3GetCinder() { return (typeof getCinders === 'function') ? getCinder
 function _wf3SpendCinder(n) { n = Math.round(n); if (_wf3GetCinder() < n) return false; if (typeof spendCinders === 'function') { if (!spendCinders(n)) return false; } else { Profile.gems = (Profile.gems | 0) - n; } try { _serverMirrorCharge && _serverMirrorCharge(n, 'Woods Fishing trip'); } catch (e) {} _wf3RenderHud(); return true; }
 function _wf3AddCinder(n) { n = Math.round(n); if (typeof addCinders === 'function') addCinders(n); else Profile.gems = (Profile.gems | 0) + n; _wf3RenderHud(); }
 function _wf3AddFood(n) { if (!Profile.salvage || typeof Profile.salvage !== 'object') Profile.salvage = {}; Profile.salvage.food = (Profile.salvage.food | 0) + (n | 0); }
+/* 🎣 THE CATCH IS A RESOURCE (WOODS_FISHING_HANDOFF, round 1). A landed fish
+   used to be minted straight into camp food. It is iced in the hold now as the
+   species' own ledger id — Common → Fresh Fish, Uncommon → Shellfish, Rare and
+   Legendary → Prime Seafood — and one cast in six brings up Seaweed with it.
+   The Cold Storage bench turns fish into food (5 → 7), the Fish Cannery op does
+   it better, and the Contracts board pays Cinder for it. Same units as the old
+   food number, so no species got richer or poorer by the change. */
+const WF_CATCH_RES = { Common: 'freshFish', Uncommon: 'shellfish', Rare: 'primeSeafood', Legendary: 'primeSeafood' };
+function _wf3BankCatch(result) {
+  const id = WF_CATCH_RES[result && result.rarity] || 'freshFish';
+  const n = Math.max(1, result.amount | 0);
+  const banked = {}; banked[id] = n;
+  if (Math.random() < 1 / 6) banked.seaweed = 1 + Math.floor(Math.random() * 3);
+  try { if (typeof addSalvage === 'function') addSalvage(banked); else for (const k in banked) addRes(k, banked[k]); } catch (e) {}
+  try { if (typeof cxProduce === 'function') cxProduce(banked, 'fishing'); } catch (e) {}
+  return banked;
+}
+function _wfResLabel(id, n) { try { const m = _meta(id); return (m.icon || '🐟') + ' ' + n + ' ' + (m.name || id); } catch (e) { return n + ' ' + id; } }
 function _wf3Fuel() { return (Profile.salvage && Profile.salvage.fuel) | 0; }
 // 🚤 A vessel that's docked AND seaworthy enough to take out on a live trip.
 // (status 'expedition' = at sea, 'damaged' = needs the drydock.) Returns the
@@ -222023,10 +222064,13 @@ function _wf3OnCatch(result) {
   const cin = WF3_RARITY_CINDER[result.rarity] || 4, xp = WF3_XP_GAIN[result.rarity] || 10;
   const biomeName = _wf3Biome().name;
   if (result.type === 'food') {
-    _wf3S.foodTrip = (_wf3S.foodTrip | 0) + result.amount; _wf3AddFood(result.amount); _wf3AddCinder(cin); _wf3GainXP(xp);
+    _wf3S.foodTrip = (_wf3S.foodTrip | 0) + result.amount;
+    const banked = _wf3BankCatch(result);   // 🎣 fish, not food — see _wf3BankCatch
+    _wf3AddCinder(cin); _wf3GainXP(xp);
     _wf3RecordCatch(result.item.id, result.item.name, result.rarity, biomeName);
-    _wf3FlashLog('+' + result.amount + ' food · ' + result.item.name, result.rarity !== 'Common' ? 'rare' : '');
+    _wf3FlashLog(Object.keys(banked).map((k) => '+' + _wfResLabel(k, banked[k])).join(' · ') + ' · ' + result.item.name, result.rarity !== 'Common' ? 'rare' : '');
     try { _wf3SpawnFish(result.rarity, result.item.id); } catch (e) {}
+    result.banked = banked;
     _wf3ShowFoodCard(result, cin, xp);
   } else if (result.type === 'barrel') {
     // 🛢 Oil barrel → fuel resource (+ a little XP). Floods the local fuel market a touch.
@@ -222054,8 +222098,8 @@ function _wf3OnCatch(result) {
 function _wf3ShowFoodCard(r, cin, xp) {
   const col = WF3_RARITY_COLOR[r.rarity]; const card = _wf3$('card'); if (!card) return;
   card.innerHTML = '<div class="wf3-icon">🐟</div><div class="wf3-rarity" style="color:' + col + '">' + r.rarity + '</div>' +
-    '<h2>' + escapeHtml(r.item.name) + '</h2><p>Hauled onto the ash-strewn shore — added to camp food.</p>' +
-    '<div class="wf3-reward">+' + r.amount + ' Food &nbsp;·&nbsp; <span class="wf3-cin">+' + cin + ' <span class="cinder-icon"></span></span> &nbsp;·&nbsp; <span class="wf3-xp">+' + xp + ' XP</span></div>' +
+    '<h2>' + escapeHtml(r.item.name) + '</h2><p>Iced in the hold as ' + escapeHtml(Object.keys(r.banked || {}).map((k) => _wfResLabel(k, r.banked[k])).join(' and ') || 'Fresh Fish') + ' — sell it, fill a contract, or turn it into rations at Cold Storage.</p>' +
+    '<div class="wf3-reward">' + Object.keys(r.banked || {}).map((k) => '+' + escapeHtml(_wfResLabel(k, r.banked[k]))).join(' &nbsp;·&nbsp; ') + ' &nbsp;·&nbsp; <span class="wf3-cin">+' + cin + ' <span class="cinder-icon"></span></span> &nbsp;·&nbsp; <span class="wf3-xp">+' + xp + ' XP</span></div>' +
     '<button class="wf3-btn" id="wf3-contBtn">Cast Again</button>';
   const ov = _wf3$('overlayCard'); if (ov) ov.style.display = 'flex';
   const cb = _wf3$('contBtn'); if (cb) cb.onclick = () => { if (ov) ov.style.display = 'none'; _wf3ResetToIdle(); };
@@ -222537,6 +222581,7 @@ function renderWoodsFishing() {
     expeditions: { title: 'EXPEDITIONS',    crumb: '// OPERATIONS' },
     manifest:    { title: 'CREW MANIFEST',  crumb: '// PERSONNEL' },
     storage:     { title: 'COLD STORAGE',   crumb: '// FOOD STOCKPILE' },
+    contracts:   { title: 'CONTRACTS',      crumb: '// BUYERS · TIDES' },
     catchlog:    { title: 'CATCH LOG',      crumb: '// SPECIES · TROPHIES' },
     log:         { title: 'EVENT LOG',      crumb: '// CHRONOLOGICAL' },
     admin:       { title: 'ADMIN',          crumb: '// PHOTOS · CONFIG' },
@@ -222550,6 +222595,7 @@ function renderWoodsFishing() {
   else if (tab === 'expeditions') body = _wfRenderExp(f);
   else if (tab === 'manifest')    body = _wfRenderManifest(f);
   else if (tab === 'storage')     body = _wfRenderStorage(f);
+  else if (tab === 'contracts')   body = _wfRenderContracts(f);
   else if (tab === 'catchlog')    body = _wfRenderCatchLog(f);
   else if (tab === 'log')         body = _wfRenderEventLog(f);
   else if (tab === 'admin')       body = _wfRenderAdmin(f);
@@ -222579,6 +222625,7 @@ function renderWoodsFishing() {
     navItem('manifest',    'MANIFEST',    f.crew.length) +
     '<div class="wfa-nav-group">STOREHOUSE</div>' +
     navItem('storage',     'COLD STORAGE', null) +
+    navItem('contracts',   'CONTRACTS', null) +
     navItem('catchlog',    'CATCH LOG',   Object.keys((f.live && f.live.catchLog) || {}).length) +
     navItem('log',         'EVENT LOG',   f.log.length) +
     (isAdminUser ? '<div class="wfa-nav-group">ADMIN</div>' + navItem('admin', 'PHOTOS', null) : '');
@@ -222641,6 +222688,7 @@ function renderWoodsFishing() {
   else if (tab === 'expeditions') _wfBindExp();
   else if (tab === 'manifest')    _wfBindManifest();
   else if (tab === 'storage')     _wfBindStorage();
+  else if (tab === 'contracts')   _wfBindContracts();
   else if (tab === 'catchlog')    _wfBindCatchLog();
   else if (tab === 'log')         _wfBindLog();
   else if (tab === 'admin')       _wfBindAdmin();
@@ -223388,7 +223436,13 @@ function _wfBindManifest() {
 function _wfRenderStorage(f) {
   // Map game salvage to fish-like rows.
   const TRACKED = [
-    { id: 'food',             label: 'Common Fish / Food',     rarity: 'common',    value: 4 },
+    // 🎣 the catch itself, first — what a trip now brings home
+    { id: 'freshFish',        label: 'Fresh Fish',             rarity: 'common',    value: 3 },
+    { id: 'shellfish',        label: 'Shellfish',              rarity: 'uncommon',  value: 4 },
+    { id: 'primeSeafood',     label: 'Prime Seafood',          rarity: 'rare',      value: 8 },
+    { id: 'seaweed',          label: 'Seaweed',                rarity: 'common',    value: 2 },
+    { id: 'monsterParts',     label: 'Leviathan Parts',        rarity: 'legendary', value: 12 },
+    { id: 'food',             label: 'Rations (food)',         rarity: 'common',    value: 4 },
     { id: 'water',            label: 'Potable Water',          rarity: 'common',    value: 6 },
     { id: 'fuel',             label: 'Oil Barrel',             rarity: 'uncommon',  value: 35 },
     { id: 'scrapMetal',       label: 'Scrap',                  rarity: 'common',    value: 6 },
@@ -223428,14 +223482,150 @@ function _wfRenderStorage(f) {
         '</table>' +
       '</div>' +
       '<div class="wfa-panel">' +
-        '<div class="wfa-panel-h"><h3>TRADE / MARKET</h3><span style="color:#a3d977">LIVE PRICES</span></div>' +
+        '<div class="wfa-panel-h"><h3>🧊 THE BENCH</h3><span>FISH → RATIONS</span></div>' +
+        '<div class="muted" style="font-size:0.7rem;letter-spacing:0.18em;margin-bottom:0.5rem">GUT, ICE AND SALT — INSTANT. THE FISH CANNERY OP DOES IT BETTER.</div>' +
+        WF_BENCH.map((b) => {
+          const have = ((Profile.salvage || {})[b.from] | 0);
+          const ok = have >= b.n;
+          return '<div class="wfa-stock-row"><span>' + escapeHtml(_wfResLabel(b.from, b.n)) + ' → ' + escapeHtml(_wfResLabel(b.to, b.out)) + '</span>' +
+            '<span class="muted">have ' + have.toLocaleString() + '</span>' +
+            '<button class="btn-mini' + (ok ? ' btn-primary' : '') + '" data-wf-bench="' + b.id + '" ' + (ok ? '' : 'disabled') + '>Convert</button></div>';
+        }).join('') +
+        '<div class="wfa-panel-h" style="margin-top:0.9rem"><h3>TRADE / MARKET</h3><span style="color:#a3d977">LIVE PRICES</span></div>' +
         '<div class="muted" style="font-size:0.7rem;letter-spacing:0.18em;margin-bottom:0.5rem">▲ DEMAND FLUCTUATES BY CAMP HUNGER</div>' +
         trendRows +
       '</div>' +
     '</div>' +
   '</div>';
 }
-function _wfBindStorage() {}
+/* 🧊 The bench recipes — from the handoff's Cold Storage: 5 fish → 7 food. */
+const WF_BENCH = [
+  { id: 'fresh', from: 'freshFish',    n: 5, to: 'food', out: 7 },
+  { id: 'shell', from: 'shellfish',    n: 3, to: 'food', out: 6 },
+  { id: 'prime', from: 'primeSeafood', n: 1, to: 'food', out: 9 },
+  { id: 'kelp',  from: 'seaweed',      n: 4, to: 'food', out: 3 },
+];
+function _wfBenchConvert(id) {
+  const b = WF_BENCH.find((x) => x.id === id); if (!b) return;
+  const cost = {}; cost[b.from] = b.n;
+  if (typeof spendResources !== 'function' || !spendResources(cost)) { showToast('Not enough ' + (_meta(b.from).name || b.from) + '.', 2600); return; }
+  try { addRes(b.to, b.out); } catch (e) {}
+  showToast('🧊 ' + _wfResLabel(b.from, b.n) + ' → ' + _wfResLabel(b.to, b.out), 2600);
+  try { saveProfile(); } catch (e) {}
+  try { render(); } catch (e) {}
+}
+function _wfBindStorage() {
+  try { document.querySelectorAll('[data-wf-bench]').forEach((el) => { el.onclick = () => _wfBenchConvert(el.getAttribute('data-wf-bench')); }); } catch (e) {}
+}
+
+/* ═══ 📜 CONTRACTS + 🌊 TIDES (WOODS_FISHING_HANDOFF round 1, the demand half) ═══
+   NPC buyers post a board of four contracts per 8-hour window, deterministic
+   per (window, user) so every device shows the same board and no reload
+   re-rolls it. Each pays Cinder at a PREMIUM over the ledger price of the fish
+   — bounded by the fish the player actually caught, so it is a demand sink for
+   the catch, not a faucet. A world-wide tide event, one per 7-day window,
+   moves the premiums for the week and is named on the board. */
+const WF_CONTRACT_WINDOW_MS = 8 * 3600000;
+const WF_CONTRACT_COUNT = 4;
+const WF_CONTRACT_BUYERS = [
+  { id: 'veridian', name: 'Veridian Exchange',  want: ['freshFish', 'shellfish'],    premium: 1.25 },
+  { id: 'saltgate', name: 'Saltgate Provisions', want: ['freshFish', 'seaweed'],      premium: 1.30 },
+  { id: 'cradle',   name: 'Cradle Bay Kitchens', want: ['primeSeafood', 'shellfish'], premium: 1.45 },
+  { id: 'ironsk',   name: 'Iron Skerries Rendery', want: ['monsterParts'],            premium: 1.70 },
+  { id: 'ember',    name: 'Emberfall Smokehouse', want: ['freshFish', 'primeSeafood'], premium: 1.35 },
+];
+const WF_TIDE_EVENTS = [
+  { id: 'calm',   name: 'Calm seas',      icon: '🌊', weight: 40, mul: {} ,                              note: 'Nothing unusual on the water.' },
+  { id: 'redtide',name: 'Red tide',       icon: '🩸', weight: 15, mul: { shellfish: 0.6, primeSeafood: 1.4 }, note: 'Shellfish beds are closed; prime catch is dear.' },
+  { id: 'upwell', name: 'Cold upwelling', icon: '❄️', weight: 15, mul: { freshFish: 1.3 },                note: 'The schools are thick; fresh fish moves fast.' },
+  { id: 'bloom',  name: 'Kelp bloom',     icon: '🌿', weight: 15, mul: { seaweed: 1.5 },                  note: 'Every kitchen wants seaweed this week.' },
+  { id: 'leviath',name: 'Leviathan sightings', icon: '🦈', weight: 15, mul: { monsterParts: 1.6, freshFish: 0.9 }, note: 'Renderers pay through the nose for parts; the small boats stay in.' },
+];
+function _wfHash(str) { let h = 2166136261; const t = String(str); for (let i = 0; i < t.length; i++) { h ^= t.charCodeAt(i); h = Math.imul(h, 16777619); } h ^= h >>> 13; h = Math.imul(h, 0x5bd1e995); h ^= h >>> 15; return h >>> 0; }
+function _wfContractWindow(now) { return Math.floor((now || Date.now()) / WF_CONTRACT_WINDOW_MS); }
+function _wfTide(now) {
+  const week = Math.floor((now || Date.now()) / (7 * 86400000));
+  const total = WF_TIDE_EVENTS.reduce((a, e) => a + e.weight, 0);
+  let r = (_wfHash('tide:' + week) % 1000) / 1000 * total;
+  for (const e of WF_TIDE_EVENTS) { r -= e.weight; if (r < 0) return Object.assign({ week }, e); }
+  return Object.assign({ week }, WF_TIDE_EVENTS[0]);
+}
+function _wfContractPrice(id, qty, premium, tide) {
+  const base = (typeof _resCinderValue === 'function') ? _resCinderValue(id) : 3;
+  const mul = (tide && tide.mul && tide.mul[id]) || 1;
+  return Math.max(1, Math.round(qty * base * premium * mul));
+}
+function _wfContracts(now) {
+  now = now || Date.now();
+  const win = _wfContractWindow(now), tide = _wfTide(now);
+  const uid = (Profile.cloud && Profile.cloud.userId) || 'local';
+  const out = [];
+  for (let i = 0; i < WF_CONTRACT_COUNT; i++) {
+    const h = _wfHash(uid + '|' + win + '|' + i);
+    const buyer = WF_CONTRACT_BUYERS[h % WF_CONTRACT_BUYERS.length];
+    const id = buyer.want[(h >>> 8) % buyer.want.length];
+    const qty = id === 'monsterParts' ? 1 + ((h >>> 16) % 2) : id === 'primeSeafood' ? 2 + ((h >>> 16) % 4) : 8 + ((h >>> 16) % 17);
+    out.push({ key: win + ':' + i, buyer: buyer.name, id, qty, pay: _wfContractPrice(id, qty, buyer.premium, tide), premium: buyer.premium });
+  }
+  return { window: win, endsAt: (win + 1) * WF_CONTRACT_WINDOW_MS, tide, list: out };
+}
+function _wfContractsDone() {
+  const f = Profile.fishingCorp || (Profile.fishingCorp = {});
+  if (!f.contracts || typeof f.contracts !== 'object') f.contracts = { window: 0, done: {} };
+  const win = _wfContractWindow();
+  if (f.contracts.window !== win) f.contracts = { window: win, done: {} };
+  return f.contracts.done;
+}
+function _wfFillContract(key) {
+  const board = _wfContracts();
+  const c = board.list.find((x) => x.key === key); if (!c) return;
+  const done = _wfContractsDone();
+  if (done[key]) { showToast('That contract is already filled.', 2400); return; }
+  const cost = {}; cost[c.id] = c.qty;
+  if (typeof spendResources !== 'function' || !spendResources(cost)) { showToast('Not enough ' + (_meta(c.id).name || c.id) + ' — the buyer wants ' + c.qty + '.', 3000); return; }
+  done[key] = true;
+  try { addGems(c.pay, 'Fishing contract: ' + c.buyer); } catch (e) { try { addCinders(c.pay); } catch (_) {} }
+  try { if (typeof wfLog === 'function') wfLog('good', c.buyer + ' took ' + c.qty + ' ' + (_meta(c.id).name || c.id) + ' for ' + c.pay.toLocaleString() + ' 🔥.'); } catch (e) {}
+  showToast('📜 ' + c.buyer + ' paid ' + c.pay.toLocaleString() + ' 🔥 for ' + _wfResLabel(c.id, c.qty) + '.', 3600);
+  try { saveProfile(); } catch (e) {}
+  try { render(); } catch (e) {}
+}
+function _wfRenderContracts(f) {
+  const board = _wfContracts(), done = _wfContractsDone();
+  const left = Math.max(0, board.endsAt - Date.now());
+  const hh = Math.floor(left / 3600000), mm = Math.floor((left % 3600000) / 60000);
+  const rows = board.list.map((c) => {
+    const have = ((Profile.salvage || {})[c.id] | 0);
+    const filled = !!done[c.key], ok = have >= c.qty;
+    return '<tr' + (filled ? ' style="opacity:.5"' : '') + '><td>' + escapeHtml(c.buyer) + '</td>' +
+      '<td>' + escapeHtml(_wfResLabel(c.id, c.qty)) + '</td>' +
+      '<td class="wfa-num">' + have.toLocaleString() + '</td>' +
+      '<td class="wfa-num" style="color:#e6b660">×' + c.premium.toFixed(2) + '</td>' +
+      '<td class="wfa-num" style="color:#a3d977">' + c.pay.toLocaleString() + ' 🔥</td>' +
+      '<td>' + (filled ? '<span class="muted">FILLED</span>' : '<button class="btn-mini' + (ok ? ' btn-primary' : '') + '" data-wf-contract="' + c.key + '" ' + (ok ? '' : 'disabled') + '>Deliver</button>') + '</td></tr>';
+  }).join('');
+  const t = board.tide;
+  const mulRows = Object.keys(t.mul || {}).map((k) => '<span class="wfa-trait-chip">' + escapeHtml(_meta(k).name || k) + ' ×' + t.mul[k] + '</span>').join(' ') || '<span class="muted">no price effects</span>';
+  return '<div class="wfa-storage">' +
+    '<div class="wfa-panel-header">CONTRACTS  <span class="wfa-panel-crumb">BUYERS · TIDES</span></div>' +
+    '<div class="wfa-grid-2-1">' +
+      '<div class="wfa-panel">' +
+        '<div class="wfa-panel-h"><h3>📜 THE BOARD</h3><span>NEW BOARD IN ' + hh + 'h ' + String(mm).padStart(2, '0') + 'm</span></div>' +
+        '<div class="muted" style="font-size:0.7rem;letter-spacing:0.18em;margin-bottom:0.5rem">FOUR BUYERS PER 8-HOUR WINDOW · PAID IN CINDER AT A PREMIUM OVER THE LEDGER PRICE</div>' +
+        '<table class="wfa-table"><thead><tr><th>BUYER</th><th>WANTS</th><th>HAVE</th><th>PREMIUM</th><th>PAYS</th><th></th></tr></thead><tbody>' + rows + '</tbody></table>' +
+      '</div>' +
+      '<div class="wfa-panel">' +
+        '<div class="wfa-panel-h"><h3>' + t.icon + ' ' + escapeHtml(t.name.toUpperCase()) + '</h3><span>THIS WEEK · WORLD-WIDE</span></div>' +
+        '<div class="muted" style="margin-bottom:0.5rem">' + escapeHtml(t.note) + '</div>' +
+        '<div>' + mulRows + '</div>' +
+        '<div class="muted" style="font-size:0.7rem;letter-spacing:0.18em;margin-top:0.9rem">TIDES ROLL ONCE A WEEK FOR EVERYONE. THE BOARD IS YOURS; THE TIDE IS THE SEA\'S.</div>' +
+      '</div>' +
+    '</div>' +
+  '</div>';
+}
+function _wfBindContracts() {
+  try { document.querySelectorAll('[data-wf-contract]').forEach((el) => { el.onclick = () => _wfFillContract(el.getAttribute('data-wf-contract')); }); } catch (e) {}
+}
 
 // ───────────────────────── EVENT LOG ─────────────────────────
 function _wfRenderEventLog(f) {
@@ -240206,6 +240396,15 @@ window.cityGetRes = (id) => {
 window.cityResourceHeadroom = () => {
   try {
     if (_cityMgrStalled()) return { cap: 0, units: 0, free: 0 };
+    /* 🏛 MANAGING: the units are the OWNER's (CityMgr.salvage), and the owner's
+       ceiling is not readable from here, so the vault is reported open. This
+       used to fall through to the mayor's own getResourceUnits(), which is how
+       a client city printed the mayor's vault totals — reported as "my City
+       Stores are showing up in my client cities". */
+    if (CityMgr.active) {
+      let u = 0; try { for (const k in CityMgr.salvage) { if (k !== 'cinder') u += Math.max(0, Math.round(Number(CityMgr.salvage[k]) || 0)); } } catch (e) {}
+      return { cap: 0, units: u, free: Infinity, managed: true };
+    }
     const cap = (typeof getResourceCap === 'function') ? (getResourceCap() | 0) : 0;
     const units = (typeof getResourceUnits === 'function') ? (getResourceUnits() | 0) : 0;
     // cap 0 means "no ceiling known" — never idle on a number we do not have.
@@ -240393,7 +240592,10 @@ window.MythicHaulBridge = {
   corpTreasuryRefresh: async () => { try { await corpTreasuryFetch(); } catch (e) {} try { return _jbNum(Corp.treasury); } catch (e) { return 0; } },
   corpTreasury: () => { try { return _jbNum(Corp.treasury); } catch (e) { return 0; } },
   nodeOwnersRefresh: async () => { try { if (typeof tw_cloudFetchNodeOwners === 'function') await tw_cloudFetchNodeOwners(); } catch (e) {} },
-  rigs: () => { try { return (typeof _ppRigsOwned === 'function') ? _ppRigsOwned() : [{ id: 'issued_hauler', name: 'Scrap Hauler', kind: 'issued' }]; } catch (e) { return [{ id: 'issued_hauler', name: 'Scrap Hauler', kind: 'issued' }]; } },
+  /* 🚛 The player's freight trucks from the Prince Portfolios lot — the same
+     list the Drive-it gate reads. No truck ⇒ an empty garage, never an issued one. */
+  rigs: () => { try { return _ppFreightRigs().map((v) => ({ id: String(v.id), name: v.name || 'Freight truck', kind: 'lot', sku: v.rigId || null })); } catch (e) { return []; } },
+  canDrive: () => { try { return _ppOwnsFreightRig(); } catch (e) { return false; } },
   toast: (m, ms) => { try { showToast(m, ms || 3600); } catch (e) {} },
   confirm: async (m) => { try { return await gcConfirm(m); } catch (e) { return false; } },
   saveProfile: () => { try { saveProfile(); } catch (e) {} },
@@ -240909,9 +241111,38 @@ window.cityCardOutput = function (r) {
 // The card collection, mapped to the city's socket schema. Type mapping:
 // hero→Hero, kalon-capable→Kalon, unit→Unit, spell→Spell, trap/counter→Artifact,
 // location→Structure (the card sink for Kalon Stable/Obelisk), weather→Relic.
+/* 🏛 THE OWNER'S CARDS, WHEN MANAGING. Reported: "When performing Mayor roles
+   like adding workers to a building, the system asks to select from the
+   mayor's cards not the owner's cards." The picker read Profile.cardCollection
+   — the MAYOR's. A client city's crew must come from its OWNER's collection,
+   read through city_owner_cards_get (sql/126): mayor-only, the same
+   _node_manager_owner gate the ledger RPC uses, and it hands back ids and
+   counts only. Cached per open; a failed read is an empty roster with a
+   toast, never the mayor's own cards. */
+const _cityOwnerCards = { node: null, at: 0, col: null };
+async function _cityOwnerCardCollection() {
+  const node = App._cityNodeId || null;
+  if (_cityOwnerCards.node === node && _cityOwnerCards.col && Date.now() - _cityOwnerCards.at < 60000) return _cityOwnerCards.col;
+  try {
+    if (!initCloud() || !Cloud.client) return null;
+    const r = await Cloud.client.rpc('city_owner_cards_get', { p_node_id: String(node) });
+    if (r && !r.error && r.data && r.data.ok === true && r.data.cards && typeof r.data.cards === 'object') {
+      _cityOwnerCards.node = node; _cityOwnerCards.at = Date.now(); _cityOwnerCards.col = r.data.cards;
+      return r.data.cards;
+    }
+    try { console.warn('[city] owner cards unavailable —', r && r.error && r.error.message); } catch (_) {}
+  } catch (e) {}
+  return null;
+}
 window.cityCardCollection = async function () {
   try {
-    const out = [], col = Profile.cardCollection || {};
+    let col = Profile.cardCollection || {};
+    if (typeof _cityManagedOwner === 'function' && _cityManagedOwner()) {
+      const oc = await _cityOwnerCardCollection();
+      if (!oc) { try { showToast('🏛 Could not read the owner\'s card collection — crew cannot be posted until it loads. Re-open the city to retry.', 5200); } catch (_) {} return []; }
+      col = oc;
+    }
+    const out = [];
     const TYPE = { hero: 'Hero', unit: 'Unit', spell: 'Spell', trap: 'Artifact', counter: 'Artifact', location: 'Structure', weather: 'Relic', equipment: 'Equipment' };
     for (const id of Object.keys(col)) {
       if (!((col[id] | 0) > 0)) continue;
@@ -244548,6 +244779,41 @@ function _haulWhy(e, fallback) {
   } catch (err) {}
   return (e && e.message) || fallback || 'That did not work.';
 }
+/* 🛣️ DRIVE IT. Asked for: "when you click Drive it the Haulage Board modal
+   should disappear" and "players cannot play the Highway Haul mini game unless
+   they purchased a Freight truck from Prince Portfolios". The board closes first,
+   then the gate: a haul rig of the FREIGHT class on the Prince Portfolios lot.
+   The issued Scrap Hauler is not a purchase and does not count; oil, feed and
+   livestock rigs are other classes and do not count either. */
+function _ppFreightRigs() {
+  try {
+    const p = (typeof ensurePrincePortfolios === 'function') ? ensurePrincePortfolios() : Profile.princePortfolios;
+    const lot = (p && Array.isArray(p.lot)) ? p.lot : [];
+    return lot.filter((v) => v && v.haul && !v.issued && (typeof _ppCargoClassOf === 'function' ? _ppCargoClassOf(v) : 'freight') === 'freight');
+  } catch (e) { return []; }
+}
+/* The charter's free starter rig is not a purchase. New ones are minted with
+   `issued: true`; a lot that predates the flag has starterRigIssued set with no
+   flagged rig on it, and in that case ONE unflagged freight rig is assumed to be
+   the gift. Buying a second truck therefore opens the road either way. */
+function _ppOwnsFreightRig() {
+  try {
+    const p = (typeof ensurePrincePortfolios === 'function') ? ensurePrincePortfolios() : Profile.princePortfolios;
+    const lot = (p && Array.isArray(p.lot)) ? p.lot : [];
+    const flagged = lot.some((v) => v && v.haul && v.issued);
+    const legacyGift = (p && p.starterRigIssued === true && !flagged) ? 1 : 0;
+    return _ppFreightRigs().length > legacyGift;
+  } catch (e) { return false; }
+}
+function _haulDriveIt() {
+  try { const el = document.getElementById('haul-modal'); if (el) el.remove(); } catch (e) {}
+  if (!_ppOwnsFreightRig()) {
+    showToast('🚛 Highway Haul needs a freight truck. Buy one from Prince Portfolios (the Truck Yard) first — the issued Scrap Hauler does not count.', 6200);
+    return;
+  }
+  if (window.MythicHaul && typeof window.MythicHaul.open === 'function') window.MythicHaul.open();
+  else showToast('🛣️ Highway Haul did not load — try a hard refresh.', 4200);
+}
 async function haulOpenBoard() {
   if (!initCloud() || !Profile.cloud || !Profile.cloud.signedIn) { showToast('☁ Sign in to use the haulage board.', 3200); return; }
   let board = [], mine = [], err = null;
@@ -244620,7 +244886,7 @@ async function haulOpenBoard() {
     '<option value="' + esc(x.id) + '">' + esc(x.name) + (_haulGate ? (_haulHasDepot(x.id) ? ' 🚛 depot' : ' · no depot') : '') + '</option>').join('');
   const html = '<div id="haul-modal" style="position:fixed;inset:0;z-index:2147483400;background:rgba(6,5,3,0.86);display:flex;align-items:center;justify-content:center;padding:20px">'
     + '<div style="max-width:900px;width:100%;max-height:86vh;overflow:auto;background:#15110b;border:1px solid rgba(212,175,55,0.45);border-radius:6px;padding:18px 20px">'
-    + '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px"><h2 style="margin:0;color:#ffcf5a">🚛 Haulage Board</h2><span style="display:flex;gap:6px"><button class="btn-mini btn-primary" id="haul-drive" title="Drive a shipment yourself — Highway Haul" onclick="try{if(window.MythicHaul&&window.MythicHaul.open){window.MythicHaul.open()}else{showToast(\'🛣️ Highway Haul did not load — try a hard refresh.\',4200)}}catch(e){}">🛣️ Drive it</button><button class="btn-mini" id="haul-close">✕</button></span></div>'
+    + '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px"><h2 style="margin:0;color:#ffcf5a">🚛 Haulage Board</h2><span style="display:flex;gap:6px"><button class="btn-mini btn-primary" id="haul-drive" title="Drive a shipment yourself — Highway Haul" onclick="try{_haulDriveIt()}catch(e){}">🛣️ Drive it</button><button class="btn-mini" id="haul-close">✕</button></span></div>'
     + '<div class="small-text" style="color:#a2977c;margin-bottom:14px">Companies move freight for each other. Post what you need shipped and what you will pay; a carrier with the right key level takes it.</div>'
     + (err ? '<div style="color:#ff9d8a;border:1px solid rgba(255,120,90,0.4);border-radius:4px;padding:10px;margin-bottom:14px">⚠ ' + esc(err) + '</div>' : '')
     + '<h3 style="color:#ffcf5a;margin:4px 0 8px">Post a request</h3>'
@@ -263292,8 +263558,8 @@ render();
        that works everywhere except the one early path nobody tested. It is
        2KB with no dependencies. -->
 <script src="src/econ/peg.js?v=v121q51"></script>
-<script src="src/battle/effects.js?v=v121v95" defer></script>
-<script src="src/phone/handset.js?v=v121v95" defer></script>
+<script src="src/battle/effects.js?v=v121v96" defer></script>
+<script src="src/phone/handset.js?v=v121v96" defer></script>
 <script src="src/battle/combat.js?v=120m4" defer></script>
 <script src="src/battle/targeting.js?v=121e3hex" defer></script>
 <link rel="stylesheet" href="src/sprites/frames.css?v=120k3">

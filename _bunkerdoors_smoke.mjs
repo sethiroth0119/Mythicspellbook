@@ -49,7 +49,8 @@ ok(/e\.key === "a" \|\| e\.key === "A"/.test(APP) && /action: "nav:campOps"/.tes
 
 /* the page busts its own cache and the six knobs moved */
 const v = (SRC.match(/window\.BUILD_VERSION = '([^']+)'/) || [])[1];
-ok(new RegExp('styles\\.css\\?v=' + v).test(HTML) && new RegExp('hud\\.jsx\\?v=' + v).test(HTML) && new RegExp('app\\.jsx\\?v=' + v).test(HTML), 'base/index.html loads the three changed files at the build version', v);
+const bv = (HTML.match(/hud\.jsx\?v=(v121v\d+)/) || [])[1];
+ok(!!bv && HTML.includes('styles.css?v=' + bv) && HTML.includes('app.jsx?v=' + bv) && parseInt(bv.replace('v121v', ''), 10) >= 95, 'base/index.html loads the three changed files at one build string, v121v95 or later (the page busts its own cache when IT changes)', bv);
 ok(readFileSync('./public/version.txt', 'utf8').trim() === v, 'version.txt equals BUILD_VERSION');
 ok(new RegExp("CACHE_VERSION = 'mythic-" + v + "-").test(readFileSync('./public/sw.js', 'utf8')), 'sw.js carries the build');
 ok(new RegExp('window\\.NC_BUILD = "' + v + '-').test(readFileSync('./public/node-city/index.html', 'utf8')), 'NC_BUILD carries the build');

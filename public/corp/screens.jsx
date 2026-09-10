@@ -2791,6 +2791,10 @@ const OPERATIONS = [
   { id: 'gas',          cat: 'Energy',    icon: '⛽', focus: 'Fuel retail & distribution', risk: 'Low' },
   { id: 'cars',         cat: 'Logistics', icon: '🚗', focus: 'Vehicles & spare parts',     risk: 'Low' },
   { id: 'fishing',      cat: 'Medical',   icon: '🎣', focus: 'Seafood & provisions',       risk: 'Low' },
+  /* 🥫 THE FISH CANNERY (WOODS_FISHING_HANDOFF): the op that eats the catch — 2
+     fresh fish an hour per worker become 2.8 food, a better ratio than the Cold
+     Storage bench. Added here as well as in OPS_ECON so it can be bought. */
+  { id: 'cannery',      cat: 'Medical',   icon: '🥫', tip: 'Gutting lines and brine tanks. Eats the fleet\'s Fresh Fish — 2 per worker-hour — and packs 2.8 food from it, a better ratio than the Cold Storage bench. Fish come from the Fishing Company, the live trip and fleet expeditions.', focus: 'Rations from the catch', risk: 'Low' },
   { id: 'cardshop',     cat: 'Retail',    icon: '🃏', focus: 'Open your own card storefront', risk: 'Low' },
   { id: 'dojo',         cat: 'Retail',    icon: '🥋', focus: 'Train & resell moves to players', risk: 'Low' },
   /* 🍔 THE RESTAURANT. Owning it puts the Mythic Kitchen in My Companies
@@ -2894,7 +2898,10 @@ function opView(o, econ) {
   const produces = (oe && oe.yields && typeof oe.yields === 'object')
     ? Object.keys(oe.yields).map(rid => opResLabel(rid, E)) : [];
   const startup = oe ? (oe.startup | 0) : null;
-  const startupText = startup == null ? '—' : startup === 0 ? 'FREE' : (startup.toLocaleString() + ' 🔥');
+  /* ◈ Two prices when the op has two — "The Feed Operation should cost 55 aza coin
+     or 1.5 million cinder": the line says both, on the card and in the header. */
+  const aza = oe ? (oe.azaStartup | 0) : 0;
+  const startupText = startup == null ? '—' : startup === 0 ? 'FREE' : (startup.toLocaleString() + ' 🔥' + (aza > 0 ? ' · or ' + aza + ' ◈ Aza' : ''));
   return { oe, name, produces, startup, startupText };
 }
 const OP_CATS = ['All', 'Industry', 'Energy', 'Medical', 'Research', 'Logistics', 'Retail', 'Finance', 'Illicit'];
