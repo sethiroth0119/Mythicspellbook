@@ -39386,7 +39386,7 @@ body:has(#pack-opener-frame) #chat-overlay {
   // the console. Bump this every deploy alongside sw.js's CACHE_VERSION. If two
   // machines show different stamps, the older one is on stale code (hard-refresh);
   // if they MATCH but content still differs, it is a DATA/publish issue, not code.
-  window.BUILD_VERSION = 'v121v92';
+  window.BUILD_VERSION = 'v121v93';
   try {
     console.info('%cMythic Spellbook ' + window.BUILD_VERSION + '%c — build check: run  __mg.version',
       'font-weight:700;color:#b48cff', 'color:#7d7499');
@@ -83711,16 +83711,34 @@ function getAllDeckSleeves() {
 //   sleeve   — a random unowned deck sleeve
 //   dice     — a random unowned dice skin
 //   resource — `amount` of `resId` (a converter: turn plenty into scarcity)
+/* ❌ NOTHING CARD-SHAPED CAN BE CRAFTED. THIS IS THE RULE, AND IT IS ENFORCED
+   AT THE GRANT, NOT ONLY IN THE MENU.
+   ═══════════════════════════════════════════════════════════════════════
+   Reported: "players are able to craft booster packs". They were: this
+   table shipped 'pack' (one sealed booster for 8 supplies + 4 shards) and
+   'box' (eight of them), and _craftGrantPacks put REAL unopened packs in the
+   inventory — cards for salvage, on a station that outlived the removal of
+   the Card Forge (_cardcraft_smoke.mjs) because it was never called a forge.
+   The instruction is broader than packs: "cannot craft anything that has
+   anything to do with cards." So packs, boxes and card sleeves are gone from
+   the defaults, the recipe editor no longer offers them, and — the part that
+   matters — _craftKindAllowed() is asked by getAllCraftRecipes(),
+   _craftProduce() and craftStationMake(), so a pack recipe still sitting in
+   a published Catalog, a cached Forge copy or an old device cannot be listed,
+   cannot be made and refunds nothing because nothing is ever spent on it.
+   A resource recipe that would refine one of the five card GOODS ids
+   (boosterPacks and friends are ledger resources the economy sim trades) is
+   refused for the same reason. Dice skins are the one thing left to craft. */
+const CRAFT_CARD_RES = { boosterPacks: 1, starterDecks: 1, cardBoxes: 1, collectorPacks: 1, tournamentProducts: 1 };
+function _craftKindAllowed(r) {
+  const out = (r && r.out) || {};
+  const kind = out.kind || 'pack';               // the historic default WAS a pack
+  if (kind === 'pack' || kind === 'sleeve') return false;
+  if (kind === 'resource') return !!out.resId && !CRAFT_CARD_RES[out.resId];
+  return kind === 'dice';
+}
+const CRAFT_CARD_REFUSAL = 'Card packs, boxes and sleeves cannot be crafted.';
 const CRAFT_RECIPES_DEFAULT = [
-  { id: 'pack',   icon: '🎴', name: 'Booster Pack',
-    cost: { supplies: 8, memoryShards: 4 }, out: { kind: 'pack', amount: 1 },
-    blurb: 'One sealed booster from the current set.' },
-  { id: 'box',    icon: '📦', name: 'Booster Box',
-    cost: { supplies: 48, memoryShards: 24, metal: 10 }, out: { kind: 'pack', amount: 8 },
-    blurb: 'Eight boosters at once — cheaper per pack than crafting them singly.' },
-  { id: 'sleeve', icon: '🃏', name: 'Card Sleeve',
-    cost: { supplies: 14, metal: 8, corruptedEssence: 3 }, out: { kind: 'sleeve', amount: 1 },
-    blurb: 'A random deck sleeve you do not already own.' },
   { id: 'dice',   icon: '🎲', name: 'Dice Skin',
     cost: { metal: 12, memoryShards: 10, corruptedEssence: 5 }, out: { kind: 'dice', amount: 1 },
     blurb: 'A random dice skin you do not already own — worn at the first-move roll.' },
@@ -83729,17 +83747,19 @@ const CRAFT_RECIPES_DEFAULT = [
 // Published recipes come through Catalog; the admin's local Forge copy wins so
 // edits are visible before publishing (same rule as sleeves/avatars/cards).
 function getAllCraftRecipes() {
+  const pick = (arr) => arr.filter(r => r && r.id && _craftKindAllowed(r));   // ❌ see _craftKindAllowed
   try {
     const local = Array.isArray(Forge.craftRecipes) ? Forge.craftRecipes : [];
-    if (local.length) return local.filter(r => r && r.id);
+    if (local.length) { const l = pick(local); if (l.length) return l; }
     const pub = Array.isArray(Catalog.craftRecipes) ? Catalog.craftRecipes : [];
-    if (pub.length) return pub.filter(r => r && r.id);
+    if (pub.length) { const p = pick(pub); if (p.length) return p; }
   } catch (e) {}
-  return CRAFT_RECIPES_DEFAULT;
+  return pick(CRAFT_RECIPES_DEFAULT);
 }
 // Resolve a recipe's output into an actual grant. Returns the toast sentence, or
 // null to refund — the single contract every failure path relies on.
 function _craftProduce(r) {
+  if (!_craftKindAllowed(r)) return null;        // ❌ a card recipe makes nothing, whatever list it came from
   const out = (r && r.out) || {};
   const amt = Math.max(1, out.amount | 0 || 1);
   if (out.kind === 'sleeve') return _craftGrantCosmetic('sleeve');
@@ -83821,7 +83841,18 @@ function _craftGrantCosmetic(kind) {
 // station's buttons called that function instead and made nothing.
 function craftStationMake(recipeId) {
   const r = _craftRecipe(recipeId);
-  if (!r) return { ok: false, msg: 'Unknown recipe.' };
+  if (!r) {
+    /* A card recipe is filtered out of every list, so it arrives here as
+       unknown. Name the rule rather than pretend the id never existed. */
+    let raw = null;
+    try {
+      raw = [].concat(Array.isArray(Forge.craftRecipes) ? Forge.craftRecipes : [],
+                      Array.isArray(Catalog.craftRecipes) ? Catalog.craftRecipes : [],
+                      CRAFT_RECIPES_DEFAULT).find(x => x && x.id === recipeId) || null;
+    } catch (e) {}
+    return { ok: false, msg: (raw && !_craftKindAllowed(raw)) ? CRAFT_CARD_REFUSAL : 'Unknown recipe.' };
+  }
+  if (!_craftKindAllowed(r)) return { ok: false, msg: CRAFT_CARD_REFUSAL };
   if (typeof canAffordResources === 'function' && !canAffordResources(r.cost)) {
     // Name what's actually short rather than just refusing.
     const R = (typeof _ensureResources === 'function') ? _ensureResources() : {};
@@ -83848,7 +83879,7 @@ function craftStationMake(recipeId) {
     //   recipe anything, so `r.id === 'pack'` stopped being a reliable test.
     const kind = (r.out && r.out.kind) || 'pack';
     let why;
-    if (kind === 'pack') why = 'No booster packs are published yet — nothing to craft.';
+    if (kind === 'pack' || kind === 'sleeve') why = CRAFT_CARD_REFUSAL;
     else if (kind === 'resource') why = 'That recipe has no output resource set.';
     else {
       const pool = (kind === 'dice')
@@ -186990,17 +187021,18 @@ function openCraftRecipeEditor() {
     // Seed from the built-ins so the admin edits real content, never a blank page.
     Forge.craftRecipes = JSON.parse(JSON.stringify(
       getAllCraftRecipes().map(r => ({ id: r.id, icon: r.icon, name: r.name, blurb: r.blurb,
-        cost: Object.assign({}, r.cost), out: Object.assign({ kind: 'pack', amount: 1 }, r.out) }))));
+        cost: Object.assign({}, r.cost), out: Object.assign({ kind: 'dice', amount: 1 }, r.out) }))));
   }
+  /* ❌ No pack and no sleeve here — see _craftKindAllowed. A kind the station
+     refuses must not be offered by the editor that publishes to it. */
   const OUT_KINDS = [
-    ['pack', '🎴 Booster pack(s)'], ['sleeve', '🃏 Random deck sleeve'],
     ['dice', '🎲 Random dice skin'], ['resource', '🧰 Resource'],
   ];
   const draw = () => {
     const list = Forge.craftRecipes;
     const packs = (typeof getAllCustomPacks === 'function') ? (getAllCustomPacks() || []) : [];
     const rows = list.map((r, i) => {
-      r.cost = r.cost || {}; r.out = r.out || { kind: 'pack', amount: 1 };
+      r.cost = r.cost || {}; r.out = r.out || { kind: 'dice', amount: 1 };
       const costFields = RESOURCE_IDS.map(id => {
         const m = _meta(id);
         return `<label class="cre-res" title="${escapeHtml(m.name || id)}">
@@ -187073,7 +187105,7 @@ function openCraftRecipeEditor() {
     });
     host.querySelector('#cre-add').onclick = () => {
       Forge.craftRecipes.push({ id: 'cr_' + Math.random().toString(36).slice(2, 9), icon: '🔨',
-        name: 'New Recipe', blurb: '', cost: { supplies: 10 }, out: { kind: 'pack', amount: 1 } });
+        name: 'New Recipe', blurb: '', cost: { supplies: 10 }, out: { kind: 'dice', amount: 1 } });
       draw();
     };
     host.querySelector('#cre-reset').onclick = () => {
@@ -263065,8 +263097,8 @@ render();
        that works everywhere except the one early path nobody tested. It is
        2KB with no dependencies. -->
 <script src="src/econ/peg.js?v=v121q51"></script>
-<script src="src/battle/effects.js?v=v121v92" defer></script>
-<script src="src/phone/handset.js?v=v121v92" defer></script>
+<script src="src/battle/effects.js?v=v121v93" defer></script>
+<script src="src/phone/handset.js?v=v121v93" defer></script>
 <script src="src/battle/combat.js?v=120m4" defer></script>
 <script src="src/battle/targeting.js?v=121e3hex" defer></script>
 <link rel="stylesheet" href="src/sprites/frames.css?v=120k3">

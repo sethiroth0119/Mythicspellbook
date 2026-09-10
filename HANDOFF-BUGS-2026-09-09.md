@@ -335,3 +335,17 @@ Worked from the report TEXT alone (the user is asking players for screenshots; a
 Not touched, and why: bug-mtuasm4d (stadium) — readiness reads `game.stock` + `game.res` and the concession ids are CITY_STOCK only, so the panel should be right; needs the image to see which number he means. bug-mtu13pzm (nobody shopping) — the quoted notification text ("nobody is shopping yet", "no goods to buy") does not exist in the tree; needs the image. bug-mtttvge5 (beverages) — venue-economics decision (handoff §2); note the economy-side `beverages` recipe IS reachable (canecroft → sugarmill, hydrofarm fruit, timber packaging). bug-mttyizit — Lumber has a taker (Panel Plant, `use.lumber`) so "feeds nothing yet" only appears when none is built; Workers bottleneck untouched.
 
 New suite: `_firstload_smoke.mjs` (39 passes) drives the lifted warm-up and `classify`.
+
+## v121v93 — shipped 2026-09-09, full-gated, edge-verified
+
+Reported by word of mouth (no tracker row): "players are able to craft booster packs". They could — the Crafting Station (`CRAFT_RECIPES_DEFAULT`, ~index.html:83714) shipped `pack` and `box` recipes whose grant (`_craftGrantPacks`) put REAL unopened packs in the inventory for salvage. It survived the Card Forge removal (`_cardcraft_smoke.mjs`) because it was never called a forge.
+
+Instruction: "cannot craft anything that has anything to do with cards." So:
+- `pack`, `box` and the `sleeve` (card sleeve) rows are gone from the defaults; only the dice skin remains.
+- `_craftKindAllowed()` is enforced by `getAllCraftRecipes()`, `_craftProduce()` and `craftStationMake()` — a pack recipe in a published Catalog, a cached Forge copy or an old device is not listed, not made, and spends nothing. Resource recipes that would refine one of the five card GOODS ids are refused too.
+- The recipe editor no longer offers pack or sleeve outputs.
+- Untouched on purpose: the Foundation Reserve pack (a Cinder PURCHASE), shop purchases, gifts and chests; and the Living Economy's `boosterPacks` GOODS chain (sim inventory only — `cardOutput()` reports, never mints).
+
+Suite: `_nocardcraft_smoke.mjs` (30 passes), drives the lifted station against a catalog that publishes pack/box/legacy/dice.
+
+Git: local history repaired (a corrupt tree from 2026-08-17 rebuilt exactly); commit 07dc451367 on `weather-hotfix` is the full tree. GitHub remote `mythicspellbook` is a code-only mirror — pushed a code-only snapshot as branch `v121v92-code`; its `main` was left alone. v121v93 is NOT yet committed.
