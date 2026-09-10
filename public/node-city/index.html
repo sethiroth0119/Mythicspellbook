@@ -9,7 +9,7 @@
      believed the file was already live. Only a CONTENT change moves the hash
      and forces a re-upload, so bump this stamp whenever the city 404s, and
      probe it (grep NC_BUILD on the served page) to prove the deploy landed. -->
-<script>window.NC_BUILD = "v121v103-farmsky";</script>
+<script>window.NC_BUILD = "v121v104-cohome";</script>
 <!-- ════════════════════════════════════════════════════════════════════════
      NODE CITY — SimCity-style settlement layer for Mythic Spellbook.
      Three.js WebGPU (auto-falls back to WebGL2). Realistic sun/moon cycle.
@@ -44966,8 +44966,15 @@ function opsDecorateShop() {
        the wall never clicks it. The shape of the flow is unchanged; only the
        sentence and the price chip are. Still LOCKED while `blocked`, because
        then we cannot enumerate ownership at all and must not promise anything. */
-    const free = opsIsFree(opType) && !blocked && !rows.elsewhere.length;
-    if (!rows.unsited.length || blocked) {
+    /* 🏗 A CONSTRUCTION CO. CAN STAND HERE TOO (owner, 2026-09-10). Its row
+       carries one `site`, so a Co. a mayor put in a client's city read as
+       "sited in another city" at home and locked the card. For construction
+       only, a row sited elsewhere is offered here; siting it MOVES the site
+       (cityOpsSite), the other city's building stays standing. Every other
+       operation keeps the one-plot rule. */
+    const resite = opType === 'construction' && !rows.unsited.length && rows.elsewhere.length > 0 && !rows.here.length;
+    const free = opsIsFree(opType) && !blocked && (!rows.elsewhere.length || opType === 'construction');
+    if ((!rows.unsited.length && !resite) || blocked) {
       card.classList.add('opslock'); card.classList.remove('opsown');
       const why = mgrLocked
         ? 'You are managing another player\'s city'
@@ -45149,7 +45156,8 @@ _prnReady = true;
        mesh or a tile. */
     if (st && st.manager && !opsMayorMaySite(opType)) { toast('🏛 You are managing another player\'s city — your own businesses cannot be sited here.', 'bad'); return; }
     const rows = opsRowsOf(opType);
-    const row = rows.unsited[0];
+    /* 🏗 construction: a row standing in another city may be placed here as well — the site moves. */
+    const row = rows.unsited[0] || (opType === 'construction' && !rows.here.length ? rows.elsewhere[0] : null);
     if (!row) {
       const cat = opsCatalogOf(opType);
       /* 🏗 A free licence is collected, not bought — and the click that got
