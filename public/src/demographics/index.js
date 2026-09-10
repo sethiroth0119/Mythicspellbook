@@ -218,7 +218,7 @@ function tick(dtMin, host) {
        tick and never stored on the economy's side. `posts` null means "no
        economy mounted", which the pipeline reads as no information rather than
        as no work — a 404 on a sibling module must not depose the population. */
-    let posts = null, seekers = 0, services = 1;
+    let posts = null, seekers = 0, services = 1, servicesBy = null;
     const E = eco();
     if (E) {
       try {
@@ -233,18 +233,19 @@ function tick(dtMin, host) {
           let n = 0, k = 0;
           for (const key in sat) { n += Math.max(0, Math.min(1, sat[key] || 0)); k++; }
           if (k > 0) services = n / k;
+          servicesBy = servicesBreakdown(E, snap);
         }
       } catch (e) { posts = null; }
     }
     if (!(seekers > 0)) seekers = Math.max(1, Math.round(P.population() * WORKING_AGE_PCT));
-    LAST.posts = posts; LAST.seekers = seekers; LAST.services = services;
+    LAST.posts = posts; LAST.seekers = seekers; LAST.services = services; LAST.servicesBy = servicesBy;
 
     /* 🌱 First run on a city with no saved cohorts: place the people who are
        already here into the zoning that is already there. */
     if (!P.seeded()) P.seed(sv, Math.min(budget, sv.totalCapacity));
 
     const days = Math.max(0, (Number(dtMin) || 0) / ECON.clock.dayMin);
-    const st = P.step(days, { survey: sv, budget, posts, seekers, services });
+    const st = P.step(days, { survey: sv, budget, posts, seekers, services, servicesBy });
     LAST.at = Date.now();
     wireEconomy();
     return st;
@@ -450,6 +451,34 @@ function limitText(limit) {
       changes what the panel SAYS, never what the model DID.
    ⚠ AND ONLY WHEN THE GATE IS ACTUALLY SHUT. With the gate open, the cap cause
      means what it always meant: the beds are full. */
+/* 🛒 WHICH SERVICES, BY NAME. bug-mtvdb20t: "Services falling short" said
+   residents cannot buy what they need and never said WHAT. `services` above is
+   the mean of the economy's per-category satisfaction; this is the same table
+   row by row — the basket category, its satisfaction, how much was wanted, and
+   the shop that sells it (households.js BASKET `ind` → recipes INDUSTRIES name)
+   — so the cause line can name the short ones and the shop that fixes each.
+   Read, never computed: every figure is the snapshot's own. */
+function servicesBreakdown(E, snap) {
+  try {
+    const sat = (snap && snap.satisfaction) || {};
+    const want = (snap && snap.want) || {};
+    const unmet = (snap && snap.unmet) || {};
+    const basket = Array.isArray(E && E.basket) ? E.basket : [];
+    const inds = (E && E.industries) || {};
+    const out = [];
+    for (const key in sat) {
+      const s = Number(sat[key]);
+      if (!isFinite(s)) continue;
+      const b = basket.find((x) => x && x.key === key) || null;
+      const ind = b && b.ind ? inds[b.ind] : null;
+      out.push({ key, name: b ? b.name : key, ico: b ? b.ico : '', sat: Math.max(0, Math.min(1, s)),
+                 want: Math.max(0, Number(want[key]) || 0), unmet: Math.max(0, Number(unmet[key]) || 0),
+                 ind: b ? b.ind : null, shop: ind && ind.name ? ind.name : (b && b.ind ? b.ind : null) });
+    }
+    return out.length ? out : null;
+  } catch (e) { return null; }
+}
+
 function withGateCause(causes) {
   const out = (causes || []).slice();
   const g = LAST.growth;

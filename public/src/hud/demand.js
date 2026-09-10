@@ -307,6 +307,37 @@ function retailShortfall(snap) {
            share: want > 0 ? clamp01(unmet / want) : 0 };
 }
 
+/* 💰 WHAT RESIDENTS HAVE TO SPEND, AND WHY. bug-mtvdpfce: "Almost Nobody Is
+   Shopping Yet" said the basket was tiny and not what makes a basket. Shops
+   sell to what residents spend; residents spend a share of their savings; their
+   savings are the wages firms pay them (households.js `wantDemand` is
+   savings × (1 − savings rate) × basket share). Four snapshot figures, read
+   not derived, and ONE lever picked from them in order: nobody employed →
+   jobs; employed but wages barely flowing → the firms' cash; otherwise the
+   city is simply too small for a basket to add up yet. */
+function residentsSpending(snap) {
+  const pop = Math.max(0, Number(snap && snap.population) || 0);
+  const savings = Math.max(0, Number(snap && snap.savings) || 0);
+  const lf = Math.max(0, Number(snap && snap.laborForce) || 0);
+  const emp = Math.max(0, Number(snap && snap.employed) || 0);
+  const wages = Math.max(0, Number(snap && snap.flow && snap.flow.wages) || 0);
+  const empShare = lf > 0 ? clamp01(emp / lf) : 0;
+  const why = 'Shops sell to what residents spend, and residents spend from what they are paid: ' + n0(pop) + ' residents hold ' + qty(savings) +
+    ' 🔥 of savings between them, ' + n0(emp) + ' of ' + n0(lf) + ' working-age residents have a job, and firms paid ' + qty(wages) + ' 🔥 in wages last round.';
+  let lever;
+  if (pop < 1) lever = 'Nobody lives here yet, so nobody shops — housing and move-in pressure come first (see Residential).';
+  else if (lf > 0 && empShare < 0.5) lever = 'The lever is jobs: most working-age residents have none, so no wages reach the shops. Found operations and staff them at the Job Fair.';
+  else if (wages < Math.max(1, pop)) lever = 'The lever is wages: residents have work but almost nothing is being paid — the firms are out of cash or run empty. Staff them, feed them stock, and check the Economy card for the ones marked Out of Cash.';
+  else if (pop < 20) lever = 'The lever is residents: too few live here yet for a basket to add up. Zone housing and raise move-in pressure (see Residential).';
+  else lever = 'The lever is rents: residents are paid but keep almost nothing after rent, so cheaper zoning (low rent or high density) is what frees spending.';
+  return { why, lever, stat: [
+    { k: 'Residents', v: n0(pop) },
+    { k: 'Savings', v: qty(savings) + ' 🔥' },
+    { k: 'Wages / round', v: qty(wages) + ' 🔥' },
+    { k: 'Employed', v: n0(emp) + ' / ' + n0(lf) },
+  ] };
+}
+
 function commercial() {
   const out = [];
   const E = mod('MythicEconomy');
@@ -331,9 +362,13 @@ function commercial() {
          shops are coping — it is a city with no consumer economy yet. Calling it
          "shops are keeping up" would be the mirror image of the bug: satisfaction
          really is 0%, and the reason it is 0% is that there is nothing there. */
+      /* bug-mtvdpfce: this line named the symptom and not its parts. The want
+         figure is residents' savings × their spend share, and savings are wages
+         — so the sentence now prints those four numbers and the lever. */
+      const sp = residentsSpending(snap);
       out.push({ sign: '−', w: -0.12, label: 'Almost Nobody Is Shopping Yet',
-        why: 'The whole retail basket came to ' + qty(rs.want) + ' 🔥 this shopping round — less than the price of one unit of anything in it. ' +
-             'Satisfaction reads ' + pc(1 - rs.share) + ', but there is nothing there to satisfy: a want that small is a rounding remainder, not a shortage, and it is not a reason to zone shops.',
+        why: 'The whole retail basket came to ' + qty(rs.want) + ' 🔥 this shopping round — less than the price of one unit of anything in it, ' +
+             'so the ' + pc(1 - rs.share) + ' satisfaction figure is measuring a want too small to mean anything. ' + sp.why + ' ' + sp.lever,
         src: 'what shoppers wanted this round, against what the shops could actually serve' });
     } else if (rs.units < 1) {
       out.push({ sign: '−', w: -0.12, label: 'Shops Are Keeping Up',
@@ -381,7 +416,8 @@ function commercial() {
   }
 
   utilityTerms(out);
-  return { causes: out, note: 'Commercial demand rises with residents and with what those residents could not buy. Every term below is a live reading; the meter is the midpoint plus their signed weights.' };
+  const sp = residentsSpending(snap);
+  return { causes: out, stat: sp.stat, note: 'Commercial demand rises with residents and with what those residents could not buy. Every term below is a live reading; the meter is the midpoint plus their signed weights.' };
 }
 
 /* ════════════════════════════════════════════════════════════════════════════
@@ -539,10 +575,10 @@ function office() {
    term at all returns null instead, and the panel draws "not modelled". */
 function fold(res) {
   const causes = res.causes || [];
-  if (!causes.length) return { value: null, causes: [], note: res.note };
+  if (!causes.length) return { value: null, causes: [], stat: res.stat || [], note: res.note };
   let v = 0.5;
   for (const c of causes) v += Number(c.w) || 0;
-  return { value: clamp01(v), causes: causes.slice().sort((a, b) => Math.abs(b.w) - Math.abs(a.w)), note: res.note };
+  return { value: clamp01(v), causes: causes.slice().sort((a, b) => Math.abs(b.w) - Math.abs(a.w)), stat: res.stat || [], note: res.note };
 }
 
 /** The whole panel, in one call. Safe on a page where none of the sibling

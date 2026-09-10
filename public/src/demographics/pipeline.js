@@ -439,6 +439,7 @@ export function step(days, ctx) {
   const seekers = Math.max(1, (ctx && ctx.seekers) || 0);
   const fit = jobFitByEducation(posts, seekers);
   const services = clamp01(ctx && ctx.services != null ? ctx.services : 1);
+  const servicesBy = ctx && Array.isArray(ctx.servicesBy) ? ctx.servicesBy : null;
   const budget = Math.max(0, Number(ctx && ctx.budget) || 0);
   const dm = D();
 
@@ -780,6 +781,11 @@ export function step(days, ctx) {
         panel uses: a meter with a SIGNED CAUSAL LIST. */
   S.attract = attractW > 0 ? attractSum / attractW : 0;
   S.pull = pullTerms(pJobsW > 0 ? pJobs / pJobsW : null, pRentW > 0 ? pRent / pRentW : null, services, dm.arrival.weight);
+  /* …and when services is the weakest draw, the sentence names WHICH ones. */
+  if (S.pull && S.pull.worst === 'services' && servicesBy) {
+    const short = servicesShortList(servicesBy, dm);
+    if (short) S.pull.worstText = 'Weakest right now: services — ' + short + ' ' + SERVICES_FIX;
+  }
   /* 🔴 A CAUSE HAS TO BE MATERIAL OR IT IS NOISE. Some household type is turned
      away from some zone in every city that has ever existed — students cannot
      afford detached houses anywhere — and reporting that as a limit made a
@@ -835,7 +841,7 @@ export function step(days, ctx) {
     }
   }
   if (services > dm.ui.servicesGood) causes.push({ sign: '+', label: 'Services are keeping up', why: 'The shops and utilities are meeting what residents ask of them.' });
-  else if (services < dm.ui.servicesPoor) causes.push({ sign: '−', label: 'Services falling short', why: 'Residents cannot buy what they need here, and word gets around.' });
+  else if (services < dm.ui.servicesPoor) causes.push({ sign: '−', label: 'Services falling short', why: servicesShortText(servicesBy, dm) });
   if (tight > dm.ui.tightNotice) causes.push({ sign: '−', label: 'Housing market is tight', why: 'Rents are ' + Math.round((tight - 1) * 100) + '% above baseline because almost nothing is free.' });
   S.causes = causes.slice(0, Math.max(3, dm.ui.maxCauses));
 
@@ -960,4 +966,26 @@ function worstSentence(t) {
 }
 export function pullWorstText(pull) {
   return pull && pull.worstText ? pull.worstText : 'Wages, rents, jobs and services are what move that; the row under this meter shows which one is weakest.';
+}
+
+/* ── WHICH SERVICES ARE SHORT ────────────────────────────────────────────────
+   bug-mtvdb20t: "Services falling short" told a player residents cannot buy
+   what they need and did not say what, or how to fix it. `list` is
+   index.js servicesBreakdown() — one row per basket category with the
+   economy's own satisfaction and the shop that sells it. The short ones
+   (below servicesGood) are named worst-first, at most four, each with its
+   shop, and one fix sentence follows. */
+export const SERVICES_FIX = 'Each is sold by the shop named: found one from the Operations catalogue, staff it at the Job Fair, and keep it stocked — an unstaffed or empty shop serves nothing.';
+export function servicesShortList(list, dm) {
+  if (!Array.isArray(list) || !list.length) return '';
+  const good = dm && dm.ui && dm.ui.servicesGood != null ? dm.ui.servicesGood : 0.75;
+  const short = list.filter((r) => r && r.sat < good).sort((a, b) => a.sat - b.sat || b.want - a.want).slice(0, 4);
+  if (!short.length) return '';
+  return 'Short: ' + short.map((r) => (r.ico ? r.ico + ' ' : '') + r.name + ' ' + Math.round(r.sat * 100) + '%' + (r.shop ? ' (' + r.shop + ')' : '')).join(', ') + '.';
+}
+export function servicesShortText(list, dm) {
+  const lead = 'Residents cannot buy what they need here, and word gets around. ';
+  const short = servicesShortList(list, dm);
+  if (!short) return lead + 'The economy has not reported which categories are short yet — open the Economy card once the shops have traded a round.';
+  return lead + short + ' ' + SERVICES_FIX;
 }
