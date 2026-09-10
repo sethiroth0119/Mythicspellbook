@@ -48,7 +48,10 @@
 
 const FARM_ECON = {
   /* 🌾 Feed. One trough per building; feed drains per animal per hour. */
-  feedMillRecipe: { inputs: { food: 8, water: 6 }, output: { animalFeed: 24 } },
+  /* 🌾 Owner's rule (2026-09-10): feed is ground from CORN, BREAD and FRUIT —
+     three ledger resources the city farms and bakeries already bank — once
+     the Feed Mill stands (craft() gates on the mill being built and ready). */
+  feedMillRecipe: { inputs: { corn: 6, bread: 4, fruit: 4 }, output: { animalFeed: 24 } },
   troughCap: 240,
   troughCapPerLevel: 120,
   grazeDiscount: 0.5,             // pasture animals eat half from the trough (COMMON ground)
@@ -422,15 +425,17 @@ const FARM_ANIMALS = [
 ];
 
 /* ── Buildings and stations ──────────────────────────────────────────────── */
+/* 🏗 Costs raised on the owner's instruction (2026-09-10): resources ×2 and
+   Cinder ×1.5 on every level of every building, from the v121v94 table. */
 const FARM_BUILDINGS = [
   {
     id: 'feedmill', name: 'Feed Mill', emoji: '🌾', accent: '#d9c46a', station: true, role: 'feed',
-    desc: 'Grinds rations and water into Animal Feed. Nothing on the farm eats without it.',
+    desc: 'Grinds corn, bread and fruit into Animal Feed. Nothing on the farm eats without it.',
     maxLevel: 3, buildH: [0.5, 2, 6], plot: { x: 1, y: 1, w: 3, h: 2 },
     cost: [
-      { cinder: 22000, wood: 30, stone: 20, water: 10 },
-      { cinder: 60000, wood: 70, stone: 45, metal: 20 },
-      { cinder: 150000, wood: 150, stone: 100, metal: 60 },
+      { cinder: 33000, wood: 60, stone: 40, water: 20 },
+      { cinder: 90000, wood: 140, stone: 90, metal: 40 },
+      { cinder: 225000, wood: 300, stone: 200, metal: 120 },
     ],
   },
   {
@@ -439,9 +444,9 @@ const FARM_BUILDINGS = [
     maxLevel: 3, buildH: [0.75, 2.5, 6], plot: { x: 5, y: 1, w: 2, h: 2 }, yard: { x: 5, y: 3, w: 3, h: 3 },
     capacity: lv => 6 * lv,
     cost: [
-      { cinder: 30000, wood: 40, cloth: 10 },
-      { cinder: 75000, wood: 90, cloth: 25, metal: 15 },
-      { cinder: 180000, wood: 180, cloth: 60, metal: 40 },
+      { cinder: 45000, wood: 80, cloth: 20 },
+      { cinder: 112500, wood: 180, cloth: 50, metal: 30 },
+      { cinder: 270000, wood: 360, cloth: 120, metal: 80 },
     ],
   },
   {
@@ -450,9 +455,9 @@ const FARM_BUILDINGS = [
     maxLevel: 3, buildH: [4, 10, 24], plot: { x: 9, y: 1, w: 4, h: 3 }, yard: { x: 9, y: 4, w: 4, h: 4 },
     capacity: lv => 3 * lv,
     cost: [
-      { cinder: 90000, wood: 120, stone: 60, metal: 30 },
-      { cinder: 220000, wood: 260, stone: 140, metal: 80 },
-      { cinder: 520000, wood: 520, stone: 300, metal: 180, supplies: 60 },
+      { cinder: 135000, wood: 240, stone: 120, metal: 60 },
+      { cinder: 330000, wood: 520, stone: 280, metal: 160 },
+      { cinder: 780000, wood: 1040, stone: 600, metal: 360, supplies: 120 },
     ],
   },
   {
@@ -461,9 +466,9 @@ const FARM_BUILDINGS = [
     maxLevel: 3, buildH: [1.5, 4, 10], plot: { x: 1, y: 5, w: 3, h: 2 }, yard: { x: 1, y: 7, w: 3, h: 3 },
     capacity: lv => 4 * lv,
     cost: [
-      { cinder: 45000, wood: 60, stone: 30, water: 20 },
-      { cinder: 110000, wood: 130, stone: 70, water: 45 },
-      { cinder: 260000, wood: 260, stone: 150, water: 100, metal: 30 },
+      { cinder: 67500, wood: 120, stone: 60, water: 40 },
+      { cinder: 165000, wood: 260, stone: 140, water: 90 },
+      { cinder: 390000, wood: 520, stone: 300, water: 200, metal: 60 },
     ],
   },
   {
@@ -472,9 +477,9 @@ const FARM_BUILDINGS = [
     maxLevel: 3, buildH: [1, 3, 8], plot: { x: 5, y: 7, w: 3, h: 2 }, yard: { x: 5, y: 9, w: 4, h: 4 },
     capacity: lv => 5 * lv,
     cost: [
-      { cinder: 40000, wood: 80, stone: 10 },
-      { cinder: 100000, wood: 170, stone: 30, cloth: 20 },
-      { cinder: 240000, wood: 340, stone: 70, cloth: 50, metal: 20 },
+      { cinder: 60000, wood: 160, stone: 20 },
+      { cinder: 150000, wood: 340, stone: 60, cloth: 40 },
+      { cinder: 360000, wood: 680, stone: 140, cloth: 100, metal: 40 },
     ],
   },
   {
@@ -483,9 +488,9 @@ const FARM_BUILDINGS = [
     maxLevel: 3, buildH: [0.75, 2, 5], plot: { x: 12, y: 8, w: 2, h: 1 }, yard: { x: 12, y: 9, w: 2, h: 2 },
     capacity: lv => 2 * lv,
     cost: [
-      { cinder: 28000, wood: 35, stone: 15, cloth: 5 },
-      { cinder: 70000, wood: 80, stone: 40, metal: 15 },
-      { cinder: 170000, wood: 160, stone: 90, metal: 40 },
+      { cinder: 42000, wood: 70, stone: 30, cloth: 10 },
+      { cinder: 105000, wood: 160, stone: 80, metal: 30 },
+      { cinder: 255000, wood: 320, stone: 180, metal: 80 },
     ],
   },
   {
@@ -493,9 +498,9 @@ const FARM_BUILDINGS = [
     desc: 'Where stock becomes meat, hide and feathers. Higher levels waste less and unlock the trophy cut.',
     maxLevel: 3, buildH: [1, 3, 8], plot: { x: 10, y: 9, w: 2, h: 2 },
     cost: [
-      { cinder: 35000, wood: 30, metal: 25, water: 15 },
-      { cinder: 90000, wood: 60, metal: 60, water: 30 },
-      { cinder: 210000, wood: 120, metal: 140, water: 60, supplies: 30 },
+      { cinder: 52500, wood: 60, metal: 50, water: 30 },
+      { cinder: 135000, wood: 120, metal: 120, water: 60 },
+      { cinder: 315000, wood: 240, metal: 280, water: 120, supplies: 60 },
     ],
   },
   {
@@ -503,9 +508,9 @@ const FARM_BUILDINGS = [
     desc: 'Cures raw hide into leather. Downwind of everything, for a reason.',
     maxLevel: 3, buildH: [2, 5, 12], plot: { x: 12, y: 11, w: 2, h: 2 },
     cost: [
-      { cinder: 48000, wood: 50, stone: 40, water: 30 },
-      { cinder: 120000, wood: 100, stone: 90, water: 60, metal: 20 },
-      { cinder: 280000, wood: 200, stone: 180, water: 120, metal: 50 },
+      { cinder: 72000, wood: 100, stone: 80, water: 60 },
+      { cinder: 180000, wood: 200, stone: 180, water: 120, metal: 40 },
+      { cinder: 420000, wood: 400, stone: 360, water: 240, metal: 100 },
     ],
   },
   {
@@ -513,9 +518,9 @@ const FARM_BUILDINGS = [
     desc: 'Cards and spins wool into cloth — the same cloth the city builder already prices.',
     maxLevel: 3, buildH: [1.5, 4, 10], plot: { x: 1, y: 11, w: 3, h: 2 },
     cost: [
-      { cinder: 42000, wood: 60, cloth: 15, metal: 10 },
-      { cinder: 105000, wood: 120, cloth: 35, metal: 25 },
-      { cinder: 250000, wood: 240, cloth: 80, metal: 60 },
+      { cinder: 63000, wood: 120, cloth: 30, metal: 20 },
+      { cinder: 157500, wood: 240, cloth: 70, metal: 50 },
+      { cinder: 375000, wood: 480, cloth: 160, metal: 120 },
     ],
   },
   {
@@ -523,9 +528,9 @@ const FARM_BUILDINGS = [
     desc: 'Treats sick stock from the medicine stash every hour it is open, and halves the odds of an outbreak. Higher levels cure faster.',
     maxLevel: 3, buildH: [2, 5, 12], plot: { x: 1, y: 13, w: 3, h: 1 },
     cost: [
-      { cinder: 55000, wood: 50, metal: 25, medicine: 6 },
-      { cinder: 140000, wood: 100, metal: 60, medicine: 15 },
-      { cinder: 330000, wood: 200, metal: 140, medicine: 35, supplies: 30 },
+      { cinder: 82500, wood: 100, metal: 50, medicine: 12 },
+      { cinder: 210000, wood: 200, metal: 120, medicine: 30 },
+      { cinder: 495000, wood: 400, metal: 280, medicine: 70, supplies: 60 },
     ],
   },
   {
@@ -533,8 +538,8 @@ const FARM_BUILDINGS = [
     desc: 'The auction ring. Consign a prize or rare beast on sale day and Athena calls the bids — in goods from the ring\'s regulars, or in Cinder from other players.',
     maxLevel: 2, buildH: [3, 8], plot: { x: 12, y: 13, w: 2, h: 1 },
     cost: [
-      { cinder: 80000, wood: 90, stone: 60, cloth: 20 },
-      { cinder: 220000, wood: 200, stone: 140, cloth: 50, metal: 40 },
+      { cinder: 120000, wood: 180, stone: 120, cloth: 40 },
+      { cinder: 330000, wood: 400, stone: 280, cloth: 100, metal: 80 },
     ],
   },
   {
@@ -543,9 +548,9 @@ const FARM_BUILDINGS = [
     desc: 'Smokes meat, boils eggs, sets milk: everything the farm makes can become rations.',
     maxLevel: 3, buildH: [1.5, 4, 10], plot: { x: 5, y: 13, w: 3, h: 1 },
     cost: [
-      { cinder: 38000, wood: 40, stone: 30, metal: 15 },
-      { cinder: 95000, wood: 80, stone: 70, metal: 35 },
-      { cinder: 230000, wood: 160, stone: 150, metal: 80, supplies: 25 },
+      { cinder: 57000, wood: 80, stone: 60, metal: 30 },
+      { cinder: 142500, wood: 160, stone: 140, metal: 70 },
+      { cinder: 345000, wood: 320, stone: 300, metal: 160, supplies: 50 },
     ],
   },
 ];
@@ -2737,7 +2742,7 @@ const FARM_CSS = `
 .farm-hudbtn .sep{width:1px;height:22px;background:rgba(255,255,255,.14)}
 .farm-hudbtn.boost{border-color:#8affd655}
 /* 🎮 The bottom toolbar: one icon button per panel. */
-.farm-bar{position:absolute;left:50%;bottom:10px;transform:translateX(-50%);display:flex;gap:4px;padding:5px;background:rgba(10,13,20,.9);border:1px solid rgba(255,255,255,.14);border-radius:12px;z-index:4;backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);max-width:calc(100% - 20px);overflow-x:auto}
+.farm-bar{position:absolute;left:50%;top:10px;transform:translateX(-50%);display:flex;gap:4px;padding:5px;background:rgba(10,13,20,.9);border:1px solid rgba(255,255,255,.14);border-radius:12px;z-index:4;backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);max-width:calc(100% - 20px);overflow-x:auto}
 .farm-tab{display:flex;flex-direction:column;align-items:center;gap:2px;min-width:62px;padding:6px 8px;background:none;border:1px solid transparent;border-radius:9px;color:#9aa3b5;cursor:pointer;font-size:.62rem;letter-spacing:.03em;white-space:nowrap;text-transform:uppercase}
 .farm-tab .ic{font-size:1.35rem;line-height:1}
 .farm-tab:hover{background:rgba(255,255,255,.06);color:#e8e2d6}
@@ -2835,7 +2840,7 @@ const FARM_CSS = `
 .farm-grade{display:grid;grid-template-columns:repeat(4,1fr);gap:5px}
 .farm-grade .g{background:#0c0f16;border:1px solid #2a3140;border-radius:6px;padding:6px 4px;text-align:center;font-size:.68rem;color:#9aa3b5}
 .farm-grade .g b{display:block;font-size:1rem;color:#f4efe4}
-@media (max-width:760px){.farm-panel{left:0;right:0;top:auto;bottom:66px;width:auto;min-width:0;max-height:56vh;border-radius:10px 10px 0 0}.farm-bar{bottom:4px;gap:1px;padding:3px}.farm-tab{min-width:44px;padding:4px 3px;font-size:.5rem}.farm-tab .ic{font-size:1.2rem}.farm-hud{top:6px;left:6px}.farm-beast{grid-template-columns:1fr auto}.farm-beast .hp{grid-column:1/-1}.farm-stage .farm-hint{display:none}}
+@media (max-width:760px){.farm-panel{left:0;right:0;top:auto;bottom:0;width:auto;min-width:0;max-height:56vh;border-radius:10px 10px 0 0}.farm-bar{top:4px;bottom:auto;gap:1px;padding:3px}.farm-tab{min-width:44px;padding:4px 3px;font-size:.5rem}.farm-tab .ic{font-size:1.2rem}.farm-hud{top:64px;left:6px}.farm-beast{grid-template-columns:1fr auto}.farm-beast .hp{grid-column:1/-1}.farm-stage .farm-hint{display:none}}
 @media (prefers-reduced-motion:reduce){.farm-stage .farm-banner{animation:none}}
 `;
 

@@ -610,6 +610,17 @@
       (lbSide === 'player' && lbBoard !== 'ranked'
         ? '<p class="mgp-hint">Read from each player’s own save. <strong>Ranked</strong> is counted from the ladder’s match rows instead, so it is the one board a save cannot flatter.</p>'
         : '');
+    /* 🧍 Owner's ask (2026-09-10): "make sure the leaderboard stats on the
+       little phone" — the board now says where YOU stand: your row is marked
+       above, and when you are not in the top it says so instead of nothing. */
+    try {
+      const myIdx = me ? rows.findIndex((r) => String(r.owner_id || r.user_id || '') === String(me)) : -1;
+      const you = document.createElement('p'); you.className = 'mgp-hint mgp-you';
+      you.innerHTML = myIdx >= 0
+        ? '🧍 You are <strong>#' + (myIdx + 1) + '</strong> of the ' + rows.length + ' ranked on this board.'
+        : (me ? '🧍 You are not in the top ' + rows.length + ' on this board yet.' : '🧍 Sign in to see where you stand.');
+      box.appendChild(you);
+    } catch (e) {}
     const note = $('mgp-lb-note'); if (note) note.textContent = cur.note || (rows.length + ' ranked');
   }
   const mdSeam = () => { try { return window.MythicMayorDash || null; } catch (e) { return null; } };
