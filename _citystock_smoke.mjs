@@ -98,7 +98,7 @@ const BUILDINGS = (() => {
 {
   /* Both reports were filed FROM the vault, so the card has to answer the
      question that was actually asked, not merely print numbers. */
-  ok(/These are city goods, not vault resources/.test(NC), 'the card names the distinction the reports tripped on');
+  ok(/City goods — rations, planks and remedies can be sent to your stash/.test(NC) && /data-stash-send=/.test(NC), 'the card names the distinction the reports tripped on — and since v121v105 says which goods can be sent to the stash');
   ok(/will not appear in the Bank of Ethos Ops Vault/.test(NC),
     'and says so about the exact screen the player went looking on');
   ok(/cannot be deposited, withdrawn or contributed to the Foundation Reserve/.test(NC),

@@ -39394,7 +39394,7 @@ body:has(#pack-opener-frame) #chat-overlay {
   // the console. Bump this every deploy alongside sw.js's CACHE_VERSION. If two
   // machines show different stamps, the older one is on stale code (hard-refresh);
   // if they MATCH but content still differs, it is a DATA/publish issue, not code.
-  window.BUILD_VERSION = 'v121v104';
+  window.BUILD_VERSION = 'v121v105';
   try {
     console.info('%cMythic Spellbook ' + window.BUILD_VERSION + '%c — build check: run  __mg.version',
       'font-weight:700;color:#b48cff', 'color:#7d7499');
@@ -42743,6 +42743,12 @@ const RESOURCES = [
      off the things that attack boats complete the five. */
   { id: 'primeSeafood',            name: 'Prime Seafood',              icon: '🦞', color: '#e07a5f' },
   { id: 'monsterParts',            name: 'Leviathan Parts',            icon: '🦈', color: '#8fb3c9' },
+  /* 🏙 City goods promoted to game resources (v121v105, bug-mtw1qg89 /
+     bug-mtw1jo7k / bug-mtubctds): still CITY_STOCK inside the city builder;
+     the Warehouse card sends a pile into this ledger. */
+  { id: 'rations',                 name: 'Rations',                    icon: '🍱', color: '#e0b060' },
+  { id: 'planks',                  name: 'Planks',                     icon: '🪚', color: '#c08a4a' },
+  { id: 'remedies',                name: 'Remedies',                   icon: '🩹', color: '#ff8aa0' },
 
   /* 🛣 ✈️ WHAT THE CUTS TURN INTO. Both were already in the chain catalogue
      with a full recipe and NO PRODUCER ANYWHERE — the inert case this list's
@@ -69852,6 +69858,27 @@ async function nodeCollect(nodeId) {
     NodeCollectsInFlight.delete(n.id);
   }
 }
+/* 🗑 RELEASE A NODE (bug-mtw1v5e2). Six licences per corporation is the design
+   (NODE_MAX_PER_CORP); what was missing was any way to give one up, so a
+   duplicate held a slot for ever. The row is deleted outright (economy_nodes
+   en_del: owner only); a city that rang itself with this anchor re-rings on
+   its next open. Nothing is refunded — the confirm says so. */
+async function nodeRelease(nodeId) {
+  try {
+    if (!initCloud() || !Profile.cloud || !Profile.cloud.signedIn) { showToast('☁ Sign in first.', 2600); return false; }
+    const n = ((FoundationReserve && FoundationReserve.nodes) || []).find(x => x && String(x.id) === String(nodeId));
+    if (!n) { showToast('That node is not in your reserve.', 3000); return false; }
+    const me = Profile.cloud.userId;
+    if (n.owner_id && String(n.owner_id) !== String(me)) { showToast('Only the member who licensed a node can release it.', 3600); return false; }
+    if (!(await gcConfirm('Release ' + (n.name || 'this node') + '?\n\nIt is deleted for good, nothing is refunded, and one of your ' + NODE_MAX_PER_CORP + ' licence slots frees up.'))) return false;
+    const r = await Cloud.client.from('economy_nodes').delete().eq('id', n.id).eq('owner_id', me).select('id');
+    if (r && r.error) throw r.error;
+    if (!r || !Array.isArray(r.data) || !r.data.length) { showToast('⚠ The node was not released — it may belong to another member.', 4200); return false; }
+    try { await frFetch(); } catch (e) {}
+    showToast('🗑 ' + (n.name || 'Node') + ' released — a licence slot is free.', 4200);
+    return true;
+  } catch (e) { showToast('⚠ Could not release that node.', 4000); return false; }
+}
 async function nodeMaintain(nodeId) {
   const n = (FoundationReserve.nodes || []).find(x => x.id === nodeId);
   if (!n) return false;
@@ -70239,6 +70266,7 @@ function openFoundationReserve() {
               '<div style="display:flex;gap:6px;margin-top:8px">' +
                 '<button data-node-collect="' + esc(n.id) + '" ' + ((!active || claim <= 0 || cd > 0) ? 'disabled' : '') + ' style="flex:1;cursor:pointer;border-radius:7px;padding:0.45rem 0.7rem;border:1px solid #bca183;background:' + ((!active || claim <= 0 || cd > 0) ? 'rgba(149,117,81,0.16)' : 'linear-gradient(180deg,#987752,#57442f)') + ';color:#f8f5f1;font-weight:800;opacity:' + ((!active || claim <= 0 || cd > 0) ? '0.55' : '1') + '">' + (cd > 0 ? 'Cooldown ' + Math.ceil(cd / 3600000) + 'h' : (claim > 0 ? 'Collect ' + numF(claim) + ' 🔥' : (risk && risk.lock ? '🔒 Locked' : 'Nothing to collect'))) + '</button>' +
                 '<button data-node-maintain="' + esc(n.id) + '" style="cursor:pointer;border-radius:7px;padding:0.45rem 0.8rem;border:1px solid rgba(208,189,167,0.45);background:rgba(149,117,81,0.22);color:#f3eee8;font-weight:700">🛠 Maintain</button>' +
+                '<button data-node-release="' + esc(n.id) + '" title="Give this node up for good and free one of your ' + NODE_MAX_PER_CORP + ' licence slots. Nothing is refunded." style="cursor:pointer;border-radius:7px;padding:0.45rem 0.7rem;border:1px solid rgba(255,107,107,0.4);background:rgba(120,30,30,0.2);color:#ffb0b0;font-weight:700">🗑 Release</button>' +
               '</div></div>';
           }).join('')
         : '<div class="ink-dim" style="padding:1rem 0;text-align:center">No nodes yet — license one below.</div>';
@@ -70383,6 +70411,7 @@ function openFoundationReserve() {
       //    an early-return path.
       host.querySelectorAll('[data-node-collect]').forEach(b => { b.onclick = () => { if (b.disabled) return; b.disabled = true; nodeCollect(b.getAttribute('data-node-collect')).then(() => render()); }; });
       host.querySelectorAll('[data-node-maintain]').forEach(b => { b.onclick = () => { nodeMaintain(b.getAttribute('data-node-maintain')).then(() => render()); }; });
+      host.querySelectorAll('[data-node-release]').forEach(b => { b.onclick = () => { nodeRelease(b.getAttribute('data-node-release')).then(() => render()); }; });
       host.querySelectorAll('[data-node-defend]').forEach(b => { b.onclick = () => { if (b.disabled) return; b.disabled = true; nodeDefend(b.getAttribute('data-node-defend')).then(() => render()); }; });
     };
 
@@ -85369,6 +85398,9 @@ const SALVAGE_RES = [
   { id: "richMilk",                 name: "Rich Milk",                   icon: "🥛",  wt: 1.1 },
   { id: "primeSeafood",            name: "Prime Seafood",               icon: "🦞",  wt: 1 },
   { id: "monsterParts",            name: "Leviathan Parts",             icon: "🦈",  wt: 1.2 },
+  { id: "rations",                 name: "Rations",                    icon: "🍱",  wt: 1.0 },
+  { id: "planks",                  name: "Planks",                     icon: "🪚",  wt: 1.0 },
+  { id: "remedies",                name: "Remedies",                   icon: "🩹",  wt: 1.0 },
   { id: "fineWool",                 name: "Fine Wool",                   icon: "🧶",  wt: 1 },
   { id: "poultry",                 name: "Poultry",                     icon: "🌾",  wt: 1.1 },
   { id: "eggs",                    name: "Eggs",                        icon: "🌾",  wt: 1.1 },
@@ -98422,6 +98454,24 @@ function _jbHandleAction(a) {
             : (_moved ? '↩ Cancelled — ' + _amt + ' returned to you.' : '↩ Cancelled.'), 4200);
           try { corpEnsure().then(_jbSendData); } catch (e) { _jbSendData(); }
         } catch (e) {}
+      })();
+    } else if (a.kind === 'corpDissolve') {
+      /* 🏢 SHUT DOWN (bug-mtw1eyki): the founder's only door out. sql/130
+         corp_dissolve refuses while the treasury or the vault hold anything;
+         members, licences, operations and offers go with the row (cascade). */
+      (async function () {
+        try {
+          if (!Corp.mine || !Corp.amOwner) { showToast('Only the founder can shut a corporation down.', 3200); return; }
+          const r = await Cloud.client.rpc('corp_dissolve', { p_corp_id: Corp.mine.id });
+          const j = r && r.data;
+          if ((r && r.error) || !j || j.ok !== true) { showToast('⚠ Not shut down — ' + ((j && j.error) || (r && r.error && r.error.message) || 'try again') + '.', 6500); return; }
+          Corp.mine = null; Corp.roster = []; Corp.requests = []; Corp.vault = []; Corp.amOwner = false; Corp.treasury = 0; Corp.treasuryLog = []; Corp.treasury24h = 0; Corp.treasuryKnown = false;
+          try { Corp.owned = null; Corp.myCorps = []; Corp.licenses = []; } catch (e) {}
+          try { Operations.list = []; } catch (e) {}
+          showToast('🏢 ' + (j.name || 'Your corporation') + ' is shut down' + (j.members_released ? ' — ' + j.members_released + ' member(s) released' : '') + '. You can found or join another.', 6000);
+          try { saveProfile(); } catch (e) {}
+          _jbSendData();
+        } catch (e) { showToast('⚠ Could not shut the corporation down.', 4200); }
       })();
     } else if (a.kind === 'corpLeave') {
       (async function () {
@@ -183451,6 +183501,7 @@ const RESOURCE_CINDER_VALUE = {
   //    the Cold Storage bench), so it prices above food and below medicine;
   //    Leviathan Parts are the rarest thing the sea gives up.
   primeSeafood: 8, monsterParts: 12,
+  rations: 5, planks: 6, remedies: 9,
   // 🐄 the farm's goods — priced by hand off the Feed Mill's own recipe (8 food +
   //    6 water → 24 feed ≈ 1.2, rounded up so feed is never cheaper than the ration
   //    it is milled from) and each product's place above it; grade-2 goods double.
@@ -212980,8 +213031,11 @@ function _rlcAscentEditorOpen(camp) {
 }
 function _rlcAscentOn(camp) {
   try {
+    /* 🏔 3D ONLY (owner, 2026-09-10). A stored '0' from the old Classic-map
+       button no longer opts anybody out, and neither does a campaign flag. */
+    return true;
+    // eslint-disable-next-line no-unreachable
     const f = localStorage.getItem('hg_ascent_map');
-    if (f === '0') return false;                 // hard off (classic 2D map)
     if (f === '1') return true;                  // hard on
     // 🏔 DEFAULT ON — the Ascent map IS the roguelite map now. A campaign can
     // still opt OUT (useAscentMap === false) and the in-map "🗺 Classic map"
@@ -213026,10 +213080,8 @@ function _rlcAscentMount(camp, run) {
     b.onclick = fn; return b;
   };
   bar.appendChild(mk('← Campaigns', () => { _rlcAscentUnmount(); App.screen = 'rlcList'; render(); }));
-  bar.appendChild(mk('🗺 Classic map', () => {
-    try { localStorage.setItem('hg_ascent_map', '0'); } catch (e) {}
-    _rlcAscentUnmount(); render();
-  }));
+  /* 🗺 The "Classic map" button is gone (owner, 2026-09-10): deployed missions
+     play on the 3D Ascent map only. The 2D board code stays for the editor. */
   host.appendChild(bar);
   document.body.appendChild(host);
   _RLCA.host = host; _RLCA.frame = frame; _RLCA.campId = camp.id; _RLCA.ready = false;
@@ -264121,8 +264173,8 @@ render();
        that works everywhere except the one early path nobody tested. It is
        2KB with no dependencies. -->
 <script src="src/econ/peg.js?v=v121q51"></script>
-<script src="src/battle/effects.js?v=v121v104" defer></script>
-<script src="src/phone/handset.js?v=v121v104" defer></script>
+<script src="src/battle/effects.js?v=v121v105" defer></script>
+<script src="src/phone/handset.js?v=v121v105" defer></script>
 <script src="src/battle/combat.js?v=120m4" defer></script>
 <script src="src/battle/targeting.js?v=121e3hex" defer></script>
 <link rel="stylesheet" href="src/sprites/frames.css?v=120k3">

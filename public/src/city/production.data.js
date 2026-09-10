@@ -539,6 +539,7 @@ export const MINIGAME_IDS = [
   /* 🎣 Woods Fishing (v121v96): the premium catch and what comes off the things that
      attack boats. Mini-game output, like the refinery's cuts above. */
   'primeSeafood', 'monsterParts',
+  'rations', 'planks', 'remedies',
 ];
 
 /* 🧱 THE FOURTH SET: ids promoted out of the CITY'S OWN STOCK.

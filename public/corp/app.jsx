@@ -1373,6 +1373,17 @@ function CorpGuild({ econ, toast, onClose, onFound }) {
             )}
             {amOwner && (
               <div style={{ marginTop: 16 }}>
+                {/* 🏢 SHUT DOWN (bug-mtw1eyki): the founder's door out. Typed-name
+                    confirm; the server refuses while the treasury or vault hold anything. */}
+                <button className="btn ghost" style={{ marginBottom: 14, borderColor: 'var(--toxic-soft)', color: 'var(--toxic)' }}
+                  title="Close this corporation for good. Members are released, licences and operations go with it. The treasury and vault must be empty first."
+                  onClick={() => {
+                    const nm = String((econ && econ.corp && econ.corp.name) || '').trim();
+                    const t = window.prompt('Shut down ' + (nm || 'your corporation') + '?\n\nThis cannot be undone. Members are released, licences and operations go with it, and the treasury and vault must already be empty.\n\nType the corporation name to confirm:');
+                    if (t == null) return;
+                    if (nm && t.trim().toLowerCase() !== nm.toLowerCase()) { window.alert('The name did not match — nothing was done.'); return; }
+                    act({ kind: 'corpDissolve' }); onClose();
+                  }}>🏢 Shut down corporation</button>
                 <div className="mono muted" style={{ fontSize: 10.5, letterSpacing: '.12em', textTransform: 'uppercase', marginBottom: 6 }}>
                   Applications {requests.length ? '· ' + requests.length : ''}
                 </div>

@@ -76,7 +76,7 @@ function fnText(name) {
   const R = SRC.slice(SRC.indexOf('const RESOURCES = ['), SRC.indexOf('\n];', SRC.indexOf('const RESOURCES = [')));
   for (const id of ['freshFish', 'shellfish', 'seaweed', 'primeSeafood', 'monsterParts']) ok(new RegExp("\\{ id: '" + id + "',").test(R), 'RESOURCES has ' + id);
   const ids = (R.match(/^  \{ id: '([A-Za-z0-9_]+)'/gm) || []).map((m) => m.slice(9, -1));
-  ok(ids.slice(-2).join(',') === 'primeSeafood,monsterParts', 'the two new ids are LAST (the gauntlet pins the order)');
+  ok(ids.slice(-5).join(',') === 'primeSeafood,monsterParts,rations,planks,remedies', 'the two fishing ids sit right before the three v121v105 city goods, all LAST (the gauntlet pins the order)');
   ok(new Set(ids).size === ids.length, 'no RESOURCES id is duplicated');
   /* catch banking, driven */
   const bank = fnText('_wf3BankCatch');

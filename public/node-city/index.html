@@ -9,7 +9,7 @@
      believed the file was already live. Only a CONTENT change moves the hash
      and forces a re-upload, so bump this stamp whenever the city 404s, and
      probe it (grep NC_BUILD on the served page) to prove the deploy landed. -->
-<script>window.NC_BUILD = "v121v104-cohome";</script>
+<script>window.NC_BUILD = "v121v105-batch";</script>
 <!-- ════════════════════════════════════════════════════════════════════════
      NODE CITY — SimCity-style settlement layer for Mythic Spellbook.
      Three.js WebGPU (auto-falls back to WebGL2). Realistic sun/moon cycle.
@@ -4255,6 +4255,9 @@ const CITY_STOCK = {
   planks:     { name: 'Planks',     ico: '🪚', desc: 'Milled timber and dressed stone. What a construction yard actually lays.' },
 };
 const STOCK_KEYS = Object.keys(CITY_STOCK);
+/* 📤 The city goods that are ALSO game resources (index.html RESOURCES rows,
+   v121v105) and may be moved into the player's stash from the Warehouse card. */
+const STOCK_STASHABLE = ['rations', 'planks', 'remedies'];
 // Storage: a small base buffer, widened by Warehouses. city-buildings.md gives
 // the Warehouse "+2,000 storage"; at this city's scale (rates are per-MINUTE
 // and a Farm makes 1.5/min) that divides by 5 the same way costs do below.
@@ -29338,6 +29341,20 @@ async function economyTick(dtMin) {
   try { await publicWorksTick(); } catch (e) {}
   for (const k in prodPerMin) prodPerMin[k] = 0;
   const spendNeeds = {};
+  /* ⚗️ FAIR SHARE OF A SCARCE STOCK (bug-mtvziq1a). `demandFull` is what every
+     consumer WOULD draw at full rate; `SR` is last tick's share (0.9 × stock ÷
+     demand, ≤ 1) and scales this tick's draw AND output. Before this, every
+     consumer was charged its full draw before the gate decided whether it ran,
+     and the total was clamped off the stock — so any city whose reagent demand
+     beat supply read 0 every tick, every consumer sat "offline", and the stock
+     never accumulated however much the smelters made. */
+  const demandFull = {};
+  /* The share is read off the shelf NOW — after last tick's spend and before
+     this tick's production — against LAST tick's full demand, so a charge can
+     never exceed nine tenths of what is actually on the shelf. */
+  const SR = {};
+  { const demandPrev = economyTick._demandFull || {};
+    for (const r in demandPrev) if (CITY_STOCK[r]) SR[r] = demandPrev[r] > 0 ? Math.max(0, Math.min(1, 0.9 * stockOf(r) / demandPrev[r])) : 1; }
   // First pass: net rates
   const staff = staffingRatio();
   /* 📉 VITALS → OUTPUT. Computed ONCE per tick and passed down, so every
@@ -29953,16 +29970,23 @@ async function economyTick(dtMin) {
        invisible accelerant. */
     const omRes = tileOutputFactor(t, false, OM);
     const omCin = tileOutputFactor(t, true, OM);
+    /* ⚗️ Does it run, and at what share? Inputs are charged ONLY when it runs,
+       and both the draw and the output are scaled by the scarcest city-stock
+       input's share — a consumer short of reagents runs at 40% and burns 40%. */
+    let runOk = true, share = 1;
+    if (def.use) for (const u in def.use) {
+      if (haveOf(u) <= 0) runOk = false;
+      if (CITY_STOCK[u]) { const sr = SR[u]; if (sr != null && sr < share) share = sr; }
+    }
     if (def.use) for (const r in def.use) {
-      spendNeeds[r] = (spendNeeds[r] || 0) + def.use[r] * mult * omRes * dtMin;
-      prodPerMin[r] = (prodPerMin[r] || 0) - def.use[r] * mult * omRes;
-      if (r === 'water') waterNetRaw -= def.use[r] * mult;
+      demandFull[r] = (demandFull[r] || 0) + def.use[r] * mult * omRes * dtMin;
+      if (!runOk) continue;
+      spendNeeds[r] = (spendNeeds[r] || 0) + def.use[r] * mult * omRes * share * dtMin;
+      prodPerMin[r] = (prodPerMin[r] || 0) - def.use[r] * mult * omRes * share;
+      if (r === 'water') waterNetRaw -= def.use[r] * mult * share;
     }
     if (def.gen) for (const r in def.gen) {
-      // consumers only run if inputs available — checked crudely against the mirror
-      let ok = true;
-      if (def.use) for (const u in def.use) if (haveOf(u) <= 0) ok = false;
-      if (!ok) continue;
+      if (!runOk) continue;
       // ⚡ Power is never banked. It was already summed in the pre-pass; letting
       // it fall through here would accumulate a 'power' key in game.frac and
       // then try to addRes it into the camp ledger, which has no such resource.
@@ -29972,8 +29996,8 @@ async function economyTick(dtMin) {
          actually given — a wind turbine that reported its rating here while the
          pre-pass counted 40% of it would have the panel and the tooltip telling
          the player two different stories about the same building. */
-      if (r === 'power') { prodPerMin.power = (prodPerMin.power || 0) + def.gen[r] * mult * pwAvail(k); continue; }
-      const om = (r === 'cinder') ? omCin : omRes;
+      if (r === 'power') { prodPerMin.power = (prodPerMin.power || 0) + def.gen[r] * mult * share * pwAvail(k); continue; }
+      const om = ((r === 'cinder') ? omCin : omRes) * share;
       if (CITY_STOCK[r]) {
         // Refined goods top out at the Warehouse capacity — "without storage,
         // production stops when full" (city-buildings.md §2).
@@ -30275,6 +30299,11 @@ async function economyTick(dtMin) {
   // Spend consumption (fractional accumulate → whole spends). Raw-ingredient
   // fallback for the kitchens rides the same path.
   for (const r in rawDraw) { spendNeeds[r] = (spendNeeds[r] || 0) + rawDraw[r]; prodPerMin[r] = (prodPerMin[r] || 0) - rawDraw[r] / Math.max(1e-6, dtMin); }
+  /* ⚗️ Next tick's share, from what is on the shelf NOW (this tick's production
+     is already banked above) against what every consumer would draw. 0.9 keeps
+     a tenth on the shelf so the `haveOf <= 0` gate never flips a whole class of
+     buildings off for a tick. */
+  economyTick._demandFull = demandFull;
   economyTick._spendFrac = economyTick._spendFrac || {};
   const SF = economyTick._spendFrac;
   for (const r in spendNeeds) {
@@ -34003,9 +34032,10 @@ function insChain(t, x, z, mult, om) {
      supplies this" under it would be noise, not information. */
   const link = [];
   const nameOf = (rr) => (typeof resName === 'function' ? resName(rr) : rr);
+  /* 🔗 THE WHOLE LIST (bug-mtvzvnwt): it used to stop at four with "+N more",
+     which is the opposite of what a supply-chain reader opens the card for. */
   const listOf = (arr) => arr.length
-    ? arr.slice(0, 4).map((m) => m.ico + ' ' + logEsc(m.name) + (m.built ? ' ×' + m.built : ' <i>(none built)</i>')).join(', ')
-      + (arr.length > 4 ? ' +' + (arr.length - 4) + ' more' : '')
+    ? arr.map((m) => m.ico + ' ' + logEsc(m.name) + (m.built ? ' ×' + m.built : ' <i>(none built)</i>')).join(', ')
     : null;
   for (const rr of Object.keys(def.use || {})) {
     const from = listOf(_chainMakers(rr));
@@ -34749,12 +34779,20 @@ function insWorkPane(t, x, z, mult, om) {
         (CITY_STOCK[r] && CITY_STOCK[r].desc) || 'A refined good, held in the city\u2019s warehouses.');
     }).join('');
     const used = STOCK_KEYS.reduce((n, r) => n + stockOf(r), 0);
+    /* 📤 SEND TO STASH (bug-mtw1qg89 / bug-mtw1jo7k / bug-mtubctds): rations,
+       planks and remedies are game resources too since v121v105, so a pile
+       the city cannot use can be moved into the player's ledger — where the
+       Ops Vault, the Reserve and the Player Market see it. Player-driven, one
+       click per good: nothing here changes what the city keeps for itself. */
+    const sendRow = STOCK_STASHABLE.filter((r) => Math.floor(stockOf(r)) >= 1).map((r) =>
+      '<button class="btn small" data-stash-send="' + r + '" title="Move this city stock into your stash (the Ops Vault, Reserve and Player Market can hold it)">📤 ' + resIco(r) + ' Send ' + Math.floor(stockOf(r)).toLocaleString() + ' ' + resName(r) + ' to stash</button>').join(' ');
     out.push(insCardHtml('Refined stock', '+' + (def.stockCap * t.lvl).toLocaleString() + ' storage',
       rows +
+      (sendRow ? '<div class="insrow" style="display:flex;flex-wrap:wrap;gap:6px;margin:6px 0">' + sendRow + '</div>' : '') +
       insFac('Shelf ceiling, per good', Math.round(cap).toLocaleString() + ' — every good has its own ' + Math.round(cap).toLocaleString() + ', they do not share one pool') +
       insFac('Held across all six', Math.round(used).toLocaleString()) +
       /* Said plainly, because the reports were filed from the vault. */
-      insAlert('info', '🏦', 'These are city goods, not vault resources',
+      insAlert('info', '🏦', 'City goods — rations, planks and remedies can be sent to your stash',
         'Refined goods live in your warehouses and are spent by the buildings that need them. They are NOT part of your salvage ledger, so they will not appear in the Bank of Ethos Ops Vault and cannot be deposited, withdrawn or contributed to the Foundation Reserve. A full shelf stops the buildings that make it.')));
   }
   if (def.garrison) {
@@ -35403,6 +35441,23 @@ function insSelect(id, focus) {
 }
 $('instabs').addEventListener('click', (ev) => {
   const b = ev.target.closest('[data-tab]'); if (b) insSelect(b.dataset.tab, false);
+});
+/* 📤 Send to stash — delegated, the card repaints. Moves the whole pile of one
+   promoted good out of city stock into the ledger through the bridge. */
+$('inspect').addEventListener('click', async (ev) => {
+  const b = ev.target.closest('[data-stash-send]'); if (!b) return;
+  const r = b.getAttribute('data-stash-send');
+  if (!CITY_STOCK[r] || STOCK_STASHABLE.indexOf(r) < 0) return;
+  const n = Math.floor(stockOf(r)); if (n < 1) return;
+  b.disabled = true;
+  try {
+    game.stock[r] = Math.max(0, stockOf(r) - n);
+    const ok = await MythicCityBridge.addRes(r, n);
+    if (ok === false) { game.stock[r] = stockOf(r) + n; toast('⚠ Your stash could not take ' + resName(r) + ' — nothing moved.', 'bad'); }
+    else { toast('📤 ' + n.toLocaleString() + ' ' + resName(r) + ' moved to your stash.', 'good'); saveSoon(); }
+  } catch (e) { game.stock[r] = stockOf(r) + n; toast('⚠ Could not move ' + resName(r) + '.', 'bad'); }
+  try { updateHUD(); } catch (e) {}
+  b.disabled = false;
 });
 $('instabs').addEventListener('keydown', (ev) => {
   const bs = [...$('instabs').querySelectorAll('button')];
