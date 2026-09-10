@@ -9,7 +9,7 @@
      believed the file was already live. Only a CONTENT change moves the hash
      and forces a re-upload, so bump this stamp whenever the city 404s, and
      probe it (grep NC_BUILD on the served page) to prove the deploy landed. -->
-<script>window.NC_BUILD = "v121v102-farmfeed";</script>
+<script>window.NC_BUILD = "v121v103-farmsky";</script>
 <!-- ════════════════════════════════════════════════════════════════════════
      NODE CITY — SimCity-style settlement layer for Mythic Spellbook.
      Three.js WebGPU (auto-falls back to WebGL2). Realistic sun/moon cycle.
@@ -8288,6 +8288,20 @@ function skyEnvTick() {
    4b. WEATHER ENGINE — rare, random, real-time.
    ════════════════════════════════════════════════════════════════════ */
 const wx = { type: 'clear', until: 0, nextRoll: Date.now() + WX_ROLL_EVERY * 1000, flash: 0, flashAt: 0 };
+/* 🌦 PUBLISHED FOR THE HOMESTEAD (owner, 2026-09-10: "the weather should be
+   exactly like how the city builder weather and time is"). `wx` lives only in
+   this iframe and is never serialised, so the farm (a screen in the parent
+   game, open while this iframe is closed) had nothing to read. Every change
+   of type or deadline lands in localStorage (same origin), and the farm
+   bridge reads it back — honouring `until`, so a front that ended while the
+   city was shut reads as clear. */
+const _wxPub = { type: null, until: 0 };
+function _wxPublish() {
+  try {
+    _wxPub.type = wx.type; _wxPub.until = wx.until;
+    localStorage.setItem('nc_wx', JSON.stringify({ type: wx.type, until: Math.floor(wx.until || 0), at: Date.now() }));
+  } catch (e) {}
+}
 
 // ── particle systems: rain / snow / fire rain share one pool ──
 function makeFall(count, color, size, opacity) {
@@ -8577,6 +8591,7 @@ function endWeather() {
 
 function weatherTick(dt) {
   const now = Date.now();
+  if (wx.type !== _wxPub.type || wx.until !== _wxPub.until) _wxPublish();   // 🌦 the farm reads this
   // roll the dice — rarely
   /* The forecast front lands here. Checked before the roll so a warning can
      never be overwritten by a second roll while it is still pending. */

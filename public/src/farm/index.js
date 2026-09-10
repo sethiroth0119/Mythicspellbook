@@ -169,6 +169,7 @@ const FARM_ECON = {
     rain:  { label: 'Rain',   icon: '🌧', weight: 20, troughWater: 8, grazeMul: 0.7 },   // free water in the troughs, grass grows
     storm: { label: 'Storm',  icon: '⛈', weight: 10, eggMul: 0, roofRisk: 0.35 },       // hens stop laying, roofs at risk
     fog:   { label: 'Fog',    icon: '🌫', weight: 5,  raidMul: 1.5 },                    // raiders love it
+    snow:  { label: 'Snow',   icon: '🌨', weight: 0,  grazeMul: 0.5, eggMul: 0.5 },      // the city's snow — never rolled here, only mirrored
   },
 
   /* ⚔ Raids and events. One roll per `eventWindowH`, only when the farm
@@ -682,7 +683,35 @@ function seasonFor(now) {
 
 /* 🌦 Weather for the window containing `now`. */
 function weatherWindowIndex(now) { return Math.floor((now || Date.now()) / (FARM_ECON.weatherWindowH * H)); }
+/* 🌦 THE CITY'S WEATHER FIRST. node-city publishes its live `wx` (type + the
+   deadline of the current front) and the bridge hands it over; the farm's
+   own seeded roll below is only the fallback for a player whose city has
+   never run. A front whose deadline has passed reads as clear — the city
+   would have cleared it too. `_wxHost` is set at mount so every reader
+   (summary, simulate, the raid roll) sees the same sky. */
+let _wxHost = null;
+const CITY_WX_MAP = { clear: 'clear', cloudy: 'cloud', rain: 'rain', storm: 'storm', snow: 'snow', tornado: 'storm', firerain: 'storm', anomaly: 'storm' };
+function cityWeatherAt(now) {
+  try {
+    if (!_wxHost || typeof _wxHost.cityWeather !== 'function') return null;
+    const c = _wxHost.cityWeather(); if (!c || !c.type) return null;
+    let key = CITY_WX_MAP[c.type] || 'clear';
+    if (key !== 'clear' && c.until && (now || Date.now()) > c.until) key = 'clear';
+    const idx = weatherWindowIndex(now);
+    return Object.assign({ key, idx, until: c.until || (idx + 1) * FARM_ECON.weatherWindowH * H, city: true }, FARM_ECON.weather[key] || FARM_ECON.weather.clear);
+  } catch (e) { return null; }
+}
+/* 🕒 The sky by the city's clock: the same bands node-city's phaseBlend uses. */
+function skyForHour(h, fallback) {
+  if (h == null || !isFinite(h)) return fallback;
+  if (h < 5 || h >= 21) return 'night';
+  if (h < 7 || h >= 19) return 'dusk';
+  return 'day';
+}
+function cityHourNow() { try { const x = _wxHost && typeof _wxHost.cityHour === 'function' ? _wxHost.cityHour() : null; return (x == null || !isFinite(x)) ? null : x; } catch (e) { return null; } }
+/* 🌦 Weather for the window containing `now` — the city's, or the seeded fallback. */
 function weatherAt(seed, now) {
+  const city = cityWeatherAt(now); if (city) return city;
   const idx = weatherWindowIndex(now);
   const key = pickWeighted(rngFor('wx:' + seed + ':' + idx), FARM_ECON.weather);
   return Object.assign({ key, idx, until: (idx + 1) * FARM_ECON.weatherWindowH * H }, FARM_ECON.weather[key]);
@@ -1980,7 +2009,7 @@ function summary(host, s) {
   return {
     pens, species, animals, buildings: Object.assign({}, s.buildings),
     look: s.look, journal: s.journal.slice(), stats: Object.assign({}, s.stats),
-    season: seasonFor(now), weather: weatherAt(s.seed, now), terroir: terroirTier(host),
+    season: seasonFor(now), weather: weatherAt(s.seed, now), hour: cityHourNow(), terroir: terroirTier(host),
     guardDefense: guardDefense(s), farmers: (() => { try { return host.farmers() | 0; } catch (e) { return 0; } })(), farmersBonus: farmersBonus(host),
     town: townOffer(s, now), recentEvents: recent,
     construction: FARM_BUILDINGS.map(d => ({ id: d.id, progress: buildProgress(s, d.id, now), rush: rushCost(s, d.id, now) })).filter(x => x.progress),
@@ -2475,8 +2504,9 @@ function build3D(THREE, container, opts) {
       gA.color.setHex(a); gB.color.setHex(b); rimM.color.setHex(G.rim);
       buildDecor(look, v.season);
     }
-    const wk = (v.weather ? v.weather.key : 'clear') + '|' + look.sky;
-    if (wk !== wxKey) { wxKey = wk; setWeather(v.weather || { key: 'clear' }, look.sky); }
+    const skyKey = skyForHour(v.hour, look.sky);   // 🕒 the city's clock, or the chosen look when there is none
+    const wk = (v.weather ? v.weather.key : 'clear') + '|' + skyKey;
+    if (wk !== wxKey) { wxKey = wk; setWeather(v.weather || { key: 'clear' }, skyKey); }
 
     FARM_BUILDINGS.forEach(def => {
       const row = v.buildings[def.id], lv = row ? row.level : 0;
@@ -3044,12 +3074,14 @@ function seasonBlurb(k) {
 }
 
 /* ── HUD (top-left of the scene): the weather / season / defense button ─── */
+/* 🕒 "14:05 · city time" — the clock the sky follows. */
+function fmtCityHour(h) { const hh = Math.floor(h) % 24, mm = Math.floor((h - Math.floor(h)) * 60); return String(hh).padStart(2, '0') + ':' + String(mm).padStart(2, '0') + ' city time'; }
 function renderHud(host, view, tab) {
   const boosts = (view.shop && view.shop.active) || [];
   const soon = boosts.filter(b => !b.permanent).sort((a, b) => a.expiresAt - b.expiresAt)[0];
   const under = view.construction.length;
   return `<button class="farm-hudbtn ${tab === 'journal' ? 'is-active' : ''}" data-fact="tab" data-id="journal" title="Weather, season, defense — open the Journal">
-      <span class="big">${view.weather.icon}</span><span class="col"><b>${esc(view.weather.label)}</b><span>${view.season.icon} ${esc(view.season.label)} · ${esc(view.terroir.toLowerCase())} ground</span></span>
+      <span class="big">${view.weather.icon}</span><span class="col"><b>${esc(view.weather.label)}${view.hour != null ? ' · ' + fmtCityHour(view.hour) : ''}</b><span>${view.season.icon} ${esc(view.season.label)} · ${esc(view.terroir.toLowerCase())} ground</span></span>
       <span class="sep"></span><span class="big">🛡</span><span class="col"><b>${Math.round(view.guardDefense)}</b><span>defense</span></span>
       ${view.ill ? `<span class="sep"></span><span class="big">🦠</span><span class="col"><b>${view.ill}</b><span>sick</span></span>` : ''}
       ${under ? `<span class="sep"></span><span class="big">🏗</span><span class="col"><b>${under}</b><span>building</span></span>` : ''}
@@ -3460,6 +3492,8 @@ function makeHost() {
     spendRes: (id, n) => { try { return !!B.spendRes(id, n); } catch (e) { return false; } },
     addRes: (id, n) => { try { B.addRes(id, n); } catch (e) {} },
     refundRes: (id, n) => { try { (B.refundRes || B.addRes)(id, n); } catch (e) {} },
+    cityWeather: () => { try { return (typeof B.cityWeather === 'function') ? B.cityWeather() : null; } catch (e) { return null; } },
+    cityHour: () => { try { return (typeof B.cityHour === 'function') ? B.cityHour() : null; } catch (e) { return null; } },
     state: () => { try { return B.farmState(); } catch (e) { return {}; } },
     setState: (s) => { try { return B.setFarmState(s) !== false; } catch (e) { return false; } },
     save: () => { try { return B.save() !== false; } catch (e) { return false; } },
@@ -3521,31 +3555,41 @@ function mount(rootEl) {
   const missing = auditCatalog(h.resourceIds());
   if (missing.length) { try { console.warn('[farm] ledger is missing ids the farm pays out: ' + missing.join(', ')); } catch (e) {} }
 
+  _wxHost = h;   // 🌦 every weather reader sees the city's sky from here on
   rootEl.innerHTML = renderShell();
   const m = _mounted = { root: rootEl, scene: null, tab: 'homestead' /* 🎮 null = no panel open, just the homestead */, focus: null, tick: 0, busy: false, ui: { cut: 'balanced', carrier: FARM_ECON.transport.defaultCarrier, escort: 0, renaming: null }, bannerShown: false, cloud: { loading: false, lots: [], mine: [], why: null, userId: null, at: 0 }, ranch: null };
   const stage = rootEl.querySelector('[data-farm="stage"]');
 
+  /* 🩹 NO FLASH. Markup is written only when it changed since the last paint,
+     and a panel that did change keeps its scroll — a full innerHTML rebuild
+     on every tick and every click is what read as "the page refreshes". */
+  const setHtml = (el, html) => {
+    if (!el || el._farmHtml === html) return false;
+    const st = el.scrollTop; el._farmHtml = html; el.innerHTML = html;
+    try { if (st) el.scrollTop = st; } catch (e) {}
+    return true;
+  };
   const paint = () => {
     if (_mounted !== m) return;
     try {
       const s = S.ensureState(h);
       const view = S.summary(h, s);
-      const led = rootEl.querySelector('[data-farm="ledger"]'); if (led) led.innerHTML = renderLedger(h, view);
+      const led = rootEl.querySelector('[data-farm="ledger"]'); if (led) setHtml(led, renderLedger(h, view));
       const title = rootEl.querySelector('[data-farm="title"]'); if (title) title.textContent = '🐄 ' + (view.look.name || 'Homestead Farm');
-      const hud = rootEl.querySelector('[data-farm="hud"]'); if (hud) hud.innerHTML = renderHud(h, view, m.tab);
+      const hud = rootEl.querySelector('[data-farm="hud"]'); if (hud) setHtml(hud, renderHud(h, view, m.tab));
       // 🎮 CS2 chrome: no tab open → no panel, just the homestead.
       const box = rootEl.querySelector('[data-farm="panelbox"]'); if (box) box.hidden = !m.tab;
       const ptitle = rootEl.querySelector('[data-farm="paneltitle"]'); if (ptitle) { const td = FARM_TABS.find(x => x.id === m.tab); ptitle.textContent = td ? td.icon + ' ' + td.label : ''; }
       const panel = rootEl.querySelector('[data-farm="panel"]');
-      if (panel && !m.tab) panel.innerHTML = '';
+      if (panel && !m.tab) setHtml(panel, '');
       else if (panel) {
-        panel.innerHTML = m.tab === 'livestock' ? renderLivestock(h, s, view, m.focus, m.ui)
+        setHtml(panel, m.tab === 'livestock' ? renderLivestock(h, s, view, m.focus, m.ui)
           : m.tab === 'journal' ? renderJournal(h, s, view)
           : m.tab === 'athena' ? renderAthena(h, s, view)
           : m.tab === 'market' ? renderMarket(h, s, view, m.ui, m.cloud)
           : m.tab === 'ranch' ? renderRanch(h, view, m.ranch)
           : m.tab === 'shop' ? renderShop(h, s, view)
-          : renderHomestead(h, s, view, m.focus, m.ui);
+          : renderHomestead(h, s, view, m.focus, m.ui));
         if (m.ui.renaming) {
           const row = panel.querySelector(`.farm-beast[data-aid="${m.ui.renaming}"] .nm`);
           const a = S.animalById(s, m.ui.renaming);

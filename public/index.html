@@ -39394,7 +39394,7 @@ body:has(#pack-opener-frame) #chat-overlay {
   // the console. Bump this every deploy alongside sw.js's CACHE_VERSION. If two
   // machines show different stamps, the older one is on stale code (hard-refresh);
   // if they MATCH but content still differs, it is a DATA/publish issue, not code.
-  window.BUILD_VERSION = 'v121v102';
+  window.BUILD_VERSION = 'v121v103';
   try {
     console.info('%cMythic Spellbook ' + window.BUILD_VERSION + '%c — build check: run  __mg.version',
       'font-weight:700;color:#b48cff', 'color:#7d7499');
@@ -241148,6 +241148,16 @@ window.MythicFarmBridge = {
   spendGems: (n) => { try { return !!spendGems(n | 0, 'Homestead Farm'); } catch (e) { return false; } },
   addGems: (n) => { try { addGems(n | 0, 'Homestead Farm'); } catch (e) {} },
   farmState: () => { try { return Profile.farm || null; } catch (e) { return null; } },
+  /* 🌦 The city builder's weather (node-city publishes `wx` to localStorage on
+     every change) and its clock (America/New_York — the same formatter the city
+     lights itself by, see node-city estClock). The farm's sky is the city's. */
+  cityWeather: () => { try { const j = JSON.parse(localStorage.getItem('nc_wx') || 'null'); return (j && typeof j === 'object') ? { type: String(j.type || 'clear'), until: Number(j.until) || 0, at: Number(j.at) || 0 } : null; } catch (e) { return null; } },
+  cityHour: () => {
+    try {
+      const p = {}; for (const part of new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', hour12: false, hour: '2-digit', minute: '2-digit' }).formatToParts(new Date())) p[part.type] = part.value;
+      return (+p.hour % 24) + (+p.minute) / 60;
+    } catch (e) { const d = new Date(); return d.getHours() + d.getMinutes() / 60; }
+  },
   setFarmState: (st) => { try { Profile.farm = st; return true; } catch (e) { return false; } },
   save: () => { try { return saveProfile() !== false; } catch (e) { return false; } },
   toast: (m, ms) => { try { showToast(m, ms || 3600); } catch (e) {} },
@@ -263712,7 +263722,7 @@ render();
        other static asset, and a missed bump ships invisibly. -->
 <script type="module" src="src/mercenary/index.js?v=v121v66merc1"></script>
 <script type="module" src="src/haul/index.js?v=v121v94haul1"></script>
-<script type="module" src="src/farm/index.js?v=v121v102farm2"></script>
+<script type="module" src="src/farm/index.js?v=v121v103farm3"></script>
 <!-- 🍔 MYTHIC KITCHEN — the fast-food / drive-thru sim. Registers
      window.MythicKitchen (+ __mk) and is INERT until the title tile opens it:
      no DOM, no RAF loop, no Supabase call happens on load. Everything it can
@@ -264104,8 +264114,8 @@ render();
        that works everywhere except the one early path nobody tested. It is
        2KB with no dependencies. -->
 <script src="src/econ/peg.js?v=v121q51"></script>
-<script src="src/battle/effects.js?v=v121v102" defer></script>
-<script src="src/phone/handset.js?v=v121v102" defer></script>
+<script src="src/battle/effects.js?v=v121v103" defer></script>
+<script src="src/phone/handset.js?v=v121v103" defer></script>
 <script src="src/battle/combat.js?v=120m4" defer></script>
 <script src="src/battle/targeting.js?v=121e3hex" defer></script>
 <link rel="stylesheet" href="src/sprites/frames.css?v=120k3">

@@ -36,7 +36,7 @@ ok(/@media \(max-width:760px\)\{\.farm-panel\{left:0;right:0;top:auto;bottom:0;[
   ok(/\{ cinder: 135000, wood: 240, stone: 120, metal: 60 \}/.test(barn), 'Cattle Barn L1: 90,000/120/60/30 → 135,000/240/120/60');
   ok(rows.every((r) => Number(r[1]) % 500 === 0), 'no fractional Cinder from the ×1.5');
 }
-ok(/src\/farm\/index\.js\?v=v121v102farm2/.test(SRC), 'the farm module buster moved, so every player gets the new recipe and costs');
+ok(/src\/farm\/index\.js\?v=v121v10[2-9]farm[2-9]/.test(SRC), 'the farm module buster moved (farm2 or later), so every player gets the new recipe and costs');
 
 /* ── 2. the unwind paths ── */
 ok(/try \{ if \(typeof _refundRes === 'function'\) _refundRes\(resId, qty\); else addSalvage\(\{ \[resId\]: qty \}\); \} catch \(_\) \{\}\n\s*try \{ if \(typeof _persistResourcesSoon === 'function'\) _persistResourcesSoon\(\); \} catch \(_\) \{\}\n\s*_frErr\(e\);/.test(SRC), 'a failed Reserve contribution refunds through the UNCLAMPED _refundRes and persists');
