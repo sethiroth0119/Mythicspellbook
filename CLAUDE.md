@@ -117,3 +117,8 @@ therefore terminate.
 - Deploy bumps three knobs together or the update check breaks: `public/version.txt`,
   `window.BUILD_VERSION`, `sw.js` `CACHE_VERSION`. Verify the EDGE with curl, never the
   deploy log, and poll — propagation across PoPs takes up to a couple of minutes.
+
+## ⚒ Athena Engine (merged build, v121v116)
+
+- `public/src/mapforge/` is ONE editor: build A's rounds 5–18 (folders, prefabs, blueprints, physics, nav, audio, quality, look, asset browser, splines, content browser, showrooms, `window.AthenaEngine`) plus build B's FILES and MENU tabs, ⚒ pill, menu-button worlds, sessions and the player character. `docs/athena-engine.md` → "Merge round". Build B's uploads API is `mapforge.files.js` (`world_assets`); `mapforge.assets.js` is the asset-browser index. Bump `?v=` on `src/mapforge/index.js` (mf…), `src/widgets/index.js` (aw…), `src/battle/battle.athena.js` (ba…) and `src/farm/index.js` on every change.
+- Modules read the game only through `window.MythicBridge` (+ `MythicFarmBridge`): `slots`, `files`, `battle`, `ui`, `miniGames`, `hubs`, `guides`, `avatarPick` all live there. Harness: `node tools/athena-harness/serve.mjs` then the `pw-test*.mjs` suites with `PLAYWRIGHT_PKG` set.

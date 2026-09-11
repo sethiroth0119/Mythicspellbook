@@ -39407,7 +39407,7 @@ body:has(#pack-opener-frame) #chat-overlay {
   // the console. Bump this every deploy alongside sw.js's CACHE_VERSION. If two
   // machines show different stamps, the older one is on stale code (hard-refresh);
   // if they MATCH but content still differs, it is a DATA/publish issue, not code.
-  window.BUILD_VERSION = 'v121v115';
+  window.BUILD_VERSION = 'v121v116';
   try {
     console.info('%cMythic Spellbook ' + window.BUILD_VERSION + '%c — build check: run  __mg.version',
       'font-weight:700;color:#b48cff', 'color:#7d7499');
@@ -51151,6 +51151,8 @@ async function cloudSyncProfile() {
       useCustomOnlyPool: !!Forge.useCustomOnlyPool,
       // 🗺️ 3D battle map (admin) — the active map + camera tilt ship to every player.
       battleMap3d:      (Forge.battleMap3d && typeof Forge.battleMap3d === 'object') ? Forge.battleMap3d : null,
+      // 🏙 Node City model slots (buildings / civilians / vehicles → .glb) — set from Athena's showroom (round 18); the city merges them at boot.
+      cityModels:       (Forge.cityModels && typeof Forge.cityModels === 'object') ? Forge.cityModels : null,
       // 🔁 Global reset epoch — broadcast to every player on next sync.
       resetEpoch:       (Forge.resetEpoch | 0) || 0,
       // 🔁 Per-player ack — each Profile remembers the last reset epoch it
@@ -52708,6 +52710,7 @@ async function cloudFetchProfile() {
       if (typeof f.useCustomOnlyPool === 'boolean') Forge.useCustomOnlyPool = f.useCustomOnlyPool;
       // 🗺️ Published 3D battle map: players ALWAYS adopt it (so they get map
       // updates); an admin keeps their own local working copy while they tune.
+      if (f.cityModels && typeof f.cityModels === 'object') Forge.cityModels = f.cityModels;
       if (f.battleMap3d && typeof f.battleMap3d === 'object') {
         const _amAdmin = (typeof isAdmin === 'function' && isAdmin());
         if (!_amAdmin || !(Forge.battleMap3d && Forge.battleMap3d.cam)) Forge.battleMap3d = f.battleMap3d;
@@ -123095,6 +123098,32 @@ function _bfTyping(t) {
    during a cinematic. */
 try { window.MythicBattleCam = { zoom: bfZoom, rotate: bfRotate, reset: bfCamReset, state: () => ({ zoom: BFCAM.zoom, rot: BFCAM.rot }) }; } catch (e) {}
 
+/* ⚒ Ask Athena for the live 'battle' scene and lay it over the board. The
+   overlay group is in Athena units (BOARD_ATHENA_SCALE × board units) so it is
+   scaled down here; a board model the admin REPLACED in Athena is hidden and
+   the replacement drawn in its place. Degrades to nothing: no module, no live
+   map, or a build error → the board is exactly as before. */
+const BOARD_ATHENA_SCALE = 3;
+function _b3dAthenaOverlay(scene) {
+  const A = window.AthenaEngine || window.MythicMapForge;
+  if (!A || !A.overlay || typeof A.overlay.forGame !== 'function') return;
+  A.overlay.forGame('battle', { THREE: window.THREE, scene }).then(ov => {
+    if (!ov) return;
+    if (!_B3D.on || _B3D.scene !== scene) { try { ov.dispose(); } catch (e) {} return; }
+    const K = 1 / BOARD_ATHENA_SCALE;
+    ov.group.scale.setScalar(K); scene.add(ov.group);
+    // replaced board props: hide ours, draw the admin's
+    ov.slots().forEach(s => {
+      if (!s || !s.replaced || !/^bm\.(\d+)$/.test(s.o.k)) return;
+      const idx = +s.o.k.slice(3);
+      scene.children.forEach(ch => { if (ch.userData && ch.userData.bmIndex === idx) ch.visible = false; });
+      const rep = ov.buildReplacement(s.o.k); if (!rep) return;
+      rep.position.set(s.p[0] * K, s.p[1] * K, s.p[2] * K); rep.rotation.set(s.r[0], s.r[1], s.r[2]); rep.scale.set(s.s[0] * K, s.s[1] * K, s.s[2] * K);
+      scene.add(rep);
+    });
+    _B3D.athena = ov;
+  }).catch(() => {});
+}
 function _b3dActiveMap() {
   _b3dEnsureLoaded();
   try { if (typeof Forge !== 'undefined' && Forge.battleMap3d && Forge.battleMap3d.active) return Forge.battleMap3d.active; } catch (e) {}
@@ -123309,6 +123338,10 @@ function _b3dBuild(host) {
   // now add the placed 3D models / GLBs (Phase 2 editor output).
   _B3D._glow = [];
   try { _bmPopulateBattleBoard(scene, map); } catch (e) {}
+  // ⚒ Athena Engine overlay (src/battle/battle.athena.js): whatever the admin
+  //    placed on the board inside Athena that the v3 map cannot express
+  //    (extra props, splines, models, replaced board props) — async, guarded.
+  try { _b3dAthenaOverlay(scene); } catch (e) {}
   // 🌋 3D hazard-surface decal layer (one InstancedMesh over the tile grid).
   try { _hzDispose(); } catch (e) {}
   try { _hzBuild(scene, cols, rows); } catch (e) {}
@@ -123333,11 +123366,13 @@ function _b3dBuild(host) {
     if (e) { const pos = e.geo.attributes.position.array; for (let i = 0; i < e.n; i++) { pos[i * 3 + 1] += e.vel[i] * 0.033; if (pos[i * 3 + 1] > 5.2) { pos[i * 3 + 1] = 0; pos[i * 3] = (Math.random() * 2 - 1) * e.HX; pos[i * 3 + 2] = (Math.random() * 2 - 1) * e.HZ; } } e.geo.attributes.position.needsUpdate = true; }
     if (_B3D._glow && _B3D._glow.length) { const tt = now * 0.001; for (const m of _B3D._glow) { if (m.material && m.userData.glow != null) m.material.emissiveIntensity = m.userData.glow * (0.75 + 0.35 * Math.sin(tt * 4 + m.id)); } }
     try { _hzTick(0.033); } catch (e) {}   // 🌋 animate + sync the hazard-surface decals
+    try { if (_B3D.athena) _B3D.athena.update(0.033, camera); } catch (e) {}
     try { renderer.render(scene, camera); } catch (err) { _b3dUnmount(); }
   };
   _B3D.raf = requestAnimationFrame(frame);
 }
 function _b3dUnmount() {
+  try { if (_B3D.athena) { _B3D.athena.dispose(); _B3D.athena = null; } } catch (e) {}
   try { _b3dHudRemove(); } catch (e) {}
   try { _hzDispose(); } catch (e) {}
   if (_B3D.raf) { try { cancelAnimationFrame(_B3D.raf); } catch (e) {} _B3D.raf = 0; }
@@ -126403,8 +126438,8 @@ function _bmPopulateBattleBoard(scene, map){
   try{
     if(!map) return;
     _B3D._glow = _B3D._glow || [];
-    const place=(mesh,m)=>{ mesh.position.set(m.x,0,m.z); mesh.rotation.y=(m.rot||0)*Math.PI/180; mesh.scale.setScalar(m.sc||1); mesh.traverse(o=>{ if(o.isMesh&&o.userData&&o.userData.glow!=null) _B3D._glow.push(o); }); scene.add(mesh); };
-    (map.models||[]).forEach(m=>{ if(m && _BME_PROPS_META[m.t]) place(_bmBuildProp(m.t), m); });
+    const place=(mesh,m,i)=>{ mesh.position.set(m.x,0,m.z); mesh.rotation.y=(m.rot||0)*Math.PI/180; mesh.scale.setScalar(m.sc||1); mesh.userData.bmIndex=i; mesh.traverse(o=>{ if(o.isMesh&&o.userData&&o.userData.glow!=null) _B3D._glow.push(o); }); scene.add(mesh); };   // bmIndex: the Athena overlay hides a model the admin replaced (see _b3dAthenaOverlay)
+    (map.models||[]).forEach((m,i)=>{ if(m && _BME_PROPS_META[m.t]) place(_bmBuildProp(m.t), m, i); });
     (map.glbSlots||[]).forEach(slot=>{
       if(!slot||!slot.url) return;
       const targets=(map.models||[]).filter(m=>m.t===slot.id);
@@ -126415,7 +126450,7 @@ function _bmPopulateBattleBoard(scene, map){
         if(!_B3D.on || _B3D.scene!==scene) return;   // board torn down meanwhile
         const tmpl=_bmNormalizeModel(res.scene);
         const clips=(res.animations&&res.animations.length)?res.animations:tmpl.__animClips;
-        targets.forEach(m=>{ const c=_cs3DCloneModel(tmpl); place(c, m);
+        targets.forEach(m=>{ const c=_cs3DCloneModel(tmpl); place(c, m, (map.models||[]).indexOf(m));
           // ▶ Play the model's baked clips (if any). The alive predicate prunes
           //   the mixer the moment this board scene is torn down.
           if(clips&&clips.length) _cs3DAutoplay(c, clips, { alive: ()=>!!(_B3D.on && _B3D.scene===scene) });
@@ -144385,6 +144420,14 @@ function renderPricingAdmin() {
         </div>
         <button id="open-map-creator" class="btn-secondary" style="margin-top:0.7rem;width:100%;background:linear-gradient(180deg,#e7c757,#d4af37);color:#1a1206;font-weight:800;border:1px solid #e7c757">⚒ Open Athena Engine</button>
         <div class="small-text ink-dim" style="margin-top:0.5rem">Also reachable at <code>?mapforge=1</code>. Press <strong>H</strong> inside for the controls.</div>
+        <div class="small-text ink-dim" style="margin-top:0.7rem">🧩 <strong>Athena Widgets</strong> — the Blueprint-style UI designer: build widgets from a palette, wire an event graph (click → branch → toast / set variable / call a game action), bind any property to live game data (<code>{gems|num}</code>), and target a named slot or any existing element of the game's UI (🎯 pick it) to extend or replace it. Theme documents restyle the whole game through CSS variables. Lives in <code>/src/widgets/</code>; cloud saving needs <code>sql/040_ui_widgets.sql</code>.</div>
+        <button id="open-showrooms" class="btn-secondary" style="margin-top:0.5rem;width:100%;border:1px solid #e7c757;color:#ffe9a8" title="Every mini-game's models in Athena: Woods Fishing, the auction block, Black River, Node City — swap any model, save, publish">🎮 Mini-game models in Athena</button>
+        <button id="open-battle-athena" class="btn-secondary" style="margin-top:0.5rem;width:100%;border:1px solid #e7c757;color:#ffe9a8" title="Edit the live battle board inside Athena Engine: paint terrain, move or replace props, add anything">⚔ Battle board in Athena Engine</button>
+        <button id="open-farm-athena" class="btn-secondary" style="margin-top:0.5rem;width:100%;border:1px solid #e7c757;color:#ffe9a8" title="Edit the Homestead Farm as a game scene: move or replace its buildings for every player">🐄 Homestead Farm in Athena Engine</button>
+        <button id="open-widget-designer" class="btn-secondary" style="margin-top:0.5rem;width:100%;border:1px solid #e7c757;color:#ffe9a8">🧩 Open Widget Designer</button>
+        <button id="open-ui-screens" class="btn-secondary" style="margin-top:0.5rem;width:100%;border:1px solid #4aa3ff;color:#dff4ff" title="Every screen and every player-facing text in one table — edit, find & replace, save, set live">🗂 Screens &amp; Strings</button>
+        <button id="open-ui-editor" class="btn-secondary" style="margin-top:0.5rem;width:100%;border:1px solid #4aa3ff;color:#dff4ff" title="Click any element of the game and retitle, restyle or hide it — for every player once live">✎ Edit the game UI (live)</button>
+        <div class="small-text ink-dim" style="margin-top:0.4rem">Also reachable at <code>?widgets=1</code>. Only an admin can set a widget <strong>live</strong> for every player (the server enforces it).</div>
       </div>
 
       <div class="settings-section">
@@ -145228,6 +145271,34 @@ function renderPricingAdmin() {
       if (window.MythicMapForge && window.MythicMapForge.open) window.MythicMapForge.open();
       else showToast('Athena Engine is still loading — try again in a moment.', 2600);
     } catch (e) { try { console.warn('[mapforge] open failed', e); } catch (_) {} }
+  };
+
+  // ⚔ Battle board in Athena (src/battle/battle.athena.js registers window.MythicBattleAthena)
+  const srBtn = document.getElementById('open-showrooms');
+  if (srBtn) srBtn.onclick = () => { try { if (window.AthenaEngine && window.AthenaEngine.showrooms) window.AthenaEngine.showrooms.pick(); else showToast('Athena Engine is still loading — try again in a moment.', 2600); } catch (e) { try { console.warn('[showrooms] open failed', e); } catch (_) {} } };
+  const baBtn = document.getElementById('open-battle-athena');
+  if (baBtn) baBtn.onclick = () => { try { if (window.MythicBattleAthena && window.MythicBattleAthena.open) window.MythicBattleAthena.open(); else showToast('Athena Engine is still loading — try again in a moment.', 2600); } catch (e) { try { console.warn('[battle-athena] open failed', e); } catch (_) {} } };
+  // 🧩 Athena Widgets — the UI designer (/src/widgets, an ES module). Same
+  //    contract as the map creator: the module registers window.AthenaUI; if it
+  //    has not loaded the button says so.
+  // ✎ Edit UI — the live page editor (src/widgets/live-editor.js).
+  const scBtn = document.getElementById('open-ui-screens');
+  if (scBtn) scBtn.onclick = () => { try { if (window.AthenaUI && window.AthenaUI.openScreens) window.AthenaUI.openScreens(); else showToast('Athena Widgets is still loading — try again in a moment.', 2600); } catch (e) { try { console.warn('[widgets] screens open failed', e); } catch (_) {} } };
+  const uiBtn = document.getElementById('open-ui-editor');
+  if (uiBtn) uiBtn.onclick = () => {
+    try {
+      if (!(window.AthenaUI && window.AthenaUI.openLiveEditor)) { showToast('Athena Widgets is still loading — try again in a moment.', 2600); return; }
+      window.AthenaUI.openLiveEditor();   // this panel stays open on top — close it to edit what is underneath, or edit the panel itself
+    } catch (e) { try { console.warn('[widgets] live editor open failed', e); } catch (_) {} }
+  };
+  const faBtn = document.getElementById('open-farm-athena');
+  if (faBtn) faBtn.onclick = () => { try { if (!(window.MythicFarm && window.MythicFarm.openInAthena && window.MythicFarm.openInAthena())) showToast('Athena Engine is still loading — try again in a moment.', 2600); } catch (e) { try { console.warn('[farm] athena open failed', e); } catch (_) {} } };
+  const awBtn = document.getElementById('open-widget-designer');
+  if (awBtn) awBtn.onclick = () => {
+    try {
+      if (window.AthenaUI && window.AthenaUI.openDesigner) window.AthenaUI.openDesigner();
+      else showToast('Athena Widgets is still loading — try again in a moment.', 2600);
+    } catch (e) { try { console.warn('[widgets] open failed', e); } catch (_) {} }
   };
 
   // ⛧ Preview the new Mythic Summon ritual VFX (unwired — preview only).
@@ -240860,7 +240931,164 @@ const ATHENA_MINI_GAMES = [
   { id: 'title',            name: 'Main Hub (Title)' },
 ];
 try {
+try { Object.defineProperty(window, '__mythicCityModels', { get: () => { try { return (Forge.cityModels && typeof Forge.cityModels === 'object') ? Forge.cityModels : {}; } catch (e) { return {}; } } }); } catch (e) {}   // 🏙 node-city/index.html merges this at boot (published model slots, round 18)
   window.MythicBridge = {
+    /* 🧩 ATHENA WIDGETS (/src/widgets) — the data a widget can BIND to and the
+       actions its event graph can CALL. Read live on every refresh, never
+       snapshotted. Keep this a plain-data view: no functions inside `data()`,
+       nothing that mutates. Adding a field here is how a new game value
+       becomes bindable as {field}. Actions are the only way a widget touches
+       the game, and each one goes through the same helpers the UI uses. */
+    /* 🎮 MODEL SLOTS (round 18, Athena's showrooms — src/mapforge/mapforge.showroom.js).
+       Every mini-game that lets the admin point an asset at a .glb, in one
+       registry: Woods Fishing (boats, species, fallback fish per tier), the
+       Prince Portfolios auction (cars per rarity), Black River extraction
+       (core, node, machines) and Node City (buildings, civilians, vehicles,
+       per level). `games()` describes the slots with their current model;
+       set/clear write the SAME Forge fields the games' own admin panels write
+       (so those panels keep working), and publish() ships the catalogue.
+       Keys: 'ship/0', 'species/<id>/1', 'fish/Rare/0', a trailing '/+' means
+       "append a new entry" for list slots. */
+    slots: (() => {
+      const fishing = () => { const M = (Forge.woodsFishing && Forge.woodsFishing.models) || {}; const groups = [];
+        const rec = (m) => ({ url: m && m.url || '', scale: m && +m.scale || 1, rotY: m && +m.rotY || 0, name: m && (m.label || m.name) || '' });
+        const listSlots = (prefix, label, icon, list) => { const out = (Array.isArray(list) ? list : []).map((m, i) => Object.assign({ k: prefix + '/' + i, label: label + ' #' + (i + 1), icon, list: true }, rec(m))); out.push({ k: prefix + '/+', label: label + ' · new', icon: '＋', list: true, url: '', scale: 1, rotY: 0, add: true }); return out; };
+        groups.push({ id: 'ship', label: 'Boats', slots: listSlots('ship', 'Boat', '⛵', M.ship) });
+        try { const sp = _wf3AllFish(); groups.push({ id: 'species', label: 'Species', slots: sp.flatMap(s => listSlots('species/' + s.id, s.name, '🐟', M.species && M.species[s.id])) }); } catch (e) {}
+        try { groups.push({ id: 'fish', label: 'Fallback fish per tier', slots: WF3_FISH_TIERS.flatMap(t => listSlots('fish/' + t, t + ' fish', '🎣', M.fish && M.fish[t])) }); } catch (e) {}
+        return { id: 'fishing', label: 'Woods Fishing', icon: '🎣', groups }; };
+      const auction = () => { const A = (Forge.princePortfolios && Forge.princePortfolios.auctionModels) || {}; const groups = [];
+        try { groups.push({ id: 'cars', label: 'Cars per rarity', slots: PPA_RARITIES.flatMap(r => { const list = Array.isArray(A[r.key]) ? A[r.key] : []; const out = list.map((m, i) => ({ k: r.key + '/' + i, label: r.key + ' car #' + (i + 1), icon: '🚗', list: true, url: m && m.url || '', scale: m && +m.scale || 1, rotY: m && +m.rotY || 0, name: m && m.name || '' })); out.push({ k: r.key + '/+', label: r.key + ' car · new', icon: '＋', list: true, add: true, url: '', scale: 1, rotY: 0 }); return out; }) }); } catch (e) {}
+        return { id: 'auction', label: 'Auction block (Prince Portfolios)', icon: '🏎', groups }; };
+      const extraction = () => { const E = (Forge.blackRiver && Forge.blackRiver.extraction && Forge.blackRiver.extraction.models) || {}; const mach = E.machines || {}; const groups = [
+        { id: 'site', label: 'Site', slots: [{ k: 'core', label: 'Cinder Core', icon: '🌋', url: E.core || '', scale: 1, rotY: 0 }, { k: 'node', label: 'Extraction node', icon: '📡', url: E.node || '', scale: 1, rotY: 0 }] } ];
+        try { const types = Object.keys(OSIM_MACHINES).concat(Object.keys(_osimCustomMachines || {})); groups.push({ id: 'machines', label: 'Machines', slots: types.map(t => ({ k: 'machine/' + t, label: (OSIM_MACHINES[t] || _osimCustomMachines[t] || {}).name || t, icon: (OSIM_MACHINES[t] || {}).ic || '⚙️', url: (typeof mach[t] === 'string' ? mach[t] : (mach[t] && mach[t].url)) || '', scale: 1, rotY: 0 })) }); } catch (e) {}
+        return { id: 'extraction', label: 'Black River extraction', icon: '🛢️', groups }; };
+      const CITY_BUILDINGS = ['road', 'farm', 'hydrofarm', 'purifier', 'scrapmine', 'fuelrig', 'gasstation', 'depot', 'medlab', 'munitions', 'forge', 'indexfund', 'holdco', 'reslab', 'siphon', 'lumbercamp', 'quarry', 'fibercroft', 'sawmill', 'weavery', 'housing', 'barracks', 'tower', 'tree', 'bush', 'garden', 'fountain', 'arena', 'shop', 'wall', 'gate', 'caravanpost', 'lot', 'obelisk', 'kalonstable', 'foodtruck', 'restaurant', 'grocery', 'club', 'streetlight', 'motorpool', 'firestation', 'police', 'smelter'];
+      const city = () => { const C = (Forge.cityModels && typeof Forge.cityModels === 'object') ? Forge.cityModels : {}; const rec = (k) => { const v = C[k]; return typeof v === 'string' ? { url: v, scale: 1 } : (v && v.url ? { url: v.url, scale: +v.scale || 1 } : { url: '', scale: 1 }); };
+        const cap = (s) => s.charAt(0).toUpperCase() + s.slice(1);
+        return { id: 'city', label: 'Node City', icon: '🏙', groups: [
+          { id: 'agents', label: 'People & vehicles', slots: [['civilian', '🚶 Civilian'], ['truck', '🚚 Truck'], ['police', '🚓 Police']].map(([k, l]) => Object.assign({ k, label: l, icon: l.slice(0, 2), rotY: 0 }, rec(k))) },
+          { id: 'buildings', label: 'Buildings', slots: CITY_BUILDINGS.map(k => Object.assign({ k, label: cap(k), icon: '🏢', rotY: 0 }, rec(k))) },
+          { id: 'levels', label: 'Buildings per level', slots: CITY_BUILDINGS.flatMap(k => [1, 2, 3, 4].map(l => Object.assign({ k: k + '@' + l, label: cap(k) + ' · level ' + l, icon: '🏗', rotY: 0 }, rec(k + '@' + l)))) },
+        ] }; };
+      const games = () => { const out = []; [fishing, auction, extraction, city].forEach(fn => { try { out.push(fn()); } catch (e) {} }); return out; };
+      const touch = () => { try { saveForge(); } catch (e) {} };
+      const setSlot = (game, k, m) => {
+        const url = String(m && m.url || '').trim(); if (!url) return clearSlot(game, k);
+        const scale = Math.max(0.01, +(m && m.scale) || 1), rotY = +(m && m.rotY) || 0, name = String(m && m.name || '').slice(0, 60);
+        if (game === 'fishing') { if (!Forge.woodsFishing) Forge.woodsFishing = {}; const M = Forge.woodsFishing.models = Forge.woodsFishing.models || {}; const p = k.split('/'); const rec = { url, label: name || 'Model', scale, rotY };
+          let list; if (p[0] === 'ship') { M.ship = Array.isArray(M.ship) ? M.ship : []; list = M.ship; } else if (p[0] === 'species') { M.species = M.species || {}; M.species[p[1]] = Array.isArray(M.species[p[1]]) ? M.species[p[1]] : []; list = M.species[p[1]]; } else if (p[0] === 'fish') { M.fish = M.fish || {}; M.fish[p[1]] = Array.isArray(M.fish[p[1]]) ? M.fish[p[1]] : []; list = M.fish[p[1]]; } else return false;
+          const i = p[p.length - 1]; if (i === '+') list.push(rec); else if (list[+i]) Object.assign(list[+i], rec); else list.push(rec); touch(); return true; }
+        if (game === 'auction') { if (!Forge.princePortfolios) Forge.princePortfolios = {}; const A = Forge.princePortfolios.auctionModels = Forge.princePortfolios.auctionModels || {}; const [rk, i] = k.split('/'); A[rk] = Array.isArray(A[rk]) ? A[rk] : []; const rec = { url, name: name || 'Model', scale, rotY }; if (i === '+') A[rk].push(rec); else if (A[rk][+i]) Object.assign(A[rk][+i], rec); else A[rk].push(rec); touch(); return true; }
+        if (game === 'extraction') { if (k === 'core' || k === 'node') _osimSetModelUrl(k, url); else if (k.indexOf('machine/') === 0) { if (!Forge.blackRiver) Forge.blackRiver = {}; if (!Forge.blackRiver.extraction) Forge.blackRiver.extraction = {}; const E = Forge.blackRiver.extraction; E.models = E.models || {}; E.models.machines = E.models.machines || {}; E.models.machines[k.slice(8)] = url; } else return false; touch(); return true; }
+        if (game === 'city') { Forge.cityModels = (Forge.cityModels && typeof Forge.cityModels === 'object') ? Forge.cityModels : {}; Forge.cityModels[k] = { url, scale }; try { const ls = JSON.parse(localStorage.getItem('mythic_city_models_v1') || '{}') || {}; ls[k] = { url, scale }; localStorage.setItem('mythic_city_models_v1', JSON.stringify(ls)); } catch (e) {} touch(); return true; }
+        return false;
+      };
+      const clearSlot = (game, k) => {
+        try {
+          if (game === 'fishing') { const M = Forge.woodsFishing && Forge.woodsFishing.models; if (!M) return false; const p = k.split('/'); const i = +p[p.length - 1]; if (!Number.isFinite(i)) return false; let list = p[0] === 'ship' ? M.ship : p[0] === 'species' ? (M.species || {})[p[1]] : (M.fish || {})[p[1]]; if (Array.isArray(list) && list[i]) list.splice(i, 1); touch(); return true; }
+          if (game === 'auction') { const A = Forge.princePortfolios && Forge.princePortfolios.auctionModels; const [rk, i] = k.split('/'); if (A && Array.isArray(A[rk]) && A[rk][+i]) A[rk].splice(+i, 1); touch(); return true; }
+          if (game === 'extraction') { if (k === 'core' || k === 'node') _osimDelModelUrl(k); else { const E = Forge.blackRiver && Forge.blackRiver.extraction; if (E && E.models && E.models.machines) delete E.models.machines[k.slice(8)]; } touch(); return true; }
+          if (game === 'city') { if (Forge.cityModels) delete Forge.cityModels[k]; try { const ls = JSON.parse(localStorage.getItem('mythic_city_models_v1') || '{}') || {}; delete ls[k]; localStorage.setItem('mythic_city_models_v1', JSON.stringify(ls)); } catch (e) {} touch(); return true; }
+        } catch (e) {}
+        return false;
+      };
+      return { games, set: setSlot, clear: clearSlot, publish: async () => { if (typeof cloudPublishCatalog !== 'function') return false; await cloudPublishCatalog(); return true; }, canWrite: () => { try { return typeof isAdmin === 'function' && isAdmin(); } catch (e) { return false; } } };
+    })(),
+    /* ☁ FILES (round 17, Athena's content browser). The SAME public `models`
+       bucket the card shop and Black River already upload .glb files to
+       (_csShopUploadModel), under an athena/<kind>/ prefix, so a model or a
+       sound the admin uploads is one URL every player loads. Rename is a
+       storage move (the URL changes; the caller rewrites its references).
+       Admin-only: an uploaded file is global content, like a live scene. */
+    files: {
+      ready: () => { try { return !!(Cloud && Cloud.ready && Cloud.client && Profile.cloud && Profile.cloud.signedIn); } catch (e) { return false; } },
+      canWrite: () => { try { return typeof isAdmin === 'function' && isAdmin(); } catch (e) { return false; } },
+      bucket: () => CS_MODELS_BUCKET,
+      list: async (kind) => {
+        if (typeof Cloud === 'undefined' || !Cloud.ready || !Cloud.client) return [];
+        const dir = 'athena/' + (kind === 'audio' ? 'audio' : 'models');
+        const { data, error } = await Cloud.client.storage.from(CS_MODELS_BUCKET).list(dir, { limit: 500, sortBy: { column: 'updated_at', order: 'desc' } });
+        if (error || !Array.isArray(data)) return [];
+        return data.filter(o => o && o.name && !o.name.startsWith('.')).map(o => { const path = dir + '/' + o.name; const { data: u } = Cloud.client.storage.from(CS_MODELS_BUCKET).getPublicUrl(path); return { name: o.name.replace(/^[a-z0-9]{6,}_/, ''), path, url: u && u.publicUrl, size: (o.metadata && o.metadata.size) || 0, updated: o.updated_at || null }; });
+      },
+      upload: async (file, kind) => {
+        if (typeof isAdmin !== 'function' || !isAdmin()) throw new Error('Uploading shared files is admin-only.');
+        if (typeof Cloud === 'undefined' || !Cloud.ready || !Cloud.client) throw new Error('Cloud offline.');
+        try { await Cloud.client.storage.createBucket(CS_MODELS_BUCKET, { public: true, fileSizeLimit: CS_MODEL_SIZE_LIMIT }); } catch (e) {}
+        const safe = String(file.name || 'file').replace(/[^a-zA-Z0-9._-]/g, '_');
+        const dir = 'athena/' + (kind === 'audio' ? 'audio' : 'models');
+        const path = dir + '/' + Date.now().toString(36) + '_' + safe;
+        const ct = kind === 'audio' ? (file.type || 'audio/mpeg') : 'model/gltf-binary';
+        const { error } = await Cloud.client.storage.from(CS_MODELS_BUCKET).upload(path, file, { upsert: true, contentType: ct });
+        if (error) { const msg = String((error && error.message) || error || ''); if (/exceeded the maximum|maximum allowed size|payload too large|413/i.test(msg)) throw new Error('That file is ' + (file.size / 1048576).toFixed(1) + ' MB — over the Storage upload limit.'); throw error; }
+        const { data } = Cloud.client.storage.from(CS_MODELS_BUCKET).getPublicUrl(path);
+        return { path, url: data && data.publicUrl, name: safe };
+      },
+      rename: async (path, newName) => {
+        if (typeof isAdmin !== 'function' || !isAdmin()) throw new Error('Renaming shared files is admin-only.');
+        if (typeof Cloud === 'undefined' || !Cloud.ready || !Cloud.client) throw new Error('Cloud offline.');
+        const dir = String(path).replace(/\/[^/]*$/, ''); const stamp = (/\/([a-z0-9]{6,})_[^/]*$/.exec(path) || [])[1] || Date.now().toString(36);
+        const safe = String(newName || '').replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 80); if (!safe) throw new Error('Name required.');
+        const to = dir + '/' + stamp + '_' + safe;
+        const { error } = await Cloud.client.storage.from(CS_MODELS_BUCKET).move(path, to);
+        if (error) throw error;
+        const { data } = Cloud.client.storage.from(CS_MODELS_BUCKET).getPublicUrl(to);
+        return { path: to, url: data && data.publicUrl, name: safe };
+      },
+      remove: async (path) => {
+        if (typeof isAdmin !== 'function' || !isAdmin()) throw new Error('Deleting shared files is admin-only.');
+        if (typeof Cloud === 'undefined' || !Cloud.ready || !Cloud.client) throw new Error('Cloud offline.');
+        const { error } = await Cloud.client.storage.from(CS_MODELS_BUCKET).remove([path]); if (error) throw error; return true;
+      },
+    },
+    /* ⚔ BATTLE BOARD ↔ ⚒ Athena (round 15, src/battle/battle.athena.js). The
+       v3 battlemap document (Forge.battleMap3d.active) in, out, and published;
+       the board's own procedural prop builder so Athena draws the SAME props
+       (both use the r128 global THREE). Every accessor is a function. */
+    battle: {
+      size: () => ({ cols: BOARD_W, rows: BOARD_H }),
+      terrain: () => _BME_TERRAIN, props: () => _BME_PROPS_META, defaultTerrain: () => _BME_DEF_T,
+      scale: () => BOARD_ATHENA_SCALE,
+      getMap: () => { try { return JSON.parse(JSON.stringify(_b3dActiveMap())); } catch (e) { return null; } },
+      setMap: (map) => {
+        try {
+          if (!map || typeof map !== 'object') return false;
+          if (!Forge.battleMap3d || typeof Forge.battleMap3d !== 'object') Forge.battleMap3d = {};
+          Forge.battleMap3d.active = map;
+          try { _b3dPersistNow(); } catch (e) {}
+          try { saveForge(); } catch (e) {}
+          try { if (document.getElementById('bb-frame')) _bbPushEditorMap(); } catch (e) {}
+          try { if (_B3D.on) { _b3dUnmount(); _b3dMount(); } } catch (e) {}
+          return true;
+        } catch (e) { return false; }
+      },
+      publish: async () => { if (typeof cloudPublishCatalog !== 'function') return false; await cloudPublishCatalog(); return true; },
+      buildProp: (key) => { try { return _BME_PROPS_META[key] ? _bmBuildProp(key) : null; } catch (e) { return null; } },
+      boardOpen: () => !!_B3D.on,
+      refreshBoard: () => { try { if (_B3D.on) { _b3dUnmount(); _b3dMount(); } } catch (e) {} },
+      /* openLegacyEditor dropped in the merge: this build retired the legacy Battlemap Forge (_noboard3d rule) — the board is edited in Athena. */
+    },
+    ui: {
+      data: () => {
+        const d = {};
+        try { d.gems = Profile.gems | 0; d.name = (Profile.cloud && Profile.cloud.displayName) || (Profile.account && Profile.account.displayName) || 'Survivor'; d.signedIn = !!(Profile.cloud && Profile.cloud.signedIn); d.admin = !!(typeof isAdmin === 'function' && isAdmin()); } catch (e) {}
+        try { d.screen = App.screen || ''; } catch (e) {}
+        try { d.level = Profile.level | 0; d.xp = Profile.xp | 0; } catch (e) {}
+        try { d.cards = Array.isArray(Profile.cards) ? Profile.cards.length : 0; } catch (e) {}
+        try { d.res = {}; (typeof RESOURCES !== 'undefined' ? RESOURCES : []).forEach(r => { if (r && r.id) d.res[r.id] = getRes(r.id) | 0; }); } catch (e) {}
+        try { d.corp = (Corp && Corp.mine) ? { name: Corp.mine.name, tag: Corp.mine.tag } : null; } catch (e) {}
+        try { d.farm = (window.MythicFarm && window.MythicFarm.ready && window.MythicFarm.ready()) ? (window.MythicFarm.summary() || null) : null; } catch (e) {}
+        return d;
+      },
+      actions: {
+        toast: (m, ms) => { try { showToast(String(m), ms || 3600); } catch (e) {} },
+        navigate: (screen) => { try { if (screen) { App.screen = String(screen); render(); } } catch (e) {} },
+        render: () => { try { render(); } catch (e) {} },
+        save: () => { try { saveProfile(); } catch (e) {} },
+      },
+    },
     get cloud() { try { return (typeof Cloud !== 'undefined') ? Cloud : null; } catch (e) { return null; } },
     signedIn: () => { try { return !!(Profile.cloud && Profile.cloud.signedIn && Cloud && Cloud.client); } catch (e) { return false; } },
     userId: () => { try { return (Profile.cloud && Profile.cloud.userId) || null; } catch (e) { return null; } },
@@ -264185,7 +264413,7 @@ render();
        other static asset, and a missed bump ships invisibly. -->
 <script type="module" src="src/mercenary/index.js?v=v121v66merc1"></script>
 <script type="module" src="src/haul/index.js?v=v121v111haul4"></script>
-<script type="module" src="src/farm/index.js?v=v121v103farm3"></script>
+<script type="module" src="src/farm/index.js?v=v121v116farm4"></script>
 <!-- 🍔 MYTHIC KITCHEN — the fast-food / drive-thru sim. Registers
      window.MythicKitchen (+ __mk) and is INERT until the title tile opens it:
      no DOM, no RAF loop, no Supabase call happens on load. Everything it can
@@ -264393,7 +264621,20 @@ render();
      ⚠ If this 404s nothing changes — the button reports "still loading".
      ⚠ Bump ?v= on every change — the service worker caches /src/* like any
        other static asset, and a missed bump ships invisibly. -->
-<script type="module" src="src/mapforge/index.js?v=mf10"></script>
+<script type="module" src="src/mapforge/index.js?v=mf18"></script>
+<!-- 🧩 ATHENA WIDGETS — Blueprint-style UI widgets and themes (/src/widgets).
+     Registers window.AthenaUI. At boot it loads every LIVE widget/theme
+     (public.ui_widgets, sql/040 — or the device's cached copy) and mounts
+     them into their targets: a named slot (data-athena-slot="…") or any
+     element by CSS selector, following DOM changes with a MutationObserver.
+     Bindings read window.MythicBridge.ui.data(); graphs call .ui.actions.
+     The designer itself opens only from the admin panel button or ?widgets=1.
+     ⚠ If this 404s nothing changes — no widget shows, the button reports it.
+     ⚠ Bump ?v= on every change — the service worker caches /src/* like any
+       other static asset, and a missed bump ships invisibly. -->
+<script type="module" src="src/widgets/index.js?v=aw5"></script>
+<!-- ⚔ BATTLE BOARD ↔ ATHENA (src/battle/battle.athena.js): the v3 battlemap as an Athena game scene; registers window.MythicBattleAthena. Bump ?v= on every change. -->
+<script type="module" src="src/battle/battle.athena.js?v=ba2"></script>
 <!-- ☣️ CONTAINMENT — the Research Facility's BSL-4 mini-game, its ward, and the
      world viruses. Registers window.MythicContainment and is INERT until the
      Research Lab's card opens it: /src/biolab (the 3D room), three.js and the
@@ -264577,8 +264818,8 @@ render();
        that works everywhere except the one early path nobody tested. It is
        2KB with no dependencies. -->
 <script src="src/econ/peg.js?v=v121q51"></script>
-<script src="src/battle/effects.js?v=v121v115" defer></script>
-<script src="src/phone/handset.js?v=v121v115" defer></script>
+<script src="src/battle/effects.js?v=v121v116" defer></script>
+<script src="src/phone/handset.js?v=v121v116" defer></script>
 <script src="src/battle/combat.js?v=120m4" defer></script>
 <script src="src/battle/targeting.js?v=121e3hex" defer></script>
 <link rel="stylesheet" href="src/sprites/frames.css?v=120k3">
@@ -264627,7 +264868,7 @@ render();
      Bump ?v= on every change — the service worker caches these like any asset. -->
 <link rel="stylesheet" href="src/hubui/hub-modals.css?v=121h0">
 <!-- 💬 tooltips: every title, every hub tile, every camp control, every resource icon (v121v112) -->
-<script src="src/hubui/tips.js?v=v121v115" defer></script>
+<script src="src/hubui/tips.js?v=v121v116" defer></script>
 <script src="src/sprites/frames.js?v=120k3" defer></script>
 <script src="src/sprites/idle.js?v=120k4" defer></script>
 </body>

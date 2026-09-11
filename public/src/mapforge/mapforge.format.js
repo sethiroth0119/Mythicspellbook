@@ -15,6 +15,9 @@
    Euler XYZ in radians (stored as-is from three.js), scale is per-axis.
    ═══════════════════════════════════════════════════════════════════════════ */
 
+import { normalizeBp } from './mapforge.actors.js';
+import { normalizeSpline } from './mapforge.spline.js';
+
 export const MAP_VERSION = 1;
 
 // Paint layers. Index is what gets stored per vertex — never reorder this
@@ -71,9 +74,27 @@ export function newMap(opts) {
       paint: new Array(verts).fill(0),
     },
     water: { on: true, level: -0.6, color: '#2e6f9e', opacity: 0.78, wave: 0.12, speed: 1 },
-    env: Object.assign({ preset: 'day', shadows: true, weather: 'none', weatherIntensity: 1, windDir: 45, windSpeed: 1.5 }, ENV_PRESETS.day),
+    env: Object.assign({ preset: 'day', shadows: true, weather: 'none', weatherIntensity: 1, windDir: 45, windSpeed: 1.5, tone: 'aces', exposure: 1, bloom: 0, bloomThreshold: 0.75, vignette: 0, terrainDetail: 0.8, terrainTile: 0.5 }, ENV_PRESETS.day),
     assets: [],
+    /* Sounds: URLs of files the game ships (/assets/Audio/…) referenced by Sound
+       emitter components and Play sound nodes — { id, label, url }, like assets. */
+    sounds: [],
+    /* Content folders (Unreal's World Outliner folders): objects carry `f`
+       (a folder id); a folder can nest via `parent`. Visibility/lock are
+       editor conveniences saved with the map so a build session resumes
+       where it left off. Objects with no `f` sit at the root. */
+    folders: [],
+    /* Prefabs: reusable groups. A definition holds child objects RELATIVE to
+       the instance origin; an instance is one object { t: 'prefab', pf: id }
+       placed like any prop. Edit the definition and every instance follows —
+       Unity's prefab, Unreal's Blueprint class for a set of static pieces. */
+    prefabs: [],
     objects: [],
+    /* Which pieces of THIS document a host game renders when the map is a
+       game-scene overlay (Homestead Farm etc.). A standalone world uses all
+       three; an overlay usually keeps the game's own ground and sky and only
+       contributes objects. Ignored by the editor's own viewport. */
+    scene: { ground: true, water: true, sky: true },
     meta: { created: Date.now(), updated: Date.now(), author: opts.author || '' },
     menu: normalizeMenu(null),
     player: normalizePlayer(null),
@@ -224,6 +245,10 @@ export function normalize(raw) {
     weather: ['rain', 'storm', 'snow', 'ash', 'duststorm'].includes(e.weather) ? e.weather : 'none',
     weatherIntensity: clampNum(e.weatherIntensity, 0.1, 3, 1),
     windDir: clampNum(e.windDir, 0, 360, 45), windSpeed: clampNum(e.windSpeed, 0, 20, 1.5),
+    // the look pass (round 11): filmic tone mapping + exposure, bloom, vignette; terrain detail texturing
+    tone: ['aces', 'linear', 'reinhard'].includes(e.tone) ? e.tone : 'aces',
+    exposure: clampNum(e.exposure, 0.2, 3, 1), bloom: clampNum(e.bloom, 0, 2, 0), bloomThreshold: clampNum(e.bloomThreshold, 0, 1, 0.75), vignette: clampNum(e.vignette, 0, 1, 0),
+    terrainDetail: clampNum(e.terrainDetail, 0, 1, 0.8), terrainTile: clampNum(e.terrainTile, 0.05, 4, 0.5),
   };
 
   /* An asset is EITHER a URL (a file under /models/ or any CORS-enabled host)
@@ -235,11 +260,19 @@ export function normalize(raw) {
     url: a.url ? String(a.url).slice(0, 1000) : undefined,
     data: (typeof a.data === 'string' && a.data.length) ? a.data : undefined,
     anims: Array.isArray(a.anims) ? a.anims.map(x => String(x).slice(0, 80)).slice(0, 64) : undefined,
+    tags: normalizeTags(a.tags).length ? normalizeTags(a.tags) : undefined,
     size: Number.isFinite(+a.size) ? +a.size : undefined,
   }) : null).filter(a => a && (a.url || a.data));
 
   const assetIds = new Set(m.assets.map(a => a.id));
-  m.objects = (Array.isArray(raw.objects) ? raw.objects : []).map(o => normalizeObject(o, assetIds)).filter(Boolean);
+  m.sounds = (Array.isArray(raw.sounds) ? raw.sounds : []).map(x => x && typeof x === 'object' && x.url ? ({ id: String(x.id || uid('s_')), label: String(x.label || 'Sound').slice(0, 60), url: String(x.url).slice(0, 1000) }) : null).filter(Boolean).slice(0, 200);
+  m.folders = normalizeFolders(raw.folders);
+  const folderIds = new Set(m.folders.map(f => f.id));
+  m.prefabs = normalizePrefabs(raw.prefabs, assetIds);
+  const prefabIds = new Set(m.prefabs.map(p => p.id));
+  m.objects = (Array.isArray(raw.objects) ? raw.objects : []).map(o => normalizeObject(o, assetIds, folderIds, prefabIds)).filter(Boolean);
+  const sc = raw.scene || {};
+  m.scene = { ground: sc.ground !== false, water: sc.water !== false, sky: sc.sky !== false };
 
   const meta = raw.meta || {};
   m.meta = { created: +meta.created || Date.now(), updated: +meta.updated || Date.now(), author: String(meta.author || '').slice(0, 80) };
@@ -249,14 +282,64 @@ export function normalize(raw) {
   return m;
 }
 
-export function normalizeObject(o, assetIds) {
+/* Folders: ids unique, parents must exist and must not cycle (a cycle is
+   flattened to the root rather than crashing the outliner). */
+export function normalizeFolders(raw) {
+  const out = []; const seen = new Set();
+  (Array.isArray(raw) ? raw : []).forEach(f => {
+    if (!f || typeof f !== 'object') return;
+    const id = String(f.id || uid('f_')); if (seen.has(id)) return; seen.add(id);
+    out.push({ id, name: String(f.name || 'Folder').slice(0, 60), parent: f.parent ? String(f.parent) : null, open: f.open !== false, vis: f.vis !== false, lock: f.lock === true });
+  });
+  const byId = new Map(out.map(f => [f.id, f]));
+  out.forEach(f => {
+    if (f.parent && !byId.has(f.parent)) f.parent = null;
+    // cycle check: walk up; if we come back to f, cut the link
+    let p = f.parent, hops = 0; while (p && hops++ < 200) { if (p === f.id) { f.parent = null; break; } p = (byId.get(p) || {}).parent; }
+  });
+  return out;
+}
+/* A slot key: the game's own id for the thing this object stands in for
+   (a Homestead Farm building id such as 'feedmill'). Lower-case, short. */
+export function slotKey(v) { return String(v == null ? '' : v).trim().toLowerCase().replace(/[^a-z0-9_.-]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40); }
+
+/* Prefab definitions: children are ordinary objects minus folder/prefab
+   fields (no nesting — a prefab inside a prefab is flattened away rather
+   than risking a cycle). Child ids stay stable so blueprints can target
+   `self.childName` and colliders can be keyed per part. */
+export function normalizePrefabs(raw, assetIds) {
+  const out = []; const seen = new Set();
+  (Array.isArray(raw) ? raw : []).slice(0, 200).forEach(p => {
+    if (!p || typeof p !== 'object') return;
+    const id = String(p.id || uid('pf_')); if (seen.has(id)) return; seen.add(id);
+    const objects = (Array.isArray(p.objects) ? p.objects : []).map(o => { const n = normalizeObject(o, assetIds, null, null); if (!n || n.t === 'prefab') return null; delete n.f; delete n.k; return n; }).filter(Boolean).slice(0, 200);
+    if (!objects.length) return;
+    const tags = normalizeTags(p.tags);
+    out.push(Object.assign({ id, name: String(p.name || 'Prefab').slice(0, 60), icon: String(p.icon || '🧱').slice(0, 4), objects }, tags.length ? { tags } : {}));
+  });
+  return out;
+}
+/* Asset-browser tags on prefabs and models: short lower-case words the author
+   types in the details panel; the Library searches them (mapforge.assets.js). */
+export function normalizeTags(raw) {
+  const seen = new Set();
+  return (Array.isArray(raw) ? raw : typeof raw === 'string' ? raw.split(/[,\s]+/) : []).map(t => String(t || '').toLowerCase().trim().replace(/[^a-z0-9_-]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 24)).filter(t => { if (!t || seen.has(t)) return false; seen.add(t); return true; }).slice(0, 12);
+}
+export function normalizeObject(o, assetIds, folderIds, prefabIds) {
   if (!o || typeof o !== 'object' || !o.t) return null;
   const t = String(o.t);
   if (t === 'glb' && assetIds && !assetIds.has(o.a)) return null;   // orphaned model reference
+  if (t === 'prefab' && (!o.pf || (prefabIds && !prefabIds.has(String(o.pf))))) return null;   // orphaned prefab instance
+  const sp = t === 'spline' ? normalizeSpline(o.sp, assetIds) : undefined;
+  if (t === 'spline' && !sp) return null;                                                      // a spline needs two points
   return {
     id: String(o.id || uid('o_')),
     t,
     a: t === 'glb' ? String(o.a) : undefined,
+    pf: t === 'prefab' ? String(o.pf) : undefined,                                              // prefab definition id
+    bp: normalizeBp(o.bp),                                                                       // actor blueprint (components + graph), see mapforge.actors.js
+    f: (o.f && (!folderIds || folderIds.has(String(o.f)))) ? String(o.f) : undefined,   // content folder
+    k: o.k ? (slotKey(o.k) || undefined) : undefined,                                      // game slot key (see docs: game scenes)
     p: vec3(o.p, [0, 0, 0]),
     r: vec3(o.r, [0, 0, 0]),
     s: vec3(o.s, [1, 1, 1]),
@@ -270,6 +353,8 @@ export function normalizeObject(o, assetIds) {
     fx: normalizeFx(o.fx),                            // emitter tuning for fx_* objects / attached effects
     au: t === 'audio' ? normalizeAudio(o.au) : undefined,   // 🔊 sound marker source
     act: normalizeAct(o.act),                         // interaction (press E / walk in)
+    mat: normalizeMat(o.mat),                         // material override: roughness / metalness / emissive (round 11)
+    sp,                                               // spline: control points + mode + source (round 13, mapforge.spline.js)
   };
 }
 
@@ -278,6 +363,18 @@ export function normalizeFx(f) {
   const out = { i: clampNum(f.i, 0.1, 4, 1), s: clampNum(f.s, 0.2, 6, 1) };
   if (f.off === true) out.off = true;        // a prop's built-in effect switched off
   return out;
+}
+/* A material override applies to every mesh of the object (a prop or a whole .glb):
+   PBR roughness / metalness and an emissive colour + intensity — how a lantern glows or
+   a relic gleams without a second prop. Absent = the prop's own look. */
+export function normalizeMat(m) {
+  if (!m || typeof m !== 'object') return undefined;
+  const out = {};
+  if (m.rough != null) out.rough = clampNum(m.rough, 0, 1, 0.85);
+  if (m.metal != null) out.metal = clampNum(m.metal, 0, 1, 0);
+  if (m.em && hex(m.em, null)) out.em = hex(m.em, null);
+  if (m.ei != null) out.ei = clampNum(m.ei, 0, 8, 1);
+  return Object.keys(out).length ? out : undefined;
 }
 export const LOOP_MODES = ['repeat', 'once', 'pingpong'];
 export function normalizeAnim(a) {

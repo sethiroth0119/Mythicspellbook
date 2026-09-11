@@ -23,6 +23,10 @@ import { createPlayer } from './mapforge.player.js';
 import { newMap, normalize } from './mapforge.format.js';
 import { createAvatar, resolveCharacter } from './mapforge.avatar.js';
 import { avatarPick } from './mapforge.bridge.js';
+import * as quality from './mapforge.quality.js';
+import { createPost } from './mapforge.post.js';
+const TONE = { aces: 'ACESFilmicToneMapping', linear: 'LinearToneMapping', reinhard: 'ReinhardToneMapping' };
+export function applyTone(THREE, renderer, env) { renderer.toneMapping = THREE[TONE[env.tone] || 'ACESFilmicToneMapping'] || THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = env.exposure == null ? 1 : env.exposure; }
 import * as api from './mapforge.api.js';
 
 export async function mountWorld(host, opts) {
@@ -35,13 +39,18 @@ export async function mountWorld(host, opts) {
   if (!map) { map = newMap({ name: 'empty', game: opts.game || 'sandbox' }); if (opts.onMissing) opts.onMissing(); }
 
   const renderer = new THREE.WebGLRenderer({ antialias: opts.antialias !== false, powerPreference: 'high-performance', alpha: !!opts.alpha });
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, opts.maxPixelRatio || 2));
-  renderer.shadowMap.enabled = opts.shadows !== false; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  const Q = quality.get().settings;
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, Math.min(opts.maxPixelRatio || 2, Q.pixelRatio)));
+  renderer.shadowMap.enabled = opts.shadows !== false && Q.shadows; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   const canvas = renderer.domElement; canvas.style.display = 'block'; canvas.style.width = '100%'; canvas.style.height = '100%'; canvas.tabIndex = 0;
   host.appendChild(canvas);
   const scene = new THREE.Scene();
   const camera = new THREE.PerspectiveCamera(opts.fov || 60, 1, 0.1, 3000);
-  const world = buildWorld(THREE, map, { scene, markers: !!opts.markers, gltfLoader: opts.gltfLoader });
+  /* instancing is on for games (draw calls, not picking, are what matter here); quality knobs follow the ladder and auto-tune */
+  const post = createPost(THREE, renderer);
+  const world = buildWorld(THREE, map, { scene, camera, markers: !!opts.markers, gltfLoader: opts.gltfLoader, onLightning: opts.onLightning, toast: opts.toast, onPrompt: opts.onPrompt, actions: opts.actions, instancing: opts.instancing !== false, shadows: opts.shadows !== false && Q.shadows, shadowMap: Q.shadowMap, fx: Q.fx, fxRange: Q.fxRange, onEnv: (env) => applyTone(THREE, renderer, env) });
+  const tuner = quality.createTuner(opts.tuner);
+  const offQ = quality.onChange(q => { quality.apply(renderer, world, q.level); resize(); });
   scene.add(world.group);
 
   const listeners = { frame: [], resize: [] };
@@ -86,28 +95,34 @@ export async function mountWorld(host, opts) {
     else camera.lookAt(0, 0, 0);
   }
 
+  // ⚡ actor blueprints run for the life of the mount; E (or opts.interactKey) is the interact key
+  const onInteract = (e) => { if ((e.key || '').toLowerCase() === (opts.interactKey || 'e')) world.interact(); };
+  window.addEventListener('keydown', onInteract);
+  world.startPlay(player ? { get pos() { return player.pos; }, setPos: (x, z) => { player.pos.x = x; player.pos.z = z; player.pos.y = world.heightAt(x, z); } } : null);
   let raf = 0, last = performance.now(), running = true;
   function loop(now) {
     if (!running) return;
     raf = requestAnimationFrame(loop);
     const dt = Math.min(0.05, (now - last) / 1000); last = now;
+    tuner.frame(dt);
     if (player) player.frame(dt);
     if (controls) controls.update();
     world.update(dt, camera);
     listeners.frame.forEach(f => f(dt, now));
-    renderer.render(scene, camera);
+    post.enabled = quality.get().settings.post !== false && opts.post !== false;
+    post.render(scene, camera, map.env);
   }
   raf = requestAnimationFrame(loop);
 
   const g = {
-    THREE, map, source, scene, camera, renderer, canvas, world, player, controls, on, view, avatar,
+    THREE, map, source, scene, camera, renderer, canvas, world, player, controls, on, view, avatar, quality, post,
     resize,
     stop() {
-      running = false; cancelAnimationFrame(raf); ro.disconnect();
+      running = false; cancelAnimationFrame(raf); ro.disconnect(); window.removeEventListener('keydown', onInteract); offQ(); try { world.stopPlay(); } catch (e) {}
       if (player) player.stop(); if (clickToLock) canvas.removeEventListener('click', clickToLock);
       if (avatar) { try { avatar.dispose(); } catch (e) {} }
       if (gesture) { canvas.removeEventListener('pointerdown', gesture); window.removeEventListener('keydown', gesture, true); }
-      try { world.dispose(); renderer.dispose(); renderer.forceContextLoss(); } catch (e) {}
+      try { post.dispose(); world.dispose(); renderer.dispose(); renderer.forceContextLoss(); } catch (e) {}
       if (canvas.parentNode) canvas.parentNode.removeChild(canvas);
     },
   };

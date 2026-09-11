@@ -19,7 +19,11 @@ import * as pill from './mapforge.pill.js';
 import { currentScreen } from './mapforge.bridge.js';
 import * as session from './mapforge.session.js';
 import * as menu from './mapforge.menu.js';
-import * as assets from './mapforge.assets.js';
+import * as assets from './mapforge.files.js';
+import * as games from './mapforge.games.js';
+import * as overlay from './mapforge.overlay.js';
+import * as quality from './mapforge.quality.js';
+import * as showroom from './mapforge.showroom.js';
 
 const MythicMapForge = {
   version: MAP_VERSION,
@@ -49,7 +53,16 @@ const MythicMapForge = {
   inWorld: session.isActive,
   /* the uploaded files (world_assets, sql/112) */
   assets: { list: assets.list, upload: assets.upload, remove: assets.remove, kinds: assets.KINDS },
+  /* game scenes: a mini-game registers an adapter, its map opens in the editor (open({ game })),
+     and the game reads the result back as an overlay — docs/athena-engine.md → Game scenes */
+  games: { register: games.register, get: games.get, list: games.list, onRegister: games.onRegister },
+  /* 🎮 every mini-game's model slots as showroom scenes (round 18, mapforge.showroom.js) */
+  showrooms: { list: showroom.listGames, open: showroom.open, pick: showroom.pick, register: showroom.registerAll, build: showroom.buildShowroom, diff: showroom.diffShowroom, lastWrite: showroom.lastWrite },
+  overlay: { forGame: overlay.forGame, liveMap: overlay.liveMap, invalidate: overlay.invalidate },
+  /* the quality ladder: get() / set('auto'|'low'|'medium'|'high') / onChange(fn) — remembered per device, auto steps down on low fps */
+  quality: { get: quality.get, set: quality.set, onChange: quality.onChange, apply: quality.apply, LEVELS: quality.LEVELS },
 };
+games.drainQueue();
 
 // Athena Engine is the product name; MythicMapForge stays as the API alias index.html already wires.
 try { window.AthenaEngine = MythicMapForge; window.MythicMapForge = MythicMapForge; } catch (e) {}
@@ -63,7 +76,7 @@ try { pill.sync(currentScreen()); } catch (e) {}
 try {
   const q = new URLSearchParams(location.search);
   if (q.get('mapforge') === '1') {
-    const go = () => setTimeout(() => MythicMapForge.open(q.get('map') ? { id: q.get('map'), source: q.get('src') || 'local' } : {}), 800);
+    const go = () => setTimeout(() => MythicMapForge.open(q.get('map') ? { id: q.get('map'), source: q.get('src') || 'local' } : q.get('game') ? { game: q.get('game') } : {}), 800);
     if (document.readyState === 'complete') go(); else window.addEventListener('load', go, { once: true });
   }
 } catch (e) {}

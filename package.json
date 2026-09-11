@@ -18,6 +18,9 @@
     "deploy:market": "node deploy-all.mjs --market",
     "deploy:check": "node deploy-all.mjs --dry"
   },
+  "dependencies": {
+    "cannon-es": "0.20.0"
+  },
   "devDependencies": {
     "@babel/standalone": "^8.0.4",
     "@gltf-transform/cli": "^4.4.2",

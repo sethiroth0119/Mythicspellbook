@@ -67,7 +67,7 @@ const props = await import(pathToFileURL(D + 'mapforge.props.js').href);
 }
 
 /* ── 3. the Files module ── */
-const A = await import(pathToFileURL(D + 'mapforge.assets.js').href);
+const A = await import(pathToFileURL(D + 'mapforge.files.js').href);   // the uploads API moved here in the Athena merge (mapforge.assets.js is build A's asset-browser index)
 {
   ok(A.KINDS.join() === 'model,anim,audio,vfx', 'four kinds: model, anim, audio, vfx');
   ok(A.kindOf({ name: 'tree.glb' }) === 'model', 'a .glb is a model');
@@ -83,7 +83,7 @@ const A = await import(pathToFileURL(D + 'mapforge.assets.js').href);
   ok(r.ok === false && r.offline === true && Array.isArray(r.rows), 'list() with no bridge is offline, never throws');
   const u = await A.upload({ name: 'a.glb', size: 10 });
   ok(u.ok === false && /sign in/i.test(u.error), 'upload() with no bridge says sign in');
-  const src = read(D + 'mapforge.assets.js');
+  const src = read(D + 'mapforge.files.js');   // the uploads API (renamed in the Athena merge)
   ok(/\/athena\/' \+ kind \+ '\//.test(src) && /me \+ '\/athena\//.test(src), 'bytes go under {uid}/athena/{kind}/ in the models bucket (owner-folder policy)');
   ok(/from\(TABLE\)\.insert\(row\)/.test(src) && /storage\.from\(BUCKET\)\.remove\(\[path\]\)/.test(src), 'a row that fails removes the bytes again');
   ok(/60 \* 1024 \* 1024/.test(src), '60 MB cap');

@@ -73,7 +73,7 @@ ok(!/led\.innerHTML = renderLedger/.test(FARM) && !/hud\.innerHTML = renderHud/.
 /* the knobs */
 const v = (SRC.match(/window\.BUILD_VERSION = '([^']+)'/) || [])[1];
 ok(parseInt((v || '').replace('v121v', ''), 10) >= 103, 'BUILD_VERSION is v121v103 or later', v);
-ok(/src\/farm\/index\.js\?v=v121v103farm3/.test(SRC) || /src\/farm\/index\.js\?v=v121v10[4-9]farm/.test(SRC), 'the farm module buster moved (farm3 or later)');
+ok(/src\/farm\/index\.js\?v=v121v103farm3/.test(SRC) || /src\/farm\/index\.js\?v=v121v1[0-9][0-9]farm/.test(SRC), 'the farm module buster moved (farm3 or later)');
 ok(readFileSync('./public/version.txt', 'utf8').trim() === v, 'version.txt equals BUILD_VERSION');
 ok(new RegExp("CACHE_VERSION = 'mythic-" + v + "-").test(readFileSync('./public/sw.js', 'utf8')), 'sw.js carries the build');
 ok(new RegExp('window\\.NC_BUILD = "' + v + '-').test(NC), 'NC_BUILD carries the build');

@@ -556,7 +556,150 @@ const FARM_BUILDINGS = [
   },
 ];
 
+/* ═══ ⚒ FARM ↔ ATHENA (build A's farm.athena.js, inlined — this bundle imports nothing) ═══ */
+const FarmAthena = (() => {
+  /* ════════════════════════════════════════════════════════════════════════════
+     🐄 HOMESTEAD FARM ↔ ⚒ ATHENA ENGINE — the farm as a GAME SCENE.
+     ----------------------------------------------------------------------------
+     Two directions, one file:
+
+     1. ADAPTER (farm → Athena). The farm registers itself with
+        AthenaEngine.games so the editor can open "Homestead Farm" from its
+        Maps tab. build() turns FARM_GRID + FARM_BUILDINGS into a map document:
+        a flat 20 m ground and one 🧩 slot object per building (objects[].k =
+        the building id), sorted into two content folders. The map is tagged
+        game: 'farm' and, by default, renders NONE of its own ground/water/sky
+        in the game — the farm keeps those; the map only contributes the slot
+        transforms, replacements and whatever else the admin places.
+
+     2. OVERLAY (Athena → farm). When the 3D scene mounts it asks Athena for
+        the LIVE farm map and gets back an overlay: the placed objects built
+        into a group the scene adds as-is, plus placement() / replacement()
+        per building so the farm draws each building where the admin put it,
+        at the admin's scale and turn, or draws the admin's prop / .glb in its
+        place. Yards (where the animals wander) and fences shift with their
+        pen. Everything degrades: no Athena, no map, or a signed-out player →
+        the farm draws exactly as it did before this file existed.
+
+     ⚠ The live map is GLOBAL — one live 'farm' scene per owner, and the game
+       loads the newest live one — so the "Open in Athena Engine" button is
+       admin-only: this is how the game's farm is redesigned for everyone, not
+       a per-player cosmetic (that is the Athena look tab next to it).
+     ⚠ Coordinates: the farm's tileToWorld(gx, gy) = (gx - w/2, gy - h/2) in
+       metres with the grid centred on the origin, which is exactly Athena's
+       frame (terrain centred, metres, Y up) — so slot positions are used raw.
+     ⚠ THREE: both sides use the r128 global build (window.THREE), so objects
+       built by Athena can sit in the farm's scene graph. Never mix in the
+       import-map three (0.171).
+     ════════════════════════════════════════════════════════════════════════════ */
+
+  /* ⚠ Build B ships the farm as ONE bundle (index.js) rather than farm.data.js
+     + farm.scene.js, so the tables arrive by configure() from the bundle
+     (called right after FARM_GRID is defined) instead of an import. */
+  let FARM_BUILDINGS = [], FARM_GRID = { w: 14, h: 14 };
+  function configure(o) { if (o && Array.isArray(o.FARM_BUILDINGS)) FARM_BUILDINGS = o.FARM_BUILDINGS; if (o && o.FARM_GRID) FARM_GRID = o.FARM_GRID; }
+
+  const FARM_GAME_ID = 'farm';
+
+  function tileToWorld(gx, gy) { return { x: gx - FARM_GRID.w / 2, z: gy - FARM_GRID.h / 2 }; }
+  function uid(p) { return (p || 'o') + Math.random().toString(36).slice(2, 8) + Date.now().toString(36).slice(-4); }
+
+  /* ── 1. the adapter ──────────────────────────────────────────────────────── */
+  function buildFarmMap() {
+    const n = 20, cell = 1, verts = (n + 1) * (n + 1);
+    const F_PENS = 'f_farm_pens', F_STATIONS = 'f_farm_stations';
+    const objects = FARM_BUILDINGS.map(def => {
+      const c = tileToWorld(def.plot.x + def.plot.w / 2, def.plot.y + def.plot.h / 2);
+      return { id: 'o_farm_' + def.id, t: 'slot', k: def.id, n: def.name, c: def.accent, p: [c.x, 0, c.z], r: [0, 0, 0], s: [1, 1, 1], g: true, f: def.houses ? F_PENS : F_STATIONS };
+    });
+    return {
+      v: 1, id: uid('map_'), name: 'Homestead Farm', description: 'The camp\'s homestead: one slot per building. Move a slot to move the building; replace it to swap the model.',
+      game: FARM_GAME_ID,
+      terrain: { n, cell, heights: new Array(verts).fill(0), paint: new Array(verts).fill(0) },
+      water: { on: false, level: -1, color: '#2e6f9e', opacity: 0.78, wave: 0.12, speed: 1 },
+      env: { preset: 'day', shadows: true, weather: 'none' },
+      assets: [],
+      folders: [
+        { id: F_PENS, name: 'Pens', parent: null, open: true, vis: true, lock: false },
+        { id: F_STATIONS, name: 'Stations', parent: null, open: true, vis: true, lock: false },
+      ],
+      objects,
+      scene: { ground: false, water: false, sky: false },
+      meta: { created: Date.now(), updated: Date.now(), author: 'Homestead Farm' },
+    };
+  }
+
+  const FARM_ADAPTER = {
+    id: FARM_GAME_ID, label: 'Homestead Farm', icon: '🐄',
+    describe: 'The camp\'s 3D homestead. One slot per building (pens and stations). Ground, sky and animals stay the farm\'s; everything else you place shows up on every player\'s farm once the map is live.',
+    get slots() { return FARM_BUILDINGS.map(def => ({ k: def.id, label: def.name, icon: def.emoji })); },
+    build: buildFarmMap,
+  };
+
+  let _registered = false;
+  function registerWithAthena() {
+    if (_registered) return true;
+    try {
+      const A = window.AthenaEngine || window.MythicMapForge;
+      if (A && A.games && typeof A.games.register === 'function') { A.games.register(FARM_ADAPTER); _registered = true; return true; }
+      // Athena has not loaded yet (module order is not guaranteed): queue it. index.js drains this.
+      if (!window.__athenaGames) window.__athenaGames = [];
+      window.__athenaGames.push(FARM_ADAPTER); _registered = true; return true;
+    } catch (e) { return false; }
+  }
+
+  function athenaAvailable() { try { const A = window.AthenaEngine || window.MythicMapForge; return !!(A && A.open); } catch (e) { return false; } }
+  function openInAthena() {
+    try { const A = window.AthenaEngine || window.MythicMapForge; if (!A || !A.open) return false; registerWithAthena(); A.open({ game: FARM_GAME_ID }); return true; } catch (e) { return false; }
+  }
+
+  /* ── 2. the overlay ──────────────────────────────────────────────────────── */
+  /* Resolves to null when there is nothing to overlay (no Athena, no live map). */
+  async function loadOverlay(THREE, scene, opts) {
+    opts = opts || {};
+    let A; try { A = window.AthenaEngine || window.MythicMapForge; } catch (e) { A = null; }
+    if (!A || !A.overlay || typeof A.overlay.forGame !== 'function') return null;
+    let ov;
+    try { ov = await A.overlay.forGame(FARM_GAME_ID, { THREE, scene, lights: false, force: !!opts.force }); } catch (e) { try { console.warn('[farm] athena overlay failed:', e); } catch (x) {} return null; }
+    if (!ov) return null;
+    const byKey = {}; ov.slots().forEach(s => { if (s) byKey[s.o.k] = s; });
+    const placementOf = (def) => {
+      const s = byKey[def.id];
+      const home = tileToWorld(def.plot.x + def.plot.w / 2, def.plot.y + def.plot.h / 2);
+      if (!s) return { x: home.x, z: home.z, y: 0, ry: 0, scale: 1, hidden: false, replaced: false, dx: 0, dz: 0, home: true };
+      return { x: s.p[0], z: s.p[2], y: s.p[1] || 0, ry: s.r[1] || 0, scale: s.s[0] || 1, hidden: !!s.hidden, replaced: !!s.replaced, dx: s.p[0] - home.x, dz: s.p[2] - home.z, home: false };
+    };
+    return {
+      group: ov.group, pieces: ov.pieces, map: ov.map, source: ov.source,
+      placement: placementOf,
+      /* the yard, shifted with its pen (rounded to whole tiles so the wander grid stays sane) */
+      yardOf(def) {
+        const y = def.yard || def.plot; const p = placementOf(def);
+        if (p.home) return y;
+        return { x: y.x + Math.round(p.dx), y: y.y + Math.round(p.dz), w: y.w, h: y.h };
+      },
+      /* an Object3D for a replaced slot (prop or .glb), or null */
+      replacement(def) { try { return ov.buildReplacement(def.id); } catch (e) { return null; } },
+      update(dt, camera) { try { ov.update(dt, camera); } catch (e) {} },
+      dispose() { try { ov.dispose(); } catch (e) {} },
+    };
+  }
+
+  /* Athena tells the page when a map is saved, set live or the editor closes;
+     the farm reloads its overlay so what the admin just did shows at once. */
+  function watchAthena(fn) {
+    const h = (e) => { try { const g = e && e.detail && e.detail.game; if (!g || g === FARM_GAME_ID) fn(e.type); } catch (x) {} };
+    ['athena:saved', 'athena:live', 'athena:closed'].forEach(t => window.addEventListener(t, h));
+    return () => ['athena:saved', 'athena:live', 'athena:closed'].forEach(t => window.removeEventListener(t, h));
+  }
+
+  return { configure, FARM_GAME_ID, buildFarmMap, FARM_ADAPTER, registerWithAthena, athenaAvailable, openInAthena, loadOverlay, watchAthena };
+})();
 const FARM_GRID = { w: 14, h: 14 };
+/* ⚒ Athena Engine (merged v121v116): the farm registers itself as a game scene
+   and, when a live 'farm' map exists, draws its buildings where the admin put
+   them (farm.athena.js — build A's round 5 adapter, ported onto this bundle). */
+FarmAthena.configure({ FARM_BUILDINGS, FARM_GRID });
 
 const RECIPE_LABELS = {
   tannery: 'Cure hide → leather',
@@ -2183,6 +2326,25 @@ function build3D(THREE, container, opts) {
   const weatherG = new THREE.Group(); scene.add(weatherG);
   const spinners = [];   // windmill blades etc.
 
+  /* ⚒ The Athena overlay. Null until (and unless) a live 'farm' map loads;
+     every reader below falls back to the catalogue's own layout. */
+  let athena = null, athenaVer = 0, athenaUnwatch = null;
+  const yardFor = (def) => athena ? athena.yardOf(def) : yardOf(def);
+  const placeFor = (def) => athena ? athena.placement(def) : null;
+  const maxDist = () => (athena && athena.pieces && athena.pieces.ground) ? 70 : 34;
+  async function loadAthena(force) {
+    let ov = null;
+    try { ov = await FarmAthena.loadOverlay(THREE, scene, { force }); } catch (e) { ov = null; }
+    if (!alive) { if (ov) ov.dispose(); return; }
+    if (athena) { try { scene.remove(athena.group); athena.dispose(); } catch (e) {} athena = null; }
+    athena = ov; athenaVer++;
+    if (ov) scene.add(ov.group);
+    ground.visible = !(ov && ov.pieces && ov.pieces.ground);
+    // everything placed by the catalogue is rebuilt against the new placement (the sync key carries athenaVer)
+    Object.keys(buildingNodes).forEach(id => { const cur = buildingNodes[id]; try { unpick(cur.group); buildings.remove(cur.group); if (cur.fence) yards.remove(cur.fence); const si = spinners.indexOf(cur.spin); if (si >= 0) spinners.splice(si, 1); } catch (e) {} delete buildingNodes[id]; });
+    try { if (view) update(view); } catch (e) {}
+  }
+
   const labelSprite = (text, sub, color) => {
     const c = document.createElement('canvas'); c.width = 640; c.height = 160;
     const x = c.getContext('2d');
@@ -2245,6 +2407,18 @@ function build3D(THREE, container, opts) {
     }
     for (let i = 0; i < level - 1; i++) { const star = box(0.16, 0.16, 0.16, M(0xd4af37)); star.position.set(-w / 2 + 0.35 + i * 0.3, hgt + 0.05, d / 2 - 0.1); g.add(star); }
     const lab = labelSprite(def.emoji + ' ' + def.name, damaged ? 'Roof torn off — repair' : 'Level ' + level, damaged ? '#e0556a' : (roofHex || def.accent)); lab.position.y = hgt + 1.35; g.add(lab);
+    g.traverse(o => { if (o.isMesh) { o.userData.pick = { kind: 'building', id: def.id }; pickables.push(o); } });
+    return g;
+  };
+  /* A building the admin REPLACED in Athena: the prop / .glb they chose, the
+     farm's own label above it, and an invisible plate so a tap still opens
+     the building (a .glb arrives asynchronously — meshes added later would
+     not be in `pickables`). */
+  const makeReplaced = (def, level, roofHex, damaged, pl) => {
+    const g = new THREE.Group();
+    const body = athena ? athena.replacement(def) : null; if (body) g.add(body);
+    const plate = new THREE.Mesh(new THREE.BoxGeometry(def.plot.w, 1.6, def.plot.h), new THREE.MeshBasicMaterial({ transparent: true, opacity: 0, depthWrite: false })); plate.position.y = 0.8; g.add(plate);
+    const lab = labelSprite(def.emoji + ' ' + def.name, damaged ? 'Roof torn off — repair' : 'Level ' + level, damaged ? '#e0556a' : (roofHex || def.accent)); lab.position.y = 2.2 * Math.max(0.5, pl && pl.scale || 1); g.add(lab);
     g.traverse(o => { if (o.isMesh) { o.userData.pick = { kind: 'building', id: def.id }; pickables.push(o); } });
     return g;
   };
@@ -2396,8 +2570,8 @@ function build3D(THREE, container, opts) {
     }
     if (D.lanterns) {
       FARM_BUILDINGS.forEach(def => {
-        if (!def.yard) return;
-        [[def.yard.x, def.yard.y], [def.yard.x + def.yard.w, def.yard.y + def.yard.h]].forEach(([gx, gy], i) => {
+        if (!def.yard) return; const yd = yardFor(def);
+        [[yd.x, yd.y], [yd.x + yd.w, yd.y + yd.h]].forEach(([gx, gy], i) => {
           const p = tileToWorld(gx, gy);
           const pole = cyl(0.03, 0.04, 1.1, M(0x3a2f26), 6); pole.position.set(p.x, 0.55, p.z); decor.add(pole);
           const lamp = box(0.18, 0.18, 0.18, new THREE.MeshLambertMaterial({ color: 0xffe0a0, emissive: 0xffb040, emissiveIntensity: 1 })); lamp.position.set(p.x, 1.15, p.z); decor.add(lamp);
@@ -2513,23 +2687,27 @@ function build3D(THREE, container, opts) {
       const roof = look.roofs && look.roofs[def.id];
       const dmg = !!(row && row.damaged);
       const constructing = !!(row && row.constructing && row.readyAt > Date.now());
-      const key = lv + '|' + (roof || '') + '|' + dmg + '|' + constructing;
+      const key = lv + '|' + (roof || '') + '|' + dmg + '|' + constructing + '|' + athenaVer;
       const cur = buildingNodes[def.id];
       if (cur && cur.key === key) return;
       if (cur) { unpick(cur.group); buildings.remove(cur.group); if (cur.fence) yards.remove(cur.fence); const si = spinners.indexOf(cur.spin); if (si >= 0) spinners.splice(si, 1); }
-      const p = tileToWorld(def.plot.x + def.plot.w / 2, def.plot.y + def.plot.h / 2);
+      const pl = placeFor(def);
+      const p = pl ? { x: pl.x, z: pl.z } : tileToWorld(def.plot.x + def.plot.w / 2, def.plot.y + def.plot.h / 2);
       const before = spinners.length;
-      const g = !lv ? makeGhost(def) : constructing ? makeScaffold(def) : makeBuilding(def, lv, roof, dmg);
-      g.position.set(p.x, 0, p.z); buildings.add(g);
+      const g = !lv ? makeGhost(def) : constructing ? makeScaffold(def) : (pl && pl.replaced) ? makeReplaced(def, lv, roof, dmg, pl) : makeBuilding(def, lv, roof, dmg);
+      g.position.set(p.x, pl ? pl.y : 0, p.z);
+      if (pl) { g.rotation.y = pl.ry; if (!pl.replaced) g.scale.setScalar(pl.scale || 1); g.visible = !pl.hidden; }
+      buildings.add(g);
       let f = null;
-      if (lv && !constructing && def.yard) { f = fence(def.yard.x, def.yard.y, def.yard.x + def.yard.w, def.yard.y + def.yard.h, lv >= 3 ? 0x5a4a3a : 0x7a5a3a, lv >= 2); yards.add(f); }
+      const yd = yardFor(def);
+      if (lv && !constructing && def.yard && !(pl && pl.hidden)) { f = fence(yd.x, yd.y, yd.x + yd.w, yd.y + yd.h, lv >= 3 ? 0x5a4a3a : 0x7a5a3a, lv >= 2); yards.add(f); }
       buildingNodes[def.id] = { group: g, key, fence: f, spin: spinners.length > before ? spinners[spinners.length - 1] : null };
     });
     const live = new Set();
     v.animals.forEach(a => {
       live.add(a.id);
       const def = animalDef(a.sp); const penDef = FARM_BUILDINGS.find(b => b.id === def.pen);
-      const yard = yardOf(penDef);
+      const yard = yardFor(penDef);
       let n = animalNodes[a.id];
       const akey = (a.breed || '') ;
       if (n && n.akey !== akey) { unpick(n.group); herd.remove(n.group); delete animalNodes[a.id]; n = null; }
@@ -2587,11 +2765,11 @@ function build3D(THREE, container, opts) {
     dragging = false; cv.style.cursor = 'grab';
     if (moved < 6) { const p = pickAt(e.clientX, e.clientY); if (p) { select(p); try { opts.onSelect && opts.onSelect(p.kind, p.id); } catch (x) {} } }
   };
-  const onWheel = (e) => { e.preventDefault(); orbit.dist = Math.max(8, Math.min(34, orbit.dist + e.deltaY * 0.02)); placeCamera(); };
+  const onWheel = (e) => { e.preventDefault(); orbit.dist = Math.max(8, Math.min(maxDist(), orbit.dist + e.deltaY * 0.02)); placeCamera(); };
   const onTouch = (e) => {
     if (e.touches.length === 2) {
       const d = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
-      if (pinch) { orbit.dist = Math.max(8, Math.min(34, orbit.dist - (d - pinch) * 0.04)); placeCamera(); }
+      if (pinch) { orbit.dist = Math.max(8, Math.min(maxDist(), orbit.dist - (d - pinch) * 0.04)); placeCamera(); }
       pinch = d; e.preventDefault();
     } else pinch = 0;
   };
@@ -2606,7 +2784,7 @@ function build3D(THREE, container, opts) {
       selectRing.rotation.x = -Math.PI / 2; selectRing.position.y = 0.03; scene.add(selectRing);
     }
     if (p.kind === 'building') {
-      const def = FARM_BUILDINGS.find(b => b.id === p.id); const w = tileToWorld(def.plot.x + def.plot.w / 2, def.plot.y + def.plot.h / 2);
+      const def = FARM_BUILDINGS.find(b => b.id === p.id); const pl = placeFor(def); const w = pl ? { x: pl.x, z: pl.z } : tileToWorld(def.plot.x + def.plot.w / 2, def.plot.y + def.plot.h / 2);
       selectRing.position.set(w.x, 0.03, w.z); const r = Math.max(def.plot.w, def.plot.h) * 0.62; selectRing.scale.set(r, r, 1);
       selectRing.visible = true;
     } else selectRing.visible = false;
@@ -2626,6 +2804,7 @@ function build3D(THREE, container, opts) {
       n.group.position.y = walking ? Math.abs(Math.sin(n.w.phase)) * 0.03 : 0;
     });
     spinners.forEach(h => { h.rotation.z += dt * 1.1; });
+    if (athena) athena.update(dt, camera);
     Object.values(truckNodes).forEach(n => { n.g.position.y = Math.abs(Math.sin(t / 90)) * 0.02; });
     if (rain) {
       const pos = rain.geometry.attributes.position.array;
@@ -2647,6 +2826,7 @@ function build3D(THREE, container, opts) {
 
   function destroy() {
     if (!alive) return; alive = false;
+    try { if (athenaUnwatch) athenaUnwatch(); if (athena) athena.dispose(); } catch (e) {}
     try { cancelAnimationFrame(rafId); clearInterval(timerId); } catch (e) {}
     try { window.removeEventListener('resize', onResize); if (ro) ro.disconnect(); } catch (e) {}
     try { scene.traverse(o => { if (o.geometry) o.geometry.dispose(); if (o.material) { const ms = [].concat(o.material); ms.forEach(m => { if (m.map) m.map.dispose(); m.dispose(); }); } }); } catch (e) {}
@@ -2654,7 +2834,10 @@ function build3D(THREE, container, opts) {
     try { renderer.dispose(); renderer.forceContextLoss && renderer.forceContextLoss(); } catch (e) {}
     try { cv.remove(); } catch (e) {}
   }
-  return { update, destroy, mode: '3d', select };
+  // ⚒ Fetch the live Athena farm map (async, degrades to null) and follow the editor's saves.
+  loadAthena(false);
+  athenaUnwatch = FarmAthena.watchAthena(() => loadAthena(true));
+  return { update, destroy, mode: '3d', select, get athena() { return athena; }, reloadAthena: () => loadAthena(true) };
 }
 
 /* ══════════════════════════ 2D fallback ══════════════════════════ */
@@ -3132,7 +3315,7 @@ function renderAthena(host, s, view) {
   const skies = Object.keys(FARM_LOOKS.sky).map(k => { const g = FARM_LOOKS.sky[k]; return `<button class="farm-swatch ${L.sky === k ? 'is-on' : ''}" data-fact="look-sky" data-id="${k}" title="${esc(g.label)}" style="background:linear-gradient(180deg,${hex6(g.top)},${hex6(g.bottom)})"></button>`; }).join('');
   const decor = Object.keys(FARM_LOOKS.decor).map(k => `<button class="farm-check ${L.decor[k] ? 'is-on' : ''}" data-fact="look-decor" data-id="${k}">${L.decor[k] ? '☑' : '☐'} ${esc(FARM_LOOKS.decor[k].label)}</button>`).join('');
   const roofs = FARM_BUILDINGS.filter(b => s.buildings[b.id] && b.id !== 'pasture').map(b => `<span>${b.emoji} ${esc(b.name)}</span><input type="color" class="farm-input" data-froof="${b.id}" value="${esc(L.roofs[b.id] || b.accent)}" style="width:44px;height:26px;padding:0"><button class="farm-btn tiny" data-fact="look-roof-reset" data-id="${b.id}" ${L.roofs[b.id] ? '' : 'disabled'}>reset</button>`).join('');
-  return `<div class="farm-cards">
+  return `<div class="farm-cards">${(() => { try { return host.isAdmin && host.isAdmin(); } catch (e) { return false; } })() ? `<div class="farm-card"><div class="farm-card-h">⚒ Athena Engine</div><button class="farm-btn" data-fact="athena-open" title="Open the live farm scene in Athena Engine: move or replace the homestead's buildings for every player">⚒ Open in Athena Engine (admin)</button><p class="farm-hint">One live 'farm' scene for everyone — the look tab below is per player.</p></div>` : ''}
     <div class="farm-onboard"><b>Athena Editor.</b> Restyle the homestead. Everything here is cosmetic, saves with your farm, and shows to anyone who visits.</div>
     <div class="farm-card" style="--accent:#f2d98a"><h3>🏷 Name</h3><div class="farm-row"><input class="farm-input" data-fname="1" maxlength="28" value="${esc(L.name)}" placeholder="Name your homestead" style="flex:1"><button class="farm-btn primary" data-fact="look-name">Save</button></div></div>
     <div class="farm-card" style="--accent:#8fc46a"><h3>🌿 Ground</h3><div class="farm-swatches">${grounds}</div><div class="farm-toastline">${esc(FARM_LOOKS.ground[L.ground].label)}</div></div>
@@ -3225,6 +3408,7 @@ function renderShell(sub) {
     <div class="farm-body">
       <div class="farm-stage" data-farm="stage"><div class="farm-hint">Drag to orbit · wheel / pinch to zoom · tap a building or animal</div></div>
       <div class="farm-hud" data-farm="hud"></div>
+      <div data-athena-slot="farm.hud" style="position:absolute;left:10px;bottom:10px;z-index:4"></div>
       <div class="farm-panel" data-farm="panelbox">
         <div class="farm-panelhead"><h2 data-farm="paneltitle">Homestead</h2><button class="x" data-fact="tab-close" title="Close">✕</button></div>
         <div data-farm="panel"></div>
@@ -3806,6 +3990,7 @@ function mount(rootEl) {
         case 'ranch-butcher': { const ok = await h.confirm('Send this ranch animal to the block? Your cut follows your feed share.'); if (!ok) break; const rr = await ranch.butcher(h, id | 0); h.toast(rr.ok ? `🔪 Your cut: ${fmtGot(h, rr.got)}.` : `Ranch: ${rr.why}`, 3400); loadRanch(); break; }
         case 'rename-save': { const inp = rootEl.querySelector(`[data-frename="${id}"]`); doRename(id, inp ? inp.value : ''); return; }
         case 'rename-cancel': m.ui.renaming = null; break;
+        case 'athena-open': { if (!api.openInAthena()) h.toast('Athena Engine is still loading — try again in a moment.', 2600); break; }
         case 'look-ground': S.setLook(h, s, { ground: id }); break;
         case 'look-sky': S.setLook(h, s, { sky: id }); break;
         case 'look-decor': S.setLook(h, s, { decor: { [id]: !s.look.decor[id] } }); break;
@@ -3839,6 +4024,8 @@ const api = {
   ready: () => !!makeHost(),
   mount, unmount,
   refresh: () => { try { if (_mounted && _mounted.paint) _mounted.paint(); } catch (e) {} },
+  /* ⚒ the mounted 3D scene handle (null in 2D / before the scene resolves) — its `athena` getter is the live overlay */
+  scene: () => (_mounted && _mounted.scene) || null,
   state: () => { const h = host(); return h ? S.ensureState(h) : { buildings: {}, animals: [] }; },
   summary: () => { const h = host(); return h ? S.summary(h, S.ensureState(h)) : null; },
   build: (id) => withHost((h, s) => S.build(h, s, id)),
@@ -3872,7 +4059,11 @@ const api = {
   boosts: () => { const h = host(); return h ? S.activeBoosts(S.ensureState(h)) : []; },
   /* 🏆 For a future corp / community contest: lifetime harvest numbers. */
   harvestScore: () => { try { const s = api.state(); return { meat: s.stats.meat | 0, slaughtered: s.stats.slaughtered | 0, births: s.stats.births | 0, raidsRepelled: s.stats.raidsRepelled | 0 }; } catch (e) { return null; } },
+  /* ⚒ Athena Engine: the admin opens the live farm scene in the editor */
+  openInAthena: () => FarmAthena.openInAthena(),
+  athenaAvailable: () => FarmAthena.athenaAvailable(),
   _state: S,
 };
 
+try { FarmAthena.registerWithAthena(); } catch (e) {}
 try { if (typeof window !== 'undefined') window.MythicFarm = api; } catch (e) {}

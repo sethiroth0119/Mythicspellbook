@@ -86,6 +86,17 @@ export const PROP_CATALOG = [
   { id: 'waypoint', label: 'Waypoint',     icon: '📍', cat: 'Markers', marker: true, col: false },
   { id: 'zone',     label: 'Zone (10m)',   icon: '⭕', cat: 'Markers', marker: true, col: false },
   { id: 'audio',    label: 'Sound',        icon: '🔊', cat: 'Markers', marker: true, col: false },   // positional audio from an uploaded file (o.au)
+  /* Game slot — a stand-in for something the host game draws itself (a farm
+     building, a shop counter). Only ever created by a game adapter
+     (AthenaEngine.games); it is NOT in the Library. `k` on the object names
+     the game asset. Replacing it with a prop/.glb keeps `k`, so the game
+     draws the replacement in that asset's place. */
+  { id: 'slot',     label: 'Game slot',    icon: '🧩', cat: 'Slots', tint: true, col: false, slot: true },
+  /* Prefab instance — its body is the definition's parts (mapforge.world.js); this entry only names the type. */
+  { id: 'prefab',   label: 'Prefab',       icon: '🧱', cat: 'Prefabs', col: false, prefab: true },
+  /* Spline — its body is generated from control points (mapforge.spline.js). Never
+     collides (one box around a curve would be wrong) and never instanced. */
+  { id: 'spline',   label: 'Spline',       icon: '〰️', cat: 'Splines', col: false, spline: true },
 ];
 /* Does this object block the player? Explicit o.col wins; else the prop's
    default (col: false above), else solid. Custom .glb models are solid. */
@@ -145,6 +156,13 @@ const WOOD = '#6b4a2b', DARKWOOD = '#4a3119', STONE = '#8a8a86', DARKSTONE = '#5
 const CONC = '#8d8a84', DARKCONC = '#5f5c58', ASPH = '#3d3f44', RUST = '#7a3b1e', SOOT = '#1f2022', GLASS = '#1a2430', NEON = '#4de3ff';
 
 const BUILDERS = {
+  slot: ({ M, box, cyl, G, at, THREE }) => {
+    const g = G();
+    g.add(at(M(box(1, 0.08, 1), '#d4af37', { emissive: '#7a5a10', ei: 0.35, op: 0.55 }, true), 0, 0.04, 0));
+    g.add(at(M(cyl(0.05, 0.06, 1.1, 6), '#3a2f26'), 0, 0.55, 0));
+    const flag = M(box(0.5, 0.3, 0.04), '#d4af37', { emissive: '#7a5a10', ei: 0.4 }, true); flag.position.set(0.25, 1.0, 0); g.add(flag);
+    return g;
+  },
   placeholder: ({ M, box, G, at }) => { const g = G(); g.add(at(M(box(1, 1, 1), '#c66bff', { emissive: '#5a1a99', ei: 0.35 }), 0, 0.5, 0)); return g; },
 
   tree: ({ M, cyl, sph, G, at }) => { const g = G(); g.add(at(M(cyl(0.16, 0.24, 1.8, 7), WOOD), 0, 0.9, 0));

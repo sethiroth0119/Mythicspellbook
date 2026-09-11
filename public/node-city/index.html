@@ -9,7 +9,7 @@
      believed the file was already live. Only a CONTENT change moves the hash
      and forces a re-upload, so bump this stamp whenever the city 404s, and
      probe it (grep NC_BUILD on the served page) to prove the deploy landed. -->
-<script>window.NC_BUILD = "v121v115-lobby";</script>
+<script>window.NC_BUILD = "v121v116-athena";</script>
 <!-- ════════════════════════════════════════════════════════════════════════
      NODE CITY — SimCity-style settlement layer for Mythic Spellbook.
      Three.js WebGPU (auto-falls back to WebGL2). Realistic sun/moon cycle.
@@ -9551,6 +9551,10 @@ const MODEL_REGISTRY = {
   // civilian: { url: 'models/citizen.glb', scale: 1 },
 };
 const MODELS_LSK = 'mythic_city_models_v1';
+// 🌐 Published slots first (the host's Forge.cityModels, set from Athena's Node City
+//    showroom and shipped in the catalogue — same for every player), then this
+//    device's own ⚙ Models overrides on top, exactly as before. (Athena round 18, merged v121v116)
+try { const host = (window.parent && window.parent !== window) ? window.parent.__mythicCityModels : null; if (host && typeof host === 'object') Object.assign(MODEL_REGISTRY, JSON.parse(JSON.stringify(host))); } catch (e) {}
 try {
   const saved = JSON.parse(localStorage.getItem(MODELS_LSK) || 'null');
   if (saved && typeof saved === 'object') Object.assign(MODEL_REGISTRY, saved);
