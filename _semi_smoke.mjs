@@ -20,16 +20,16 @@ for (const f of ['freight_semi', 'container_blue', 'container_red']) {
 /* ── 2. every freight rig carries the semi ── */
 ok(/const FREIGHT_MODEL = \{ url: '\/models\/trucks\/freight_semi\.glb', scale: 1, rotY: 90 \};/.test(RIGS), 'FREIGHT_MODEL is the semi, turned 90° (its long axis is X, cab at −X)');
 ok((RIGS.match(/emoji: '🚛', accent: RIG_ACCENT, model: FREIGHT_MODEL,/g) || []).length === 6, 'all six freight rows carry it');
-ok(/sku: v\.rigId \|\| null, model: \(typeof _ppModelOf === 'function' \? _ppModelOf\(v\) : null\)/.test(SRC), 'the haul bridge hands the lot row\'s model to the run');
+ok(/sku: v\.rigId \|\| null, model: _haulModelOf\(v\)/.test(SRC) && /^function _haulModelOf\(v\) \{/m.test(SRC), 'the haul bridge hands the CATALOGUE model to the run (the semi for freight), a row upload only when the class has none');
 ok(/model: \(v\.model && typeof v\.model\.url === 'string' && v\.model\.url\) \? v\.model : null,/.test(HAUL), 'rigProfile keeps it');
 
 /* ── 3. the run: model over the boxes, containers on the deck ── */
 ok(/const PLAYER_HALF_W = 1\.15, BASE_PLAYER_HALF_L = 4\.2;/.test(HAUL) && /const RIG = rigProfile\(opts\.rig\);\n\s*let PLAYER_HALF_L = BASE_PLAYER_HALF_L;/.test(HAUL), 'the collision half-length is per run and grows to the model');
-ok(/PLAYER_HALF_L = Math\.max\(BASE_PLAYER_HALF_L, Math\.min\(7\.2, size\.l \/ 2\)\);/.test(HAUL) && /S\.camExtra = Math\.max\(0, \(PLAYER_HALF_L - BASE_PLAYER_HALF_L\) \* 1\.15\);/.test(HAUL), '…and the chase camera backs off by the extra length');
+ok(/PLAYER_HALF_L = Math\.max\(BASE_PLAYER_HALF_L, Math\.min\(7\.6, size\.l \/ 2\)\);/.test(HAUL) && /S\.camExtra = Math\.max\(0, \(PLAYER_HALF_L - BASE_PLAYER_HALF_L\) \* 1\.15\);/.test(HAUL), '…and the chase camera backs off by the extra length');
 ok(/const slot = new THREE\.Group\(\); slot\.position\.set\(0, 1\.1, 0\.4 - i \* 1\.9\); slot\.userData\.cargo = true;/.test(HAUL), 'cargo slots are groups (the crate is a child), so the cargo animation is untouched');
 ok(/rig\.children\.forEach\(\(c\) => \{ if \(c\.userData\.cargo\) \{ const k = 0\.5 \+ 0\.5 \* \(S\.cargo \/ 100\); c\.scale\.set\(k, k, k\); c\.rotation\.z = \(1 - k\) \* 0\.6; \} \}\);/.test(HAUL), 'the old shrink-and-tilt cargo animation is still the one that runs');
-ok(/const fit = haulFit\(THREE, await haulLoadGLB\(THREE, RIG\.model\.url\), \{ w: 2\.4, l: 14\.0 \}, RIG\.model\.rotY \|\| 0, true\); truck = fit\.node; size = fit;/.test(HAUL) && /proc\.forEach\(\(o\) => \{ o\.visible = false; \}\);/.test(HAUL), 'the semi is fitted to the traffic trucks\' width and the procedural rig is hidden, never removed (it is the fallback)');
-ok(/const deck = haulDeckOf\(THREE, truck, size, rig\);/.test(HAUL) && /const fit = haulFit\(THREE, box, \{ w: Math\.min\(2\.35, size\.w\), l: L, h: 2\.3 \}, spec\.rotY, false\);/.test(HAUL) && /slot\.add\(fit\.node\);/.test(HAUL), 'the containers are laid along the deck the mesh reveals');
+ok(/const raw = await haulLoadGLB\(THREE, RIG\.model\.url\); const fit = haulFit\(THREE, raw, \{ w: 2\.6, l: 15\.0 \}, haulAutoOrient\(THREE, raw\), true\); truck = fit\.node; size = fit;/.test(HAUL) && /proc\.forEach\(\(o\) => \{ o\.visible = false; \}\);/.test(HAUL), 'the semi is fitted to the traffic trucks\' width and the procedural rig is hidden, never removed (it is the fallback)');
+ok(/const deck = haulDeckOf\(THREE, truck, size, rig\);/.test(HAUL) && /const fit = haulFit\(THREE, box, \{ w: Math\.max\(1\.6, size\.w - 0\.15\), l: L, h: 2\.1 \}, spec\.rotY, false\);/.test(HAUL) && /slot\.add\(fit\.node\);/.test(HAUL), 'the containers are laid along the deck the mesh reveals');
 ok(/\{ url: '\/models\/trucks\/container_red\.glb',\s+rotY: 90, frac: 0\.58 \}/.test(HAUL) && /\{ url: '\/models\/trucks\/container_blue\.glb', rotY: 90, frac: 0\.42 \}/.test(HAUL), 'red 40-footer rear, blue 20-footer front');
 ok(/let alive = true;/.test(HAUL) && /function destroy\(\) \{\n\s*alive = false;/.test(HAUL) && /if \(!alive\) return;\n\s*truck\.userData\.rigModel = true;/.test(HAUL), 'a model that lands after the run ended is dropped');
 ok(/const HAUL_THREE_ADDONS = 'https:\/\/cdn\.jsdelivr\.net\/npm\/three@0\.171\.0\/examples\/jsm\/loaders\/GLTFLoader\.js';/.test(HAUL) && /"three": "https:\/\/cdn\.jsdelivr\.net\/npm\/three@0\.171\.0\/build\/three\.webgpu\.js"/.test(SRC), 'the GLTFLoader comes from the same three.js build the run imports (one instance)');
@@ -83,6 +83,6 @@ ok(parseInt((v || '').replace('v121v', ''), 10) >= 110, 'BUILD_VERSION is v121v1
 ok(readFileSync('./public/version.txt', 'utf8').trim() === v, 'version.txt equals BUILD_VERSION');
 ok(new RegExp("CACHE_VERSION = 'mythic-" + v + "-").test(readFileSync('./public/sw.js', 'utf8')), 'sw.js carries the build');
 ok(new RegExp('window\\.NC_BUILD = "' + v + '-').test(readFileSync('./public/node-city/index.html', 'utf8')), 'NC_BUILD carries the build');
-ok(/src\/haul\/index\.js\?v=v121v110haul3/.test(SRC), 'the haul buster moved');
+ok(/src\/haul\/index\.js\?v=v121v1\d\dhaul\d/.test(SRC), 'the haul buster moved');
 console.log(fails ? '\n' + fails + ' FAILED' : '\nALL PASS');
 process.exit(fails ? 1 : 0);

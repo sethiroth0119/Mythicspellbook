@@ -452,6 +452,34 @@ async function haulLoadGLB(THREE, url) {
   })().catch((e) => { _glbCache.delete(url); throw e; }));
   return (await _glbCache.get(url)).clone(true);
 }
+/* Which way round is this truck? Measure it, do not trust a knob: the long
+   axis goes along Z, and the tall end (the cab) goes to +Z — the nose, inside
+   `rig`. Works for the semi, for an admin-uploaded box truck, for anything
+   with a cab. Returns the rotation in degrees that haulFit should apply. */
+function haulAutoOrient(THREE, obj) {
+  const wrap = new THREE.Group(); wrap.add(obj); wrap.updateMatrixWorld(true);
+  const b = new THREE.Box3().setFromObject(obj), sz = new THREE.Vector3(); b.getSize(sz);
+  let rot = sz.x > sz.z ? 90 : 0;
+  // height at each end of the long axis, sampled from the vertices
+  const axis = sz.x > sz.z ? 'x' : 'z', lo = b.min[axis], len = Math.max(1e-6, sz[axis]);
+  let tallLo = -Infinity, tallHi = -Infinity; const v = new THREE.Vector3();
+  obj.traverse((o) => {
+    if (!o.isMesh || !o.geometry || !o.geometry.attributes || !o.geometry.attributes.position) return;
+    const pos = o.geometry.attributes.position, step = Math.max(1, Math.floor(pos.count / 6000));
+    for (let i = 0; i < pos.count; i += step) {
+      v.fromBufferAttribute(pos, i).applyMatrix4(o.matrixWorld);
+      const f = (v[axis] - lo) / len;
+      if (f < 0.3) tallLo = Math.max(tallLo, v.y); else if (f > 0.7) tallHi = Math.max(tallHi, v.y);
+    }
+  });
+  wrap.remove(obj);
+  /* rot 0 keeps +z as the nose; rot 90 sends −x to +z. The cab must end at +Z:
+     for axis z the tall end must be the HIGH end (else +180); for axis x the
+     tall end must be the LOW end (else +180). */
+  const tallAtHi = tallHi >= tallLo;
+  if (axis === 'z' ? !tallAtHi : tallAtHi) rot += 180;
+  return rot;
+}
 /* Fit a loaded model into a box. rotY (degrees) is applied FIRST so the
    model's long axis reads along the rig's Z (nose at +Z inside `rig`).
    dims: { w, l, h } — with `uniform` the largest scale that fits every
@@ -877,7 +905,10 @@ async function play(opts) {
   // ── Vehicles ──────────────────────────────────────────────────────────────
   function addBlinkers(g, halfW, frontZ, rearZ, y) {
     g.userData.blink = { L: [], R: [] };
-    for (const [side, key] of [[-1, 'L'], [1, 'R']]) for (const z of [frontZ, rearZ]) { const m = new THREE.Mesh(G.blinkG, M.blinkOff); m.position.set(side * (halfW - 0.05), y, z); g.add(m); g.userData.blink[key].push(m); }
+    /* ⚠ Every vehicle is turned 180° (see makeCar), so the model's local −x
+       ends up on the driver's RIGHT. [[-1,'L'],[1,'R']] lit the wrong side
+       for the rig and for traffic alike (owner, v121v111). */
+    for (const [side, key] of [[1, 'L'], [-1, 'R']]) for (const z of [frontZ, rearZ]) { const m = new THREE.Mesh(G.blinkG, M.blinkOff); m.position.set(side * (halfW - 0.05), y, z); g.add(m); g.userData.blink[key].push(m); }
   }
   function setBlink(g, dir, on) {
     const b = g.userData.blink; if (!b) return;
@@ -927,18 +958,22 @@ async function play(opts) {
   (async () => {
     if (!RIG.model || !RIG.model.url) return;
     let truck, size;
-    try { const fit = haulFit(THREE, await haulLoadGLB(THREE, RIG.model.url), { w: 2.4, l: 14.0 }, RIG.model.rotY || 0, true); truck = fit.node; size = fit; }
+    try { const raw = await haulLoadGLB(THREE, RIG.model.url); const fit = haulFit(THREE, raw, { w: 2.6, l: 15.0 }, haulAutoOrient(THREE, raw), true); truck = fit.node; size = fit; }
     catch (e) { try { console.warn('[haul] rig model', RIG.model.url, e && e.message); } catch (e2) {} return; }
     if (!alive) return;
     truck.userData.rigModel = true; rig.add(truck);
     proc.forEach((o) => { o.visible = false; });
-    PLAYER_HALF_L = Math.max(BASE_PLAYER_HALF_L, Math.min(7.2, size.l / 2));
+    PLAYER_HALF_L = Math.max(BASE_PLAYER_HALF_L, Math.min(7.6, size.l / 2));
     S.camExtra = Math.max(0, (PLAYER_HALF_L - BASE_PLAYER_HALF_L) * 1.15);
     if (rig.userData.guard) { const y = size.h + 0.6; rig.userData.guard[0].position.set(0.6, y, size.l / 2 - 2.2); rig.userData.guard[1].position.set(0.6, y + 0.3, size.l / 2 - 3.3); }
     const deck = haulDeckOf(THREE, truck, size, rig);
     S._deck = deck;
-    // re-lay the cargo slots along the deck: one slot per container, rear first
     const slots = rig.children.filter((c) => c.userData.cargo);
+    /* A truck with no deck in its mesh (a box body, a tanker) carries its own
+       load: no containers stacked on its roof. The crates go too — the cargo
+       % still shows on the HUD, and damage still counts. */
+    if (deck.guessed) { slots.forEach((slot) => { slot.visible = false; slot.userData.cargo = false; }); return; }
+    // re-lay the cargo slots along the deck: one slot per container, rear first
     const span = Math.max(2.5, deck.z1 - deck.z0), gapZ = 0.25;
     const usable = span - gapZ * (HAUL_CONTAINERS.length + 1);
     let z = deck.z0 + gapZ;
@@ -950,7 +985,7 @@ async function play(opts) {
       slot.children.forEach((c) => { c.scale.set(1, 1, L / 1.6); c.position.y = 0.7; });   // the crate stretches to the slot until the model lands
       haulLoadGLB(THREE, spec.url).then((box) => {
         if (!alive) return;
-        const fit = haulFit(THREE, box, { w: Math.min(2.35, size.w), l: L, h: 2.3 }, spec.rotY, false);
+        const fit = haulFit(THREE, box, { w: Math.max(1.6, size.w - 0.15), l: L, h: 2.1 }, spec.rotY, false);
         slot.children.slice().forEach((c) => { c.visible = false; });
         slot.add(fit.node);
       }).catch((e) => { try { console.warn('[haul] container', spec.url, e && e.message); } catch (e2) {} });
@@ -1224,7 +1259,8 @@ async function play(opts) {
         const gap = lead.z - v.z - lead.halfL - v.halfL;
         const safe = 4 + v.speed * 0.9;
         if (gap < safe) wantS = Math.min(wantS, Math.max(0, lead.speed - (safe - gap) * 0.6));
-        if (gap < 0.3 && !lead.rig) v.z = lead.z - lead.halfL - v.halfL - 0.3;
+        // only ever move a car BACK behind its lead (and never past the rig)
+        if (gap < 0.3 && !lead.rig && lead.z > v.z) v.z = Math.max(v.z - 6 * dt, lead.z - lead.halfL - v.halfL - 0.3);
       }
       v.speed += Math.max(-9 * dt, Math.min(4 * dt, wantS - v.speed));
       v.z += v.speed * dt;
@@ -1328,7 +1364,7 @@ async function play(opts) {
         damage(d);
       }
       if (rearEnd) { S.speed = Math.min(S.speed, closing > 8 ? v.speed * 0.8 : v.speed); S.z = v.z - (v.halfL + PLAYER_HALF_L) - 0.05; }
-      else { const push = Math.sign(dx || 1); S.x -= push * 1.6 * dt * 20; v.x += push * 0.8; S.speed *= 0.93; }
+      else { const push = Math.sign(dx || 1); S.x -= push * 1.6 * dt * 20; v.x = Math.max(-ROAD_W / 2 + v.halfW, Math.min(ROAD_W / 2 - v.halfW, v.x + push * 0.8 * dt * 20)); S.speed *= 0.93; }
     }
   }
   function damage(pct) { S.cargo = Math.max(0, S.cargo - pct * up.bed * RIG.armor); if (S.cargo <= 0) { flash('💥 CARGO LOST'); setTimeout(finish, 600); } }
