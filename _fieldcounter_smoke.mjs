@@ -32,7 +32,7 @@ console.log('\n=== 1. the gate and the after-clause, on the real Counters engine
   vm.createContext(ctx);
   vm.runInContext(FX.replace(/\(function \(global\) \{/, '(function (global) {').replace(/\}\)\(typeof window[^;]*;\s*$/, '})(window);'), ctx);
   ok(!!window.MythicCounters && typeof window.MythicCounters.get === 'function', 'effects.js registers MythicCounters in the sandbox');
-  vm.runInContext(fnText('_fieldAbilityOf') + '\n' + fnText('_canUseFieldAbility') + '\n' + fnText('_fieldAbilityCounterCost') + '\n' + fnText('_fieldAbilityAfterCounters'), ctx);
+  vm.runInContext(fnText('_ctrSlug') + '\n' + fnText('_fieldAbilityOf') + '\n' + fnText('_canUseFieldAbility') + '\n' + fnText('_fieldAbilityCounterCost') + '\n' + fnText('_fieldAbilityAfterCounters'), ctx);
   const mk = (fa, start) => ({
     state: { turn: 'player', turnNumber: 3, player: { energy: 2, hand: [] }, units: [] },
     unit: { id: 'u1', name: 'Rune Adept', owner: 'player', alive: true, pos: { x: 1, y: 1 }, cardId: 'c1', fieldActive: fa, counterToken: { id: 'spellcounter', name: 'Spell Counter', icon: '🔮', start: start } },
@@ -93,7 +93,7 @@ console.log('\n=== 1. the gate and the after-clause, on the real Counters engine
 console.log('\n=== 2. editor, save, activation, AI, hover row ===');
 {
   ok(/id="ed-field-ctr-n"/.test(SRC) && /id="ed-field-ctr-name"/.test(SRC) && /id="ed-field-ctr-from"/.test(SRC) && /id="ed-field-ctr-mode"/.test(SRC) && /id="ed-field-ctr-empty"/.test(SRC), 'editor: counters to spend, counter name, taken from, energy mode, last-counter clause');
-  ok(/counters: \(\(\) => \{\s*const n = num\('ed-field-ctr-n', 0, 99, 0\); if \(!n\) return undefined;/.test(SRC) && /id = name \? \(name\.toLowerCase\(\)\.replace\(\/\[\^a-z0-9\]\+\/g, ''\) \|\| 'charge'\) : '';/.test(SRC), 'save: absent at 0, name slugged the same way the counter block slugs it');
+  ok(/counters: \(\(\) => \{\s*const n = num\('ed-field-ctr-n', 0, 99, 0\); if \(!n\) return undefined;/.test(SRC) && /id = name \? \(_ctrSlug\(name\) \|\| 'charge'\) : '';/.test(SRC) && /const _slug = _ctrSlug\(_name\) \|\| 'charge';/.test(SRC), 'save: absent at 0, name slugged the same way the counter block slugs it (one _ctrSlug on both sides, v121v114)');
   ok(/if \(_ctr\) \{ const MC = window\.MythicCounters; if \(_ctr\.from === 'pool'\) MC\.pay\(ns, 'player', _ctr\.id, _ctr\.n\); else MC\.add\(ns, unit, -_ctr\.n, _ctr\.id\); \}/.test(SRC), 'activation pays the counters before the effect fires');
   ok(/if \(_ctr\) ns = _fieldAbilityAfterCounters\(ns, unit, _ctr, 'player'\);/.test(SRC), 'activation applies the last-counter clause after the effect');
   ok(/_fieldAbilityCounterCost\(s, u, fa, 'ai'\)/.test(SRC) && /MC\.pay\(ns, 'ai', _ctr\.id, _ctr\.n\)/.test(SRC) && /_fieldAbilityAfterCounters\(ns, u, _ctr, 'ai'\)/.test(SRC), 'the AI gates, pays and settles the same way');

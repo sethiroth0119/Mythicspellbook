@@ -83,6 +83,7 @@ assets/3d models/**/*.glb
 # 26.7 MB → 0.84 MiB, 19.9 MB → 0.59 MiB, 16.7 MB → 0.53 MiB. Masters in
 # assets-source/glb-masters/{trucks,containers}/.
 !models/trucks/freight_semi.glb
+!models/trucks/freight_semi_wrecked.glb
 !models/trucks/container_blue.glb
 !models/trucks/container_red.glb
 

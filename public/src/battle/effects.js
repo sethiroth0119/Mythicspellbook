@@ -355,7 +355,10 @@
       var t = {};
       for (var k in DEFAULT_TOKEN) if (Object.prototype.hasOwnProperty.call(DEFAULT_TOKEN, k)) t[k] = DEFAULT_TOKEN[k];
       for (var k2 in raw) if (Object.prototype.hasOwnProperty.call(raw, k2)) t[k2] = raw[k2];
-      t.id = String(t.id || 'charge');
+      /* the same slug the editor and the field-ability cost use: lower-case,
+         letters and digits, trailing plural s dropped — so a token saved as
+         "Spell Counters" and a cost typed "spell counter" meet in one pile */
+      t.id = Counters.slug(t.id) || Counters.slug(t.name) || 'charge';
       t.name = String(t.name || 'Counter');
       t.start = Math.max(0, t.start | 0);
       t.max = Math.max(0, t.max | 0);
@@ -405,12 +408,17 @@
 
     /* Add (or, with a negative n, remove). Honours the token's `max` cap and
        never goes below zero. Returns the count actually applied. */
+    slug: function (name) {
+      var s = String(name || '').toLowerCase().replace(/[^a-z0-9]+/g, '');
+      if (s.length > 4 && s.slice(-1) === 's' && s.slice(-2) !== 'ss') s = s.slice(0, -1);
+      return s;
+    },
     add: function (state, holder, n, tokenId, kind) {
       try {
         var key = Counters.key(holder, kind);
         if (!key) return 0;
         var tok = (typeof holder === 'object') ? Counters.tokenOf(holder) : null;
-        var id = tokenId || (tok && tok.id) || DEFAULT_TOKEN.id;
+        var id = (tokenId && Counters.slug(tokenId)) || (tok && tok.id) || DEFAULT_TOKEN.id;
         var have = Counters.get(state, holder, id, kind);
         var want = have + (n | 0);
         if (want < 0) want = 0;

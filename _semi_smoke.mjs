@@ -13,22 +13,22 @@ const IGN = readFileSync('./public/.assetsignore', 'utf8');
 /* ── 1. the files ship, small ── */
 for (const f of ['freight_semi', 'container_blue', 'container_red']) {
   let sz = 0; try { sz = statSync('./public/models/trucks/' + f + '.glb').size; } catch (e) {}
-  ok(sz > 100000 && sz < 2000000, f + '.glb is packed and under 2 MB', sz);
+  ok(sz > 100000 && sz < 3000000, f + '.glb is packed and under 3 MB', sz);
   ok(IGN.includes('!models/trucks/' + f + '.glb'), f + '.glb is on the upload allow-list (the blanket **/*.glb rule would 404 it in production)');
 }
 
 /* ── 2. every freight rig carries the semi ── */
-ok(/const FREIGHT_MODEL = \{ url: '\/models\/trucks\/freight_semi\.glb', scale: 1, rotY: 90 \};/.test(RIGS), 'FREIGHT_MODEL is the semi, turned 90° (its long axis is X, cab at −X)');
+ok(/const FREIGHT_MODEL = \{ url: '\/models\/trucks\/freight_semi\.glb', scale: 1, rotY: 90, wrecked: '\/models\/trucks\/freight_semi_wrecked\.glb' \};/.test(RIGS), 'FREIGHT_MODEL is the semi, turned 90° (its long axis is X, cab at −X), with its wrecked pack');
 ok((RIGS.match(/emoji: '🚛', accent: RIG_ACCENT, model: FREIGHT_MODEL,/g) || []).length === 6, 'all six freight rows carry it');
 ok(/sku: v\.rigId \|\| null, model: _haulModelOf\(v\)/.test(SRC) && /^function _haulModelOf\(v\) \{/m.test(SRC), 'the haul bridge hands the CATALOGUE model to the run (the semi for freight), a row upload only when the class has none');
-ok(/model: \(v\.model && typeof v\.model\.url === 'string' && v\.model\.url\) \? v\.model : null,/.test(HAUL), 'rigProfile keeps it');
+ok(/model: \(v\.model && typeof v\.model\.url === 'string' && v\.model\.url\) \? \{ url: v\.model\.url, scale: \+v\.model\.scale \|\| 1, rotY: \+v\.model\.rotY \|\| 0, wrecked:/.test(HAUL), 'rigProfile keeps it (and the wrecked pack)');
 
 /* ── 3. the run: model over the boxes, containers on the deck ── */
 ok(/const PLAYER_HALF_W = 1\.15, BASE_PLAYER_HALF_L = 4\.2;/.test(HAUL) && /const RIG = rigProfile\(opts\.rig\);\n\s*let PLAYER_HALF_L = BASE_PLAYER_HALF_L;/.test(HAUL), 'the collision half-length is per run and grows to the model');
 ok(/PLAYER_HALF_L = Math\.max\(BASE_PLAYER_HALF_L, Math\.min\(7\.6, size\.l \/ 2\)\);/.test(HAUL) && /S\.camExtra = Math\.max\(0, \(PLAYER_HALF_L - BASE_PLAYER_HALF_L\) \* 1\.15\);/.test(HAUL), '…and the chase camera backs off by the extra length');
 ok(/const slot = new THREE\.Group\(\); slot\.position\.set\(0, 1\.1, 0\.4 - i \* 1\.9\); slot\.userData\.cargo = true;/.test(HAUL), 'cargo slots are groups (the crate is a child), so the cargo animation is untouched');
 ok(/rig\.children\.forEach\(\(c\) => \{ if \(c\.userData\.cargo\) \{ const k = 0\.5 \+ 0\.5 \* \(S\.cargo \/ 100\); c\.scale\.set\(k, k, k\); c\.rotation\.z = \(1 - k\) \* 0\.6; \} \}\);/.test(HAUL), 'the old shrink-and-tilt cargo animation is still the one that runs');
-ok(/const raw = await haulLoadGLB\(THREE, RIG\.model\.url\); const fit = haulFit\(THREE, raw, \{ w: 2\.6, l: 15\.0 \}, haulAutoOrient\(THREE, raw\), true\); truck = fit\.node; size = fit;/.test(HAUL) && /proc\.forEach\(\(o\) => \{ o\.visible = false; \}\);/.test(HAUL), 'the semi is fitted to the traffic trucks\' width and the procedural rig is hidden, never removed (it is the fallback)');
+ok(/const raw = await haulLoadGLB\(THREE, wrecked \? RIG\.model\.wrecked : RIG\.model\.url\);[^\n]*const fit = haulFit\(THREE, raw, \{ w: 2\.6, l: 15\.0 \}, haulAutoOrient\(THREE, raw\), true\); truck = fit\.node; size = fit;/.test(HAUL) && /proc\.forEach\(\(o\) => \{ o\.visible = false; \}\);/.test(HAUL), 'the semi is fitted to the traffic trucks\' width and the procedural rig is hidden, never removed (it is the fallback)');
 ok(/const deck = haulDeckOf\(THREE, truck, size, rig\);/.test(HAUL) && /const fit = haulFit\(THREE, box, \{ w: Math\.max\(1\.6, size\.w - 0\.15\), l: L, h: 2\.1 \}, spec\.rotY, false\);/.test(HAUL) && /slot\.add\(fit\.node\);/.test(HAUL), 'the containers are laid along the deck the mesh reveals');
 ok(/\{ url: '\/models\/trucks\/container_red\.glb',\s+rotY: 90, frac: 0\.58 \}/.test(HAUL) && /\{ url: '\/models\/trucks\/container_blue\.glb', rotY: 90, frac: 0\.42 \}/.test(HAUL), 'red 40-footer rear, blue 20-footer front');
 ok(/let alive = true;/.test(HAUL) && /function destroy\(\) \{\n\s*alive = false;/.test(HAUL) && /if \(!alive\) return;\n\s*truck\.userData\.rigModel = true;/.test(HAUL), 'a model that lands after the run ended is dropped');

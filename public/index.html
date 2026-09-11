@@ -39407,7 +39407,7 @@ body:has(#pack-opener-frame) #chat-overlay {
   // the console. Bump this every deploy alongside sw.js's CACHE_VERSION. If two
   // machines show different stamps, the older one is on stale code (hard-refresh);
   // if they MATCH but content still differs, it is a DATA/publish issue, not code.
-  window.BUILD_VERSION = 'v121v113';
+  window.BUILD_VERSION = 'v121v114';
   try {
     console.info('%cMythic Spellbook ' + window.BUILD_VERSION + '%c — build check: run  __mg.version',
       'font-weight:700;color:#b48cff', 'color:#7d7499');
@@ -44695,11 +44695,109 @@ function _passiveFired(unit, passiveId) {
 }
 try { window.__mg = window.__mg || {}; window.__mg.passiveFired = _passiveFired; } catch (e) {}
 
+/* ═══ 🧬 GRANT PASSIVE (v121v114) ═══════════════════════════════════════════
+   Owner: "an effect type where when X happens they can grant a passive for X
+   turns or permanently — e.g. when this unit is sent to the graveyard, give
+   all units, fusions and archons called this turn the passive Speed until the
+   end of the turn."
+
+   A granted passive lives in unit.statusEffects as
+     { type: 'grantPassive', passiveId, turns, eot }
+   and hasPassive() reads it, so every consumer of a passive sees a grant the
+   same way it sees a printed one. turns 0 = permanent (pushed onto
+   unit.passives instead); 1 = until the END of the granting side's current
+   turn (eot — cleared in endPlayerTurn / endAITurn); N ≥ 2 = aged by the
+   normal status tick at that side's turn starts.
+
+   "Called this turn" = not on the board when the turn started
+   (state._idsAtTurnStart, stamped in startTurn). Units called LATER in the
+   same turn also qualify: the grant is remembered on App._battleTurnGrants
+   for the rest of that side's turn, applied in applyOnPlayEffect, and
+   consulted by the summoning-sickness check so a granted Speed really lets
+   the unit act. */
+function _grantPassiveTo(unit, pid, turns, eot) {
+  if (!unit || !pid) return false;
+  if (!(turns > 0) && !eot) {
+    if (!Array.isArray(unit.passives)) unit.passives = unit.passive && unit.passive !== 'none' ? [unit.passive] : [];
+    if (!unit.passives.includes(pid)) unit.passives.push(pid);
+    return true;
+  }
+  const se = (unit.statusEffects || []).filter((e) => !(e && e.type === 'grantPassive' && e.passiveId === pid));
+  se.push({ type: 'grantPassive', passiveId: pid, turns: eot ? 1 : Math.max(1, turns | 0), eot: !!eot });
+  unit.statusEffects = se;
+  return true;
+}
+function _calledThisTurn(state, u) {
+  if (!u || u.isHero) return false;
+  const ids = state && Array.isArray(state._idsAtTurnStart) ? state._idsAtTurnStart : null;
+  return !ids || !ids.includes(u.id);
+}
+function _grantScopeMatch(state, u, owner, scope) {
+  if (!u || !u.alive) return false;
+  switch (scope) {
+    case 'allies': return u.owner === owner;
+    case 'enemies': return u.owner !== owner;
+    case 'all': return true;
+    case 'calledThisTurn': return u.owner === owner && _calledThisTurn(state, u);
+    case 'calledFusionsArchons': return u.owner === owner && !!(u.isFusion || u.isArchon || u.isKalon) && _calledThisTurn(state, u);
+    default: return false;
+  }
+}
+/* Does a grant still pending for this side (this turn) give pid to a unit
+   being summoned now? Read without state so the summoning-sickness checks can
+   ask before the unit ever reaches an effect. */
+function _turnGrantGives(unit, pid) {
+  try {
+    const list = (typeof App !== 'undefined' && Array.isArray(App._battleTurnGrants)) ? App._battleTurnGrants : [];
+    return list.some((g) => g && g.side === unit.owner && g.passiveId === pid
+      && (g.scope === 'calledThisTurn' || (g.scope === 'calledFusionsArchons' && (unit.isFusion || unit.isArchon || unit.isKalon))));
+  } catch (e) { return false; }
+}
+/* Apply every pending turn grant to a unit that has just been called. */
+function _applyTurnGrants(unit) {
+  try {
+    const list = (typeof App !== 'undefined' && Array.isArray(App._battleTurnGrants)) ? App._battleTurnGrants : [];
+    for (const g of list) {
+      if (!g || g.side !== unit.owner || unit.isHero) continue;
+      if (g.scope === 'calledFusionsArchons' && !(unit.isFusion || unit.isArchon || unit.isKalon)) continue;
+      if (g.scope !== 'calledThisTurn' && g.scope !== 'calledFusionsArchons') continue;
+      if (!hasPassive(unit, g.passiveId)) _grantPassiveTo(unit, g.passiveId, g.turns, g.eot);
+    }
+  } catch (e) {}
+}
+function _clearTurnGrants(side) {
+  try { if (typeof App !== 'undefined' && Array.isArray(App._battleTurnGrants)) App._battleTurnGrants = App._battleTurnGrants.filter((g) => g && g.side !== side); } catch (e) {}
+}
+/* end-of-turn: the "until end of turn" grants of `side` fall away */
+function _expireEotGrants(state, side) {
+  try {
+    if (!state || !Array.isArray(state.units)) return state;
+    let changed = false;
+    const units = state.units.map((u) => {
+      if (!u || u.owner !== side || !Array.isArray(u.statusEffects) || !u.statusEffects.some((e) => e && e.type === 'grantPassive' && e.eot)) return u;
+      changed = true;
+      return { ...u, statusEffects: u.statusEffects.filter((e) => !(e && e.type === 'grantPassive' && e.eot)) };
+    });
+    return changed ? { ...state, units } : state;
+  } catch (e) { return state; }
+}
+/* 🔵 one slug for counter names on every side: lower-case, letters and digits,
+   and a trailing plural s dropped — "Spell Counters" and "spell counter" are
+   the same pile. (The two editor save sites and the field-ability cost used to
+   slug without the plural rule, and no side singularised.) */
+function _ctrSlug(name) {
+  let s = String(name || '').toLowerCase().replace(/[^a-z0-9]+/g, '');
+  if (s.length > 4 && s.endsWith('s') && !s.endsWith('ss')) s = s.slice(0, -1);
+  return s;
+}
+/* ═══ end grant passive ═══ */
 function hasPassive(unit, id) {
   if (!unit || !id) return false;
   // 🚫 Field-negation (negateField on-play) — a nullified unit has NO passives
   // while _negatedTurns > 0 (timed) or _negatedBy is set (while the source lives).
   if ((unit._negatedTurns | 0) > 0 || unit._negatedBy) return false;
+  // 🧬 a granted passive (Grant Passive effect) counts exactly like a printed one
+  if (Array.isArray(unit.statusEffects) && unit.statusEffects.some((e) => e && e.type === 'grantPassive' && e.passiveId === id)) return true;
   if (Array.isArray(unit.passives)) return unit.passives.includes(id);
   // Legacy fallback for pre-migration unit objects: check single `passive` field.
   return unit.passive === id;
@@ -102325,8 +102423,9 @@ const ONPLAY_TYPES = [
   // permanents you control (your Location, your Enchantments, the Weather) are
   // included when the side is 'ally' — "location cards can have counters" is
   // this line.
-  { id: 'addCounters',    label: '🔵 Add Counters (place this card\'s counters on units / locations)', needs: ['amount', 'radius', 'tSide'] },
-  { id: 'removeCounters', label: '🔴 Remove Counters (strip counters off targets)', needs: ['amount', 'radius', 'tSide'] },
+  { id: 'addCounters',    label: '🔵 Add Counters (place counters — named below, or this card\'s own — on units / locations)', needs: ['amount', 'radius', 'tSide', 'counterName'] },
+  { id: 'removeCounters', label: '🔴 Remove Counters (strip counters — named below, or this card\'s own — off targets)', needs: ['amount', 'radius', 'tSide', 'counterName'] },
+  { id: 'grantPassive',   label: '🧬 Grant Passive (give a passive to this unit, your units, or the units, fusions and archons called this turn — for N turns or for good)', needs: ['grantPassive'] },
   // 🗑 Discard — force the OPPONENT to drop N random cards from their hand.
   // This used to be welded onto the Panicked status (a unit panicking would
   // also nuke a random card from the player's hand). That was too punishing
@@ -102537,7 +102636,7 @@ const ONPLAY_TYPES = [
 //    stays only as the never-lose-an-effect backstop it was meant to be.
 const ONPLAY_TYPE_GROUPS = [
   { label: '💥 Damage & Removal',   ids: ['aoeDamage','aoeKill','singleKill','targetStrike','damageHero','destroyTarget','destroyFrozen','burnBurst','boardWipe','purgeAscended','banishUnit','vanishTribe','chainDamage','damagePerCard','damageFromGrave','drainLife','fight','mirrorWard','purityPact'] },
-  { label: '🛡 Buffs & Debuffs',    ids: ['intimidate','aoeStatus','buffSelf','buffAllies','applyBuffDebuff','bestow','empowerTeam','equipStats','proliferate','swapAtkDef','mirrorStats','stealStatus','rewind','readyAllies','buffPerCard','stillnessSeal'] },
+  { label: '🛡 Buffs & Debuffs',    ids: ['grantPassive','intimidate','aoeStatus','buffSelf','buffAllies','applyBuffDebuff','bestow','empowerTeam','equipStats','proliferate','swapAtkDef','mirrorStats','stealStatus','rewind','readyAllies','buffPerCard','stillnessSeal'] },
   { label: '❤️ Healing & Energy',   ids: ['heal','healHero','energyGain','kalonSource'] },
   { label: '👑 Control & Movement', ids: ['takeControl','takeControlAll','bounceUnit','vanishTemp','vanishReturn','pullUnits','pushUnits','swapPositions','transformAlly','cloneUnit','soulSwap'] },
   { label: '🃏 Cards & Hand',       ids: ['drawCards','drawFiltered','searchDeck','discardCards','discardSelf','peekHand','peekDiscard','peekBanish','stealCard','cheapenHand','scry','inspire','shuffleToDeck','copyLastMove'] },
@@ -102684,6 +102783,9 @@ const FX_GATE_FIELDS = {
   'seizeas': ['matSources', 'seizeTreatAs'],
   'setzone': ['setZone'], 'setkind': ['setKind'],
   'weathertype': ['weatherType'], 'weather-dur': ['duration'], 'timeofday': ['timeOfDay'],
+  // 🧬 grant passive (one box) and 🔵 the counter name for add / remove counters
+  'grantbox': ['grantPassive'], 'gpassive': ['grantPassive'], 'gtarget': ['grantPassive'], 'gturns': ['grantPassive'],
+  'ctrbox': ['counterName'], 'ctrname': ['counterName'],
   'shufzones': ['shuffleZones'], 'shufside': ['shuffleSide'], 'shufself': ['shuffleSelf'],
   'drawside': ['drawSide'],
   'countzone': ['countZone'], 'countside': ['countSide'], 'stat': ['stat'],
@@ -103084,6 +103186,31 @@ function _readPolyMatSources(prefix) {
 // (Field Ability, Grave Ability, Kalon-Transform). The primary On-Play editor has
 // its own inline copy. `prefix` yields the field ids <prefix>-weathertype /
 // -weatherdur / -timeofday, read back by the matching collectors.
+/* 🧬 + 🔵 the extra knobs a section shows for "Grant Passive" and for
+   "Add / Remove Counters" — one builder for every editor section, gated by
+   FX_GATE_FIELDS like every other knob (ids ${prefix}-grantbox / -gpassive /
+   -gtarget / -gturns / -ctrname). */
+function _fxExtraFieldsHtml(prefix, eff) {
+  eff = eff || {};
+  const P = (typeof PASSIVES !== 'undefined' && PASSIVES) ? PASSIVES : {};
+  const cats = {};
+  Object.keys(P).forEach((id) => { const p = P[id]; if (!p || id === 'none') return; const c = String(p.cat || 'other'); (cats[c] = cats[c] || []).push(p); });
+  const cur = eff.grantPassiveId || '';
+  const pOpts = '<option value=""' + (cur ? '' : ' selected') + '>— pick a passive —</option>' + Object.keys(cats).sort().map((c) =>
+    '<optgroup label="' + escapeHtml(c) + '">' + cats[c].map((p) => '<option value="' + escapeHtml(p.id) + '"' + (cur === p.id ? ' selected' : '') + '>' + escapeHtml(p.name || p.id) + '</option>').join('') + '</optgroup>').join('');
+  const tOpts = [['self', 'This unit'], ['allies', 'All your units on the board'], ['enemies', 'All enemy units'], ['all', 'Every unit'],
+    ['calledThisTurn', 'Your units, fusions and archons called this turn'], ['calledFusionsArchons', 'Your fusions and archons called this turn']]
+    .map(([v2, l]) => '<option value="' + v2 + '"' + ((eff.grantTarget || 'self') === v2 ? ' selected' : '') + '>' + escapeHtml(l) + '</option>').join('');
+  return '<div class="editor-field full" id="' + prefix + '-grantbox" style="background:rgba(196,140,255,0.08);border:1px dashed rgba(196,140,255,0.45);border-radius:6px;padding:0.5rem 0.7rem;margin-top:0.35rem">'
+    + '<label class="small-text" style="font-weight:700;color:#d9b8ff">🧬 Grant Passive <span class="ink-dim" style="font-weight:400">(who gets it, and for how long — 0 turns = permanent, 1 = until the end of this turn)</span></label>'
+    + '<div style="display:grid;grid-template-columns:2fr 2fr 1fr;gap:0.4rem;margin-top:0.3rem">'
+    + '<div><label class="small-text">Passive</label><select id="' + prefix + '-gpassive">' + pOpts + '</select></div>'
+    + '<div><label class="small-text">Give it to</label><select id="' + prefix + '-gtarget">' + tOpts + '</select></div>'
+    + '<div><label class="small-text">⏳ Turns</label><input id="' + prefix + '-gturns" type="number" min="0" max="99" value="' + (eff.grantTurns != null ? (eff.grantTurns | 0) : 1) + '"></div>'
+    + '</div></div>'
+    + '<div class="editor-field" id="' + prefix + '-ctrbox"><label class="small-text">🔵 Counter name <span class="ink-dim">(the counters to place or strip — blank = this card\'s own token)</span></label>'
+    + '<input id="' + prefix + '-ctrname" type="text" maxlength="40" placeholder="e.g. Spell Counter" value="' + escapeHtml(eff.counterName || '') + '"></div>';
+}
 function _weatherEffectFieldsHtml(prefix, eff) {
   eff = eff || {};
   const _seen = new Set();
@@ -105903,7 +106030,9 @@ function _fieldAbilityCounterCost(state, unit, fa, owner) {
   const MC = (typeof window !== 'undefined') ? window.MythicCounters : null;
   if (!MC) return { ok: false, why: 'Counters are not available on this build.' };
   const own = MC.tokenOf(unit);
-  const id = fc.id || (own && own.id) || 'charge';
+  // 🔵 the id is re-slugged from the NAME every time, so a cost typed as "Spell Counters"
+  // pays from the "Spell Counter" pile a partner card created
+  const id = (fc.name ? _ctrSlug(fc.name) : '') || (fc.id ? _ctrSlug(fc.id) : '') || (own && own.id) || 'charge';
   const icon = (own && own.id === id && own.icon) || '🔵';
   const name = fc.name || (own && own.id === id && own.name) || 'counter';
   const from = fc.from === 'pool' ? 'pool' : 'self';
@@ -110555,6 +110684,8 @@ try { window.__mg = window.__mg || {}; window.__mg.afxRelayIn = _afxOnRelayed; }
 try { window.__mg = window.__mg || {}; window.__mg.afxAnnounce = _afxAnnounce; } catch (e) {}
 
 function applyOnPlayEffect(state, unit, card) {
+  // 🧬 a grant made earlier this turn for "units called this turn" reaches this one
+  try { if (unit && !unit.isHero && typeof _applyTurnGrants === 'function') _applyTurnGrants(unit); } catch (e) {}
   // 🔥 Punish the activation itself, BEFORE the effect resolves — the burn
   // lands even if the effect goes on to fizzle, which is how the Yu-Gi-Oh
   // originals read ("when a card effect is activated").
@@ -112315,6 +112446,25 @@ function _applyOnPlayOneRaw(state, unit, card) {
   }
   // 🃏 DRAW CARDS — fire drawCards() on the summoner's side. The helper logs the
   // event itself and triggers the cardDraw SFX, so we don't re-log here.
+  if (eff.type === 'grantPassive') {
+    const pid = String(eff.grantPassiveId || '').trim();
+    const pdef = (typeof PASSIVES !== 'undefined' && PASSIVES && PASSIVES[pid]) || null;
+    if (!pid || pid === 'none' || !pdef) { log.push({ msg: `🧬 ${unit.name}: no passive was chosen for this effect.`, color: 'amber' }); return { ...state, log }; }
+    const turns = Math.max(0, eff.grantTurns | 0), eot = turns === 1;
+    const scope = eff.grantTarget || 'self';
+    const targets = scope === 'self' ? [unit] : (state.units || []).filter((u) => _grantScopeMatch(state, u, owner, scope));
+    let n = 0;
+    targets.forEach((u) => { if (_grantPassiveTo(u, pid, turns, eot)) { n++; if (pid === 'speed' && _calledThisTurn(state, u)) { u.hasMoved = false; u.hasAttacked = hasPassive(u, 'defender'); } } });
+    // units called LATER this turn get it too
+    if (scope === 'calledThisTurn' || scope === 'calledFusionsArchons') {
+      try { if (!Array.isArray(App._battleTurnGrants)) App._battleTurnGrants = []; App._battleTurnGrants.push({ side: owner, passiveId: pid, scope, turns, eot }); } catch (e) {}
+    }
+    const how = turns === 0 ? 'permanently' : eot ? 'until the end of the turn' : `for ${turns} turns`;
+    const who = scope === 'self' ? 'itself' : scope === 'allies' ? 'every allied unit' : scope === 'enemies' ? 'every enemy unit' : scope === 'all' ? 'every unit'
+      : scope === 'calledFusionsArchons' ? 'the fusions and archons called this turn' : 'the units called this turn';
+    log.push({ msg: `🧬 ${unit.name} grants ${pdef.name || pid} to ${who} ${how}${n ? ` (${n} now)` : ''}.`, color: owner === 'player' ? 'green' : 'red' });
+    return { ...state, log };
+  }
   if (eff.type === 'drawCards') {
     const n = Math.max(1, Math.min(5, eff.amount || 1));
     if (typeof drawCards === 'function') {
@@ -113820,7 +113970,9 @@ function _applyOnPlayOneRaw(state, unit, card) {
     let tok = null, touched = 0, moved = 0;
     try {
       if (window.MythicCounters) {
-        tok = window.MythicCounters.tokenOf(unit) || window.MythicCounters.tokenOf(eff) || null;
+        // 🔵 a counter NAMED on the effect wins; else this card's own token; else the effect's
+        tok = (eff.counterName && _ctrSlug(eff.counterName)) ? { id: _ctrSlug(eff.counterName), name: String(eff.counterName).trim(), icon: '🔵' } : null;
+        tok = tok || window.MythicCounters.tokenOf(unit) || window.MythicCounters.tokenOf(eff) || null;
         const _tid = tok ? tok.id : null;
         (state.units || []).forEach(u => {
           if (!u || !u.alive || !u.pos) return;
@@ -120987,6 +121139,8 @@ function applyEventEncounter() {
 
 // ============ TURN CYCLE ============
 const startTurn = (state, who) => {
+  // 🧬 who was on the board when this turn began — "called this turn" is everyone else
+  try { state = { ...state, _idsAtTurnStart: (state.units || []).filter((u) => u && u.alive).map((u) => u.id) }; } catch (e) {}
   // NOTE: `log` is reassigned in the charged-move release loop below
   // (`log = s.log` after executeMove returns a fresh state). It MUST be `let`,
   // not `const` — a `const` here threw "Assignment to constant variable" the
@@ -121766,6 +121920,7 @@ const endPlayerTurn = (state) => {
   try { if (window.MythicFuel) s = window.MythicFuel.tickSide(s, 'player'); } catch (e) {}
   s = _fuelResolveDeaths(s);
   try { if (window.MythicCounters) s = window.MythicCounters.grantTick(s, 'player'); } catch (e) {}
+  s = _expireEotGrants(s, 'player'); _clearTurnGrants('player');
   // ⚡ turnEnd triggers (player's turn ending). actorOwner = 'player'.
   try { if (typeof _fireTriggers === 'function') s = _fireTriggers(s, 'turnEnd', { actorOwner: 'player', side: 'player' }); } catch (e) {}
   // ⚰ In-Grave tick (player's turn ending) — fires before we transition the
@@ -121789,6 +121944,7 @@ const endAITurn = (state) => {
   try { if (window.MythicFuel) s = window.MythicFuel.tickSide(s, 'ai'); } catch (e) {}
   s = _fuelResolveDeaths(s);
   try { if (window.MythicCounters) s = window.MythicCounters.grantTick(s, 'ai'); } catch (e) {}
+  s = _expireEotGrants(s, 'ai'); _clearTurnGrants('ai');
   s = { ...s, turn: 'player', turnNumber: s.turnNumber + 1, selection: null };
   // ⏳ END-OF-TURN GRAVE ABILITIES — processed as the owner's next turn begins
   // (equivalent timing, one clean hook): any grave card with an 'endTurn'
@@ -147492,6 +147648,7 @@ function renderCardEditor() {
               <div class="editor-field"><label class="small-text">Radius (tiles, for area effects)</label><input id="ed-kalon-onx-radius" type="number" min="0" max="8" value="${(_ot.radius != null ? _ot.radius : 1)}"></div>
             </div>
             ${_weatherEffectFieldsHtml('ed-kalon-onx', _ot)}
+            ${_fxExtraFieldsHtml('ed-kalon-onx', _ot)}
             ${_seizeFusionFieldHtml('ed-kalon-onx', _ot)}
             ${_setFromZoneFieldHtml('ed-kalon-onx', _ot)}
             ${_summonZoneFieldHtml('ed-kalon-onx', _ot)}
@@ -148235,6 +148392,7 @@ function renderCardEditor() {
       <div class="editor-field"><label class="small-text">🌦 Weather to set</label><select id="ed-onplay-weathertype">${weatherTypeOnplayOpts}</select></div>
       <div class="editor-field"><label class="small-text">⏳ Weather duration (turns)</label><input id="ed-onplay-weather-dur" type="number" min="1" max="12" value="${onPlay.duration || 4}"></div>
       <div class="editor-field"><label class="small-text">🌙 Day / Night</label><select id="ed-onplay-timeofday">${todOnplayOpts}</select></div>
+      ${_fxExtraFieldsHtml('ed-onplay', onPlay)}
     </div>
     ${_seizeFusionFieldHtml('ed-onplay', onPlay)}
     ${_setFromZoneFieldHtml('ed-onplay', onPlay)}
@@ -149416,6 +149574,7 @@ function renderCardEditor() {
         +   `<span>🌌 <b>Vanish the fusion materials too</b> — for 🌌🪦 Polycreation from the Grave. The materials are banished to the Void with the card that paid for them, instead of falling into the graveyard where recursion can fetch them back. Untick to use the Kalon's own Material Destination.</span>`
         + `</label>`
         + _weatherEffectFieldsHtml('ed-grave', gaEff)
+        + _fxExtraFieldsHtml('ed-grave', gaEff)
         + _seizeFusionFieldHtml('ed-grave', gaEff)
         + _setFromZoneFieldHtml('ed-grave', gaEff)
         + _summonZoneFieldHtml('ed-grave', gaEff)
@@ -149469,6 +149628,7 @@ function renderCardEditor() {
         + `<label style="font-weight:700;color:#c8c8ee">⚰️ On-Grave Trigger — fires the moment this card hits the graveyard</label>`
         + `<div class="small-text ink-dim" style="margin-top:0.2rem">Fires when this card is <strong>destroyed, killed in combat, or sent</strong> to the graveyard — units, summons, walls, and Persistent Enchantments. Uses the same effect list as On Play, centred where the card fell.</div>`
         + `<div class="editor-field"><label class="small-text">Trigger Effect (Type)</label><select id="ed-ongrave-type">${_ogType}</select></div>`
+        + _fxExtraFieldsHtml('ed-ongrave', og)
         + `<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:0.4rem">`
         + `<div><label class="small-text">Amount</label><input id="ed-ongrave-amount" type="number" min="0" max="200" value="${og.amount || 0}"></div>`
         + `<div><label class="small-text">Radius</label><input id="ed-ongrave-radius" type="number" min="0" max="4" value="${og.radius != null ? og.radius : 1}"></div>`
@@ -149722,6 +149882,7 @@ function renderCardEditor() {
         + `<div class="editor-field"><label class="small-text">🌀 Summon / Kalon Card id (for 🌀 Summon / 🌌 Polycreate)</label><input id="ed-field-summoncard" value="${escapeHtml(fEff.summonCardId || '')}" placeholder="leave blank otherwise"></div>`
         + `<div class="editor-field"><label class="small-text">🎇 Effect VFX</label><select id="ed-field-vfx">${_fVfx}</select></div>`
         + _weatherEffectFieldsHtml('ed-field', fEff)
+        + _fxExtraFieldsHtml('ed-field', fEff)
         + _seizeFusionFieldHtml('ed-field', fEff)
         + _setFromZoneFieldHtml('ed-field', fEff)
         + _summonZoneFieldHtml('ed-field', fEff)
@@ -149784,6 +149945,7 @@ function renderCardEditor() {
         + `<option value="banish" ${_hCost === 'banish' ? 'selected' : ''}>🌌 Banish this card (→ Void)</option>`
         + `<option value="none" ${_hCost === 'none' ? 'selected' : ''}>Keep in hand (once per match)</option>`
         + `</select></div></div>`
+        + _fxExtraFieldsHtml('ed-hand', hEff)
         + `<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:0.4rem;margin-top:0.35rem">`
         + `<div><label class="small-text">Amount</label><input id="ed-hand-amount" type="number" min="0" max="200" value="${hEff.amount || 0}"></div>`
         + `<div><label class="small-text">Radius</label><input id="ed-hand-radius" type="number" min="0" max="4" value="${hEff.radius != null ? hEff.radius : 1}"></div>`
@@ -152285,7 +152447,7 @@ function captureEditorIntoCard(card) {
     const _v = (id, dflt) => { const el = document.getElementById(id); return el ? el.value : dflt; };
     const _n = (id, dflt) => { const x = parseInt(_v(id, ''), 10); return isFinite(x) ? x : dflt; };
     const _name = String(_v('ed-ctok-name', '') || 'Counter').trim() || 'Counter';
-    const _slug = _name.toLowerCase().replace(/[^a-z0-9]+/g, '') || 'charge';
+    const _slug = _ctrSlug(_name) || 'charge';
     const _cc = document.getElementById('ed-ctok-cancounter');
     card.counterToken = {
       id: _slug,
@@ -152411,6 +152573,7 @@ function captureEditorIntoCard(card) {
         effect: {
           type: gType,
           amount: num('ed-grave-amount', 0, 200, 0),
+          grantPassiveId: v('ed-grave-gpassive') || '', grantTarget: v('ed-grave-gtarget') || 'self', grantTurns: num('ed-grave-gturns', 0, 99, 1), counterName: (v('ed-grave-ctrname') || '').trim(),
           radius: num('ed-grave-radius', 0, 4, 1),
           chance: num('ed-grave-chance', 1, 100, 100),
           status: v('ed-grave-status') || 'weak',
@@ -152475,6 +152638,7 @@ function captureEditorIntoCard(card) {
         shuffleSelf:  _prevOnGrave.shuffleSelf,
         drawSide:     _prevOnGrave.drawSide,
         amount: num('ed-ongrave-amount', 0, 200, 0),
+        grantPassiveId: v('ed-ongrave-gpassive') || '', grantTarget: v('ed-ongrave-gtarget') || 'self', grantTurns: num('ed-ongrave-gturns', 0, 99, 1), counterName: (v('ed-ongrave-ctrname') || '').trim(),
         radius: num('ed-ongrave-radius', 0, 4, 1),
         chance: num('ed-ongrave-chance', 1, 100, 100),
         status: v('ed-ongrave-status') || 'weak',
@@ -152610,12 +152774,13 @@ function captureEditorIntoCard(card) {
         counters: (() => {
           const n = num('ed-field-ctr-n', 0, 99, 0); if (!n) return undefined;
           const name = (v('ed-field-ctr-name') || '').trim();
-          const id = name ? (name.toLowerCase().replace(/[^a-z0-9]+/g, '') || 'charge') : '';
+          const id = name ? (_ctrSlug(name) || 'charge') : '';
           return { n, id, name, from: v('ed-field-ctr-from') || 'self', mode: v('ed-field-ctr-mode') || 'also', onEmpty: v('ed-field-ctr-empty') || 'none' };
         })(),
         effect: {
           type: fType,
           amount: num('ed-field-amount', 0, 200, 0),
+          grantPassiveId: v('ed-field-gpassive') || '', grantTarget: v('ed-field-gtarget') || 'self', grantTurns: num('ed-field-gturns', 0, 99, 1), counterName: (v('ed-field-ctrname') || '').trim(),
           radius: num('ed-field-radius', 0, 4, 1),
           chance: num('ed-field-chance', 1, 100, 100),
           status: v('ed-field-status') || 'weak',
@@ -152674,6 +152839,7 @@ function captureEditorIntoCard(card) {
         effect: {
           type: hType,
           amount: num('ed-hand-amount', 0, 200, 0),
+          grantPassiveId: v('ed-hand-gpassive') || '', grantTarget: v('ed-hand-gtarget') || 'self', grantTurns: num('ed-hand-gturns', 0, 99, 1), counterName: (v('ed-hand-ctrname') || '').trim(),
           radius: num('ed-hand-radius', 0, 4, 1),
           chance: num('ed-hand-chance', 1, 100, 100),
           status: v('ed-hand-status') || 'weak',
@@ -152769,6 +152935,7 @@ function captureEditorIntoCard(card) {
         type: opType,
         radius:         num('ed-onplay-radius', 0, 4, 1),
         amount:         num('ed-onplay-amount', 0, 200, 6),
+        grantPassiveId: v('ed-onplay-gpassive') || '', grantTarget: v('ed-onplay-gtarget') || 'self', grantTurns: num('ed-onplay-gturns', 0, 99, 1), counterName: (v('ed-onplay-ctrname') || '').trim(),
         chance:         num('ed-onplay-chance', 1, 100, 100),
         // 🌐 Anywhere — fire this on-play on EVERY arrival (summon/deck/grave), not just hand play.
         anywhere:       (() => { const el = document.getElementById('ed-onplay-anywhere'); return el ? !!el.checked : false; })(),
@@ -153157,6 +153324,8 @@ function captureEditorIntoCard(card) {
           if (st) { e.status = st; e.statusDuration = num('ed-kalon-onx-dur', 0, 20, 2); }
           const r = num('ed-kalon-onx-radius', 0, 8, 1);
           if (r) e.radius = r;
+          if (t === 'grantPassive') { e.grantPassiveId = v('ed-kalon-onx-gpassive') || ''; e.grantTarget = v('ed-kalon-onx-gtarget') || 'self'; e.grantTurns = num('ed-kalon-onx-gturns', 0, 99, 1); }
+          if (t === 'addCounters' || t === 'removeCounters') e.counterName = (v('ed-kalon-onx-ctrname') || '').trim();
           if (t === 'setWeather' || t === 'setTimeOfDay') {
             e.weatherType = v('ed-kalon-onx-weathertype') || 'rain';
             e.duration = num('ed-kalon-onx-weatherdur', 1, 12, 4);
@@ -174501,7 +174670,7 @@ function placeUnit(card, pos, opts) {
   else if (card.energy != null) unit.cost = card.energy;
   // 🏃 Speed passive — unit enters play ready to act immediately (no summoning sickness).
   // All other units are marked as already having moved/attacked so they must wait a turn.
-  if (!hasPassive(unit, 'speed')) { unit.hasMoved = true; unit.hasAttacked = true; }
+  if (!hasPassive(unit, 'speed') && !_turnGrantGives(unit, 'speed')) { unit.hasMoved = true; unit.hasAttacked = true; }
   // ⚠️ buildUnit births every unit ALREADY sick (hasMoved/hasAttacked default true), so
   // merely skipping the set above did nothing — Speed must actively CLEAR the flags.
   // Face-down (Subterfuge) placements stay locked: a hidden trap can't act on set turn.
@@ -177256,7 +177425,7 @@ function doAIStep() {
             const newUnit = { ...buildUnit(best, 'ai', target, aiHero.heroPassive), aiActed: false };
             // 🏃 Speed — mirror the player deploy path: buildUnit defaults every unit
             // summoning-sick, so Speed must actively clear the flags (Defender still can't attack).
-            if (hasPassive(newUnit, 'speed')) { newUnit.hasMoved = false; newUnit.hasAttacked = hasPassive(newUnit, 'defender'); }
+            if (hasPassive(newUnit, 'speed') || _turnGrantGives(newUnit, 'speed')) { newUnit.hasMoved = false; newUnit.hasAttacked = hasPassive(newUnit, 'defender'); }
             // 🃏 SUBTERFUGE — the AI sets its trap FACE DOWN: identity hidden, no
             // on-play on summon (its Flip Effect fires later when the player springs
             // it). Falls back to the card's on-play as the flip effect.
@@ -245610,9 +245779,21 @@ function _haulWhy(e, fallback) {
    the other order (_ppModelOf): a row's own render still wins on the card. */
 function _haulModelOf(v) {
   try {
+    const pick = (m) => (m && typeof m.url === 'string' && m.url) ? { url: m.url, scale: +m.scale || 1, rotY: +m.rotY || 0, wrecked: (typeof m.wrecked === 'string' && m.wrecked) ? m.wrecked : '' } : null;
     const def = (typeof _ppRigDef === 'function') ? _ppRigDef(v) : null;
-    const m = def && def.model;
-    if (m && typeof m.url === 'string' && m.url) return { url: m.url, scale: +m.scale || 1, rotY: +m.rotY || 0 };
+    const own = pick(def && def.model);
+    if (own) return own;
+    /* A lot row from before rigId existed still belongs to a class — the CLASS
+       model (any catalogue rig of that class that carries one). This is what
+       stops a legacy freight row falling back to an admin's box-truck render. */
+    try {
+      const cls = (typeof _ppCargoClassOf === 'function') ? _ppCargoClassOf(v) : 'freight';
+      const MT = (typeof window !== 'undefined' && window.MythicTransport) || null;
+      const rows = MT && MT.rigs && Array.isArray(MT.rigs.PP_RIGS) ? MT.rigs.PP_RIGS : [];
+      const row = rows.find((r) => r && r.cargoClass === cls && r.model && r.model.url);
+      const byClass = pick(row && row.model);
+      if (byClass) return byClass;
+    } catch (e) {}
     return (typeof _ppModelOf === 'function') ? _ppModelOf(v) : null;
   } catch (e) { return null; }
 }
@@ -264396,8 +264577,8 @@ render();
        that works everywhere except the one early path nobody tested. It is
        2KB with no dependencies. -->
 <script src="src/econ/peg.js?v=v121q51"></script>
-<script src="src/battle/effects.js?v=v121v113" defer></script>
-<script src="src/phone/handset.js?v=v121v113" defer></script>
+<script src="src/battle/effects.js?v=v121v114" defer></script>
+<script src="src/phone/handset.js?v=v121v114" defer></script>
 <script src="src/battle/combat.js?v=120m4" defer></script>
 <script src="src/battle/targeting.js?v=121e3hex" defer></script>
 <link rel="stylesheet" href="src/sprites/frames.css?v=120k3">
@@ -264446,7 +264627,7 @@ render();
      Bump ?v= on every change — the service worker caches these like any asset. -->
 <link rel="stylesheet" href="src/hubui/hub-modals.css?v=121h0">
 <!-- 💬 tooltips: every title, every hub tile, every camp control, every resource icon (v121v112) -->
-<script src="src/hubui/tips.js?v=v121v113" defer></script>
+<script src="src/hubui/tips.js?v=v121v114" defer></script>
 <script src="src/sprites/frames.js?v=120k3" defer></script>
 <script src="src/sprites/idle.js?v=120k4" defer></script>
 </body>

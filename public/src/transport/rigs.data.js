@@ -200,7 +200,10 @@ const RIG_ACCENT = '#e0a45c';
       body types (Flatbed, Box Hauler, Freighter, Longhaul, Roadtrain) and two
       files cannot honestly cover them — guessing would put a box body on a row
       the card calls a Flatbed. Left for whoever has looked at the two meshes. */
-const FREIGHT_MODEL = { url: '/models/trucks/freight_semi.glb', scale: 1, rotY: 90 };
+/* 45k tris / 2048px (2.3 MB) — the 12k pack read as a wreck. `wrecked` is the
+   1.1k-tri sloppy pack of the same master, which the Highway Haul drives for a
+   Wrecked or Salvage rig: it IS crumpled, and that is the point. */
+const FREIGHT_MODEL = { url: '/models/trucks/freight_semi.glb', scale: 1, rotY: 90, wrecked: '/models/trucks/freight_semi_wrecked.glb' };
 const FEED_MODEL  = { url: '/models/trucks/feed_truck.glb',      scale: 1, rotY: 0 };
 const STOCK_MODEL = { url: '/models/trucks/livestock_truck.glb', scale: 1, rotY: 0 };
 /* The tanker is the one existing model with no ambiguity about which rows it

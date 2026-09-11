@@ -408,7 +408,7 @@ function rigProfile(v) {
   if (v.kind === 'garage') t = RIG_TYPES[{ rig_ironback: 'ironback', rig_ashconvoy: 'ashconvoy', rig_warden: 'warden' }[v.sku]] || RIG_TYPES.ironback;
   else if (v.kind === 'lot') t = RIG_TYPES[PP_TYPE_TO_RIG[v.type]] || RIG_TYPES.truck;
   const c = COND_MULT[v.condition] || 1;
-  return { id: v.id || t.id, name: v.name || t.label, kind: v.kind || 'issued', typeLabel: t.label, condition: v.condition || '', model: (v.model && typeof v.model.url === 'string' && v.model.url) ? v.model : null,
+  return { id: v.id || t.id, name: v.name || t.label, kind: v.kind || 'issued', typeLabel: t.label, condition: v.condition || '', model: (v.model && typeof v.model.url === 'string' && v.model.url) ? { url: v.model.url, scale: +v.model.scale || 1, rotY: +v.model.rotY || 0, wrecked: (typeof v.model.wrecked === 'string') ? v.model.wrecked : '' } : null,
            accel: t.accel * c, brake: t.brake * c, top: t.top * (0.85 + 0.15 * c), steer: t.steer, armor: t.armor * (v.condition === 'Salvage' || v.condition === 'Wrecked' ? 1.15 : 1),
            capacity: Math.round(t.capacity * (c < 0.7 ? 0.7 : 1)) };
 }
@@ -958,7 +958,11 @@ async function play(opts) {
   (async () => {
     if (!RIG.model || !RIG.model.url) return;
     let truck, size;
-    try { const raw = await haulLoadGLB(THREE, RIG.model.url); const fit = haulFit(THREE, raw, { w: 2.6, l: 15.0 }, haulAutoOrient(THREE, raw), true); truck = fit.node; size = fit; }
+    /* 🚧 A Wrecked or Salvage rig drives the wrecked pack of its model when
+       it has one — crumpled panels, dimmed paint. Anything better drives the
+       clean one. */
+    const wrecked = /^(Wrecked|Salvage)$/.test(String(RIG.condition || '')) && RIG.model.wrecked;
+    try { const raw = await haulLoadGLB(THREE, wrecked ? RIG.model.wrecked : RIG.model.url); if (wrecked) raw.traverse((o) => { if (o.isMesh && o.material && o.material.color) { o.material = o.material.clone(); o.material.color.multiplyScalar(0.55); } }); const fit = haulFit(THREE, raw, { w: 2.6, l: 15.0 }, haulAutoOrient(THREE, raw), true); truck = fit.node; size = fit; }
     catch (e) { try { console.warn('[haul] rig model', RIG.model.url, e && e.message); } catch (e2) {} return; }
     if (!alive) return;
     truck.userData.rigModel = true; rig.add(truck);
