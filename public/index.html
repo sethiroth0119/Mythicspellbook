@@ -39407,7 +39407,7 @@ body:has(#pack-opener-frame) #chat-overlay {
   // the console. Bump this every deploy alongside sw.js's CACHE_VERSION. If two
   // machines show different stamps, the older one is on stale code (hard-refresh);
   // if they MATCH but content still differs, it is a DATA/publish issue, not code.
-  window.BUILD_VERSION = 'v121v111';
+  window.BUILD_VERSION = 'v121v113';
   try {
     console.info('%cMythic Spellbook ' + window.BUILD_VERSION + '%c — build check: run  __mg.version',
       'font-weight:700;color:#b48cff', 'color:#7d7499');
@@ -137563,7 +137563,7 @@ function _masterMenuHtml() {
   // below looks up MD_SECTIONS[i] by that index.
   const items = MD_SECTIONS.map((sec, i) =>
     (sec.hidden && sec.hidden()) ? '' :
-    `<div class="md-mitem${(sec.locked && sec.locked()) ? ' md-mlocked' : ''}" data-md-nav="${i}"><span class="md-mico">${sec.ic || ''}</span><div class="md-mtext"><div class="md-mtitle">${escapeHtml(sec.t)}${(sec.locked && sec.locked()) ? ' <span class="md-mlock">🔒 SEALED</span>' : ''}</div><div class="md-msub">${escapeHtml(sec.s)}</div></div></div>`).join('');
+    `<div class="md-mitem${(sec.locked && sec.locked()) ? ' md-mlocked' : ''}" data-md-nav="${i}" data-tip="${escapeHtml(sec.t + ' — ' + sec.s)}"><span class="md-mico">${sec.ic || ''}</span><div class="md-mtext"><div class="md-mtitle">${escapeHtml(sec.t)}${(sec.locked && sec.locked()) ? ' <span class="md-mlock">🔒 SEALED</span>' : ''}</div><div class="md-msub">${escapeHtml(sec.s)}</div></div></div>`).join('');
   return `<div id="md-stage">
     <canvas id="md-fx"></canvas>
     <div id="md-heroWrap">
@@ -138868,7 +138868,7 @@ function renderTitle() {
     // Locked tiles stay reachable on purpose — their handler toasts the unlock
     // requirement, which is information a keyboard user needs too.
     return `
-    <div class="hub-portal ${p.locked ? 'portal-locked' : ''}${_art ? ' has-art' : ''}${_tone}${_promoted}" id="${p.id}" style="--portal-accent: ${p.accent || '#c8a060'}"
+    <div class="hub-portal ${p.locked ? 'portal-locked' : ''}${_art ? ' has-art' : ''}${_tone}${_promoted}" id="${p.id}" style="--portal-accent: ${p.accent || '#c8a060'}" data-tip="${escapeHtml(String(p.name || '') + (p.sub ? ' — ' + String(p.sub).replace(/<[^>]*>/g, '') : ''))}"
          role="button" tabindex="0"${p.locked ? ' aria-disabled="true"' : ''}
          onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click();}">
       <div class="hub-portal-art">
@@ -184102,8 +184102,16 @@ function _campHudTopBar() {
     ['Structures', '🏛', structures, '#7fd6ff'],
     ['Defenses', '🛡️', def, '#7fb0ff'],
   ];
+  const CHUD_TIPS = {
+    Gold: 'Gold — the camp\'s coin, spent on facilities and upkeep', Supplies: 'Supplies — general stores the camp runs on',
+    Materials: 'Materials — metal for building and upgrading', Scrap: 'Scrap — scrap metal recovered from deployments',
+    Food: 'Food — keeps survivors fed; short food costs morale', Water: 'Water — keeps survivors alive; short water costs morale',
+    Power: 'Power — what the Power Relay makes minus what facilities draw', Fuel: 'Fuel — burned by raids, deep runs and the haul',
+    Units: 'Units — cards you can deploy', Heroes: 'Heroes — your named survivors', Structures: 'Structures — facilities built in camp',
+    Defenses: 'Defenses — how well the camp holds against raids',
+  };
   const cells = items.map(([label, icon, val, color]) =>
-    `<div class="chud-res"><span class="chud-res-ic" style="color:${color}">${icon}</span><span class="chud-res-tx"><span class="chud-res-lbl">${label}</span><span class="chud-res-val">${val}</span></span></div>`).join('<span class="chud-res-sep"></span>');
+    `<div class="chud-res" data-tip="${escapeHtml(CHUD_TIPS[label] || label)}"><span class="chud-res-ic" style="color:${color}">${icon}</span><span class="chud-res-tx"><span class="chud-res-lbl">${label}</span><span class="chud-res-val">${val}</span></span></div>`).join('<span class="chud-res-sep"></span>');
   return `<div class="chud-topbar">
     <div class="chud-res-row">${cells}</div>
     <div class="chud-day"><span class="chud-day-lbl">DAY</span> <span class="chud-day-val">${day}</span><span class="chud-clock">🕒 ${clock}</span></div>
@@ -264388,8 +264396,8 @@ render();
        that works everywhere except the one early path nobody tested. It is
        2KB with no dependencies. -->
 <script src="src/econ/peg.js?v=v121q51"></script>
-<script src="src/battle/effects.js?v=v121v111" defer></script>
-<script src="src/phone/handset.js?v=v121v111" defer></script>
+<script src="src/battle/effects.js?v=v121v113" defer></script>
+<script src="src/phone/handset.js?v=v121v113" defer></script>
 <script src="src/battle/combat.js?v=120m4" defer></script>
 <script src="src/battle/targeting.js?v=121e3hex" defer></script>
 <link rel="stylesheet" href="src/sprites/frames.css?v=120k3">
@@ -264437,6 +264445,8 @@ render();
      first, and this one must still be after it.
      Bump ?v= on every change — the service worker caches these like any asset. -->
 <link rel="stylesheet" href="src/hubui/hub-modals.css?v=121h0">
+<!-- 💬 tooltips: every title, every hub tile, every camp control, every resource icon (v121v112) -->
+<script src="src/hubui/tips.js?v=v121v113" defer></script>
 <script src="src/sprites/frames.js?v=120k3" defer></script>
 <script src="src/sprites/idle.js?v=120k4" defer></script>
 </body>

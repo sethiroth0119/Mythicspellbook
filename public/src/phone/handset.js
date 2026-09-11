@@ -195,7 +195,7 @@
     const g = $('mgp-grid'); if (!g) return;
     g.innerHTML = APPS.map((a) => {
       const n = badgeOf(a.id);
-      return '<button type="button" class="mgp-appbtn" data-app="' + a.id + '" style="--hue:' + a.hue + '">' +
+      return '<button type="button" class="mgp-appbtn" data-app="' + a.id + '" data-tip="' + esc(a.name + ' — ' + a.sub) + '" style="--hue:' + a.hue + '">' +
         '<span class="mgp-ico">' + a.ico + (n ? '<i class="mgp-badge">' + (n > 99 ? '99+' : n) + '</i>' : '') + '</span>' +
         '<span class="mgp-lbl">' + esc(a.name) + '</span></button>';
     }).join('');
