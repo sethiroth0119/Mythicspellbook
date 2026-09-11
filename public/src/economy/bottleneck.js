@@ -67,7 +67,7 @@ export const CAUSES = {
                      BOTH out of cash AND losing money, a zero balance alone is a
                      business at the margin, not a failing one — the text must not
                      say "failing" about a firm that is breaking even. */
-                  fix: 'Its suppliers exist but it has no cash to buy from them or pay wages. Breaking even is survivable; losing money on top of this is what fails.' },
+                  fix: 'Its suppliers exist but it has no cash to buy from them or pay wages. A Bank in the city lends a starved business a few days of working capital automatically; without one it stays stuck here. Breaking even is survivable; losing money on top of this is what fails.' },
   OK:           { key: 'OK',           ico: '✅', label: 'Running',
                   fix: '' },
 };
@@ -258,12 +258,30 @@ export function primary() {
   const rep = cityReport();
   if (!rep.length) return null;
   const top = rep[0];
+  /* 👷 THE LABOUR NUMBERS, WHEN WORKERS ARE THE LIMIT (bug-mtrmi2e5): "345
+     residents, 207 employed, 3% unemployment, plenty of housing — and the
+     bottleneck says workers 0%". All true at once: residents include children
+     and retirees, and 3% unemployment means the working-age pool is spent.
+     The sentence now carries the three numbers so it does not read as a
+     contradiction. */
+  let fix = top.cause.fix;
+  if (top.cause && top.cause.key === 'NO_WORKERS') {
+    try {
+      const sn = Sim.snapshot();
+      if (sn) {
+        const lf = Math.round(sn.laborForce || 0), emp = Math.round(sn.employed || 0), pop = Math.round(sn.population || 0);
+        const free = Math.max(0, lf - emp);
+        fix = 'Only ' + free.toLocaleString() + ' of ' + lf.toLocaleString() + ' working-age residents are free to hire (' + emp.toLocaleString() + ' already employed; ' + pop.toLocaleString() + ' residents in all — children and retirees do not work). ' +
+              'More housing brings more people; schools raise the working share; a higher-paying rival can also be outbidding this business.';
+      }
+    } catch (e) {}
+  }
   return {
     firm: top.name, res: top.out,
     cause: top.cause,
     at: top.bottleneck ? top.bottleneck.label : top.cause.label,
     pct: top.bottleneck ? top.bottleneck.pct : top.efficiency,
-    fix: top.cause.fix,
+    fix,
     path: top.bottleneck ? trace(top.bottleneck.key) : [],
   };
 }

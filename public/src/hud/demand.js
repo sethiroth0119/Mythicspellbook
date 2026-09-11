@@ -65,6 +65,9 @@ function qty(v) {
   if (a === 0) return '0';
   if (a >= 100) return String(Math.round(n));
   if (a >= 1) return String(Math.round(n * 10) / 10);
+  /* bug-mtu13pzm: "a non-numeric value" — toPrecision on a basket under a
+     hundredth printed 1e-7. Anything that small is "under 0.01". */
+  if (a < 0.01) return (n < 0 ? '-' : '') + 'under 0.01';
   return String(Number(a.toPrecision(2)) * (n < 0 ? -1 : 1));
 }
 

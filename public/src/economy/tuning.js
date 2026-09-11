@@ -1156,6 +1156,7 @@ export const ECON = {
     baseRate: 0.055,         // per economic year (= 365 economic days)
     riskPremium: { 1: 0.075, 2: 0.052, 3: 0.034, 4: 0.021, 5: 0.013 },
     maxLoanToRevenueDays: 90,
+    startupDays: 5,          // working-capital floor for a firm with no revenue yet (bug-mtsq62mg)
     termDays: 180,
     /* A firm that defaults cannot borrow again for this long. */
     blacklistDays: 60,

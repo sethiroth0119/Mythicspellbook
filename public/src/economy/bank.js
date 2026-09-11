@@ -73,7 +73,13 @@ export function rateFor(firm) {
    bigger crater. */
 export function creditLimit(firm) {
   const rev = firm.revenueAvg || 0;
-  const cap = rev * ECON.bank.maxLoanToRevenueDays;
+  let cap = rev * ECON.bank.maxLoanToRevenueDays;
+  /* 💸 WORKING CAPITAL FOR A FIRM THAT HAS NEVER SOLD (bug-mtsq62mg). Credit
+     was revenue × days, so a business that could not afford its first inputs
+     had revenue 0, capacity 0, and no way to ever earn the revenue that would
+     give it capacity — "out of cash for days", then bankrupt. A bank lends a
+     new business a few days of operating cost against the plant itself. */
+  if (!(rev > 0)) { try { cap = Math.max(cap, Firms.dailyOperatingCost(firm) * (ECON.bank.startupDays || 5)); } catch (e) {} }
   return Math.max(0, cap - (firm.debt || 0));
 }
 
@@ -170,7 +176,14 @@ export function accrue(days, day) {
    a few days of operating cost — not enough to fix a broken business, which is
    the point: credit buys time, it does not buy demand. */
 export function autoBorrow(firm, day) {
-  if (firm.rung !== 'DEBT' && firm.rung !== 'DEFAULT') return null;
+  /* 💸 …and the bank steps in for a firm sitting at zero with nothing coming in
+     today, not only once it has slid to DEBT / DEFAULT (bug-mtsq62mg): a firm
+     that cannot buy inputs never trades, never loses money, and so never
+     reached the rung that lets it borrow. Breaking even at zero (revenue
+     today > 0) is left alone — that is a business at the margin, not a
+     starved one. */
+  const starved = (firm.cash || 0) <= 0 && !((firm.revenueDay || 0) > 0);
+  if (firm.rung !== 'DEBT' && firm.rung !== 'DEFAULT' && !starved) return null;
   if (firm.loanId) return null;
   const need = Firms.dailyOperatingCost(firm) * 5;
   const r = borrow(firm, need, day);

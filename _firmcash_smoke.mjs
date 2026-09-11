@@ -116,8 +116,15 @@ const SRC = readFileSync('./public/src/economy/firms.js', 'utf8');
   const BANK = readFileSync('./public/src/economy/bank.js', 'utf8');
   ok(/const rev = firm\.revenueAvg \|\| 0;/.test(BANK),
     'borrowing capacity is still a function of revenue');
-  ok(/if \(firm\.rung !== 'DEBT' && firm\.rung !== 'DEFAULT'\) return null;/.test(BANK),
-    'and autoBorrow still only fires at DEBT — recorded, not changed: the earlier rungs shrink revenueAvg before the rescue is sized from it, so keeping healthy firms off the ladder is what stops that mattering');
+  /* v121v108 (bug-mtsq62mg): the rescue ALSO fires for a firm sitting at zero
+     with nothing coming in today (starved — it never traded, so it never lost
+     money and never reached DEBT), and capacity has a working-capital floor
+     for a firm with no revenue history (revenue × days was 0 for it). A firm
+     breaking even at zero (revenue today > 0) is still left alone. */
+  ok(/const starved = \(firm\.cash \|\| 0\) <= 0 && !\(\(firm\.revenueDay \|\| 0\) > 0\);\r?\n\s*if \(firm\.rung !== 'DEBT' && firm\.rung !== 'DEFAULT' && !starved\) return null;/.test(BANK),
+    'autoBorrow fires at DEBT / DEFAULT, or for a starved firm (0 cash, no revenue today) — a firm breaking even at zero is left alone');
+  ok(/if \(!\(rev > 0\)\) \{ try \{ cap = Math\.max\(cap, Firms\.dailyOperatingCost\(firm\) \* \(ECON\.bank\.startupDays \|\| 5\)\); \} catch \(e\) \{\} \}/.test(BANK) && /startupDays: 5,/.test(readFileSync('./public/src/economy/tuning.js', 'utf8')),
+    'a firm with no revenue yet can still borrow five days of operating cost (ECON.bank.startupDays)');
 }
 
 console.log(fails ? ('\n' + fails + ' FAILED') : '\nALL PASS');
