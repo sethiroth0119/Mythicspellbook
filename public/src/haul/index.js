@@ -408,11 +408,137 @@ function rigProfile(v) {
   if (v.kind === 'garage') t = RIG_TYPES[{ rig_ironback: 'ironback', rig_ashconvoy: 'ashconvoy', rig_warden: 'warden' }[v.sku]] || RIG_TYPES.ironback;
   else if (v.kind === 'lot') t = RIG_TYPES[PP_TYPE_TO_RIG[v.type]] || RIG_TYPES.truck;
   const c = COND_MULT[v.condition] || 1;
-  return { id: v.id || t.id, name: v.name || t.label, kind: v.kind || 'issued', typeLabel: t.label, condition: v.condition || '',
+  return { id: v.id || t.id, name: v.name || t.label, kind: v.kind || 'issued', typeLabel: t.label, condition: v.condition || '', model: (v.model && typeof v.model.url === 'string' && v.model.url) ? v.model : null,
            accel: t.accel * c, brake: t.brake * c, top: t.top * (0.85 + 0.15 * c), steer: t.steer, armor: t.armor * (v.condition === 'Salvage' || v.condition === 'Wrecked' ? 1.15 : 1),
            capacity: Math.round(t.capacity * (c < 0.7 ? 0.7 : 1)) };
 }
 const ISSUED_RIG = { id: 'issued_hauler', name: 'Scrap Hauler', kind: 'issued' };
+
+/* ═══ 🚛 GLB rigs and containers (v121v110) ══════════════════════════════════
+   The run is built from boxes first — cab, bed, three cargo crates, wheels —
+   and stays that way if a model never arrives. When the chosen rig carries a
+   model (the bridge copies rigs.data.js's `model` onto the lot row it hands
+   over), the file is loaded with the GLTFLoader that matches the run's own
+   three.js build, fitted over the procedural rig, and the deck it finds in the
+   mesh takes the two shipping containers. The cargo animation (each container
+   shrinks and tilts with the cargo %) and the collision box are unchanged:
+   the containers are still the rig's `userData.cargo` children, only their
+   geometry is a model now. */
+const HAUL_CONTAINERS = [
+  { url: '/models/trucks/container_red.glb',  rotY: 90, frac: 0.58 },   // the 40-footer, rear
+  { url: '/models/trucks/container_blue.glb', rotY: 90, frac: 0.42 },   // the 20-footer, front
+];
+const HAUL_THREE_ADDONS = 'https://cdn.jsdelivr.net/npm/three@0.171.0/examples/jsm/loaders/GLTFLoader.js';
+const _glbCache = new Map();
+let _gltfLoaderP = null;
+function haulGLTFLoader(THREE) {
+  if (!_gltfLoaderP) _gltfLoaderP = (async () => {
+    if (THREE.GLTFLoader) return new THREE.GLTFLoader();
+    const m = await import(/* @vite-ignore */ HAUL_THREE_ADDONS);
+    return new m.GLTFLoader();
+  })().catch((e) => { _gltfLoaderP = null; throw e; });
+  return _gltfLoaderP;
+}
+/* A fresh clone per call, materials flattened to Lambert so a model lights
+   like the rest of the road (and costs a phone what a box costs). */
+async function haulLoadGLB(THREE, url) {
+  if (!_glbCache.has(url)) _glbCache.set(url, (async () => {
+    const loader = await haulGLTFLoader(THREE);
+    const g = await new Promise((res, rej) => loader.load(url, res, undefined, rej));
+    const sc = g.scene || (g.scenes && g.scenes[0]);
+    if (!sc) throw new Error('empty glb ' + url);
+    sc.traverse((o) => { if (o.isMesh && o.material) { const m = o.material; o.material = new THREE.MeshLambertMaterial({ map: m.map || null, color: m.color ? m.color.clone() : 0xffffff }); } });
+    return sc;
+  })().catch((e) => { _glbCache.delete(url); throw e; }));
+  return (await _glbCache.get(url)).clone(true);
+}
+/* Fit a loaded model into a box. rotY (degrees) is applied FIRST so the
+   model's long axis reads along the rig's Z (nose at +Z inside `rig`).
+   dims: { w, l, h } — with `uniform` the largest scale that fits every
+   given dimension is used; without it each axis is scaled to its own target
+   (a 40-foot container squashed to a deck is still a container). The model
+   is turned INSIDE a holder and the holder is what gets scaled, so each scale
+   axis is a rig axis — scaling the turned model itself put the length scale
+   on the width. The holder is centred on x and z with its floor at y 0.
+   Returns { node, w, h, l }: add `node` to the rig. */
+function haulFit(THREE, obj, dims, rotY, uniform) {
+  const wrap = new THREE.Group(), node = new THREE.Group();
+  obj.rotation.y = (rotY || 0) * Math.PI / 180;
+  node.add(obj); wrap.add(node); wrap.updateMatrixWorld(true);
+  const b = new THREE.Box3().setFromObject(node), sz = new THREE.Vector3(); b.getSize(sz);
+  const sx = dims.w ? dims.w / (sz.x || 1) : Infinity, sy = dims.h ? dims.h / (sz.y || 1) : Infinity, sz2 = dims.l ? dims.l / (sz.z || 1) : Infinity;
+  if (uniform) { const k = Math.min(sx, sy, sz2); node.scale.setScalar(isFinite(k) && k > 0 ? k : 1); }
+  else node.scale.set(isFinite(sx) ? sx : 1, isFinite(sy) ? sy : 1, isFinite(sz2) ? sz2 : 1);
+  wrap.updateMatrixWorld(true);
+  const b2 = new THREE.Box3().setFromObject(node), c = b2.getCenter(new THREE.Vector3()), s2 = new THREE.Vector3(); b2.getSize(s2);
+  node.position.x -= c.x; node.position.z -= c.z; node.position.y -= b2.min.y;
+  wrap.remove(node);
+  return { node, w: s2.x, h: s2.y, l: s2.z };
+}
+/* Where the deck is. Sampling the centre strip of the fitted semi (|x| below
+   a third of its half-width, so the wheels stay out of it), the height of the
+   mesh is binned along Z; the cab is the tall run at the nose, the deck is
+   the low run behind it. Returns the deck's top and its Z span, or a guess
+   (a 40 % deck at 45 % of the height) when the mesh gives nothing usable. */
+function haulDeckOf(THREE, obj, size, frame) {
+  const N = 24, top = new Array(N).fill(-Infinity); const zMin = -size.l / 2, xLim = Math.max(0.2, size.w / 6);
+  (frame || obj).updateMatrixWorld(true);
+  // vertices in the FRAME's space (the rig group: nose +Z, floor y 0), not the world's
+  const inv = frame ? new THREE.Matrix4().copy(frame.matrixWorld).invert() : new THREE.Matrix4();
+  const v = new THREE.Vector3(), mm = new THREE.Matrix4();
+  obj.traverse((o) => {
+    if (!o.isMesh || !o.geometry || !o.geometry.attributes || !o.geometry.attributes.position) return;
+    const pos = o.geometry.attributes.position, step = Math.max(1, Math.floor(pos.count / 6000));
+    mm.multiplyMatrices(inv, o.matrixWorld);
+    for (let i = 0; i < pos.count; i += step) {
+      v.fromBufferAttribute(pos, i).applyMatrix4(mm);
+      if (Math.abs(v.x) > xLim) continue;
+      const bi = Math.max(0, Math.min(N - 1, Math.floor((v.z - zMin) / size.l * N)));
+      if (v.y > top[bi]) top[bi] = v.y;
+    }
+  });
+  // a coarse mesh leaves empty bins between its vertices: carry the last height forward
+  for (let i = 1; i < N; i++) if (!isFinite(top[i]) && isFinite(top[i - 1])) top[i] = top[i - 1];
+  const hMax = Math.max(...top.filter(isFinite), 0);
+  const low = top.map((t) => isFinite(t) && t < hMax * 0.55);
+  // the deck: the longest run of low bins that starts at the rear (bin 0)
+  let end = 0; while (end < N && low[end]) end++;
+  if (end < 3 || hMax <= 0) return { top: size.h * 0.45, z0: zMin + size.l * 0.04, z1: zMin + size.l * 0.44, guessed: true };
+  const tops = top.slice(0, end).filter(isFinite).sort((a, b) => a - b);
+  const deckTop = tops[Math.floor(tops.length / 2)];
+  return { top: deckTop, z0: zMin + size.l * 0.03, z1: zMin + (end / N) * size.l - size.l * 0.02, guessed: false };
+}
+
+/* ═══ 🚨 raiders vs traffic (v121v110) ═══════════════════════════════════════
+   A raider used to be a homing point — it slid through every car between it
+   and the rig. Now it is a vehicle: the nearest car ahead of it in its own
+   width is its lead, it brakes behind that lead and tries to swing round it,
+   and a raider held off long enough gives up. Traffic is cover. */
+const RAIDER_GIVE_UP_S = 6;
+function raiderLead(R, S, traffic) {
+  let best = null, bestD = Infinity;
+  for (const o of traffic) {
+    if (o.z <= R.z || o.z - o.halfL > S.z) continue;   // behind the raider, or already past the rig
+    if (Math.abs(o.x - R.x) >= o.halfW + R.halfW) continue;
+    const d = o.z - R.z; if (d < bestD) { bestD = d; best = o; }
+  }
+  return best;
+}
+/* Where the raider wants to be this tick: at the rig when the way is clear;
+   beside the lead — on the rig's side of it when that is still on the road —
+   when it is not. Returns { x, speed, blocked }. */
+function raiderSteer(R, S, lead, roadHalf, dt) {
+  if (!lead) return { x: S.x, speed: Math.min(72, S.speed + 12), blocked: false };
+  const gap = lead.z - R.z - lead.halfL - R.halfL;
+  const safe = 3 + R.speed * 0.35;
+  const side = (S.x >= lead.x ? 1 : -1);
+  let tx = lead.x + side * (lead.halfW + R.halfW + 0.7);
+  if (Math.abs(tx) > roadHalf - R.halfW) tx = lead.x - side * (lead.halfW + R.halfW + 0.7);
+  if (Math.abs(tx) > roadHalf - R.halfW) tx = Math.sign(tx || 1) * (roadHalf - R.halfW);
+  const beside = Math.abs(R.x - tx) < 0.6;
+  if (gap < safe && !beside) return { x: tx, speed: Math.max(0, Math.min(lead.speed - (safe - gap) * 0.5, lead.speed)), blocked: true, gap };
+  return { x: beside ? tx : S.x, speed: Math.min(72, S.speed + 12), blocked: false, gap };
+}
 
 /* ───── haul.game.js ───── */
 const routeOf = route;
@@ -445,7 +571,7 @@ const routeOf = route;
 // The lanes. 4 × 3.6 m + a 1.4 m shoulder each side; the rail sits at ±HALF.
 const LANE_W = 3.6, LANES = 4, ROAD_W = LANE_W * LANES, HALF = ROAD_W / 2 + 1.4;
 const SEG_LEN = 40, SEGS = 16;
-const PLAYER_HALF_W = 1.15, PLAYER_HALF_L = 4.2;
+const PLAYER_HALF_W = 1.15, BASE_PLAYER_HALF_L = 4.2;   // the half-length grows to the model's when a rig model loads
 const BASE_MAX_SPEED = 62;                      // m/s (≈ 220 km/h) flat out
 const CAR_HIT_DMG = 9, RAIL_HIT_DMG = 4, HAZARD_DMG = 3, RAIDER_DMG = 8;
 // Exit ramps: the extra lane opens RAMP_IN metres before the junction and the
@@ -515,6 +641,7 @@ async function play(opts) {
   const cls = CARGO_CLASSES[cargoClass(opts.resource)] || CARGO_CLASSES.standard;
   const up = upgradeEffects(opts.upgrades);
   const RIG = rigProfile(opts.rig);
+  let PLAYER_HALF_L = BASE_PLAYER_HALF_L;
   const MAX_SPEED = BASE_MAX_SPEED * cls.speed * up.speed * RIG.top;
   const WHEELBASE = 6.5;                        // bicycle model: yaw rate = v · tan(δ) / L
   let THREE;
@@ -780,14 +907,55 @@ async function play(opts) {
     return outer;
   }
   const rigOuter = new THREE.Group(); const rig = new THREE.Group(); rig.rotation.y = Math.PI; rigOuter.add(rig);
-  { const cab = new THREE.Mesh(new THREE.BoxGeometry(2.3, 2.3, 2.4), M.player); cab.position.set(0, 1.45, 2.9); rig.add(cab);
-    const gl = new THREE.Mesh(new THREE.BoxGeometry(2.1, 0.8, 0.1), M.glass); gl.position.set(0, 2.0, 4.12); rig.add(gl);
-    const bed = new THREE.Mesh(new THREE.BoxGeometry(2.4, 0.5, 6), new THREE.MeshLambertMaterial({ color: 0x333 })); bed.position.set(0, 0.85, -1.4); rig.add(bed);
-    for (let i = 0; i < 3; i++) { const c = new THREE.Mesh(new THREE.BoxGeometry(2.0, 1.4, 1.6), M.cargo); c.position.set(0, 1.8, 0.4 - i * 1.9); c.userData.cargo = true; rig.add(c); }
-    for (const [x, z] of [[-1.05, 2.9], [1.05, 2.9], [-1.05, -0.8], [1.05, -0.8], [-1.05, -3.4], [1.05, -3.4]]) { const w = new THREE.Mesh(G.wheel, M.wheel); w.rotation.z = Math.PI / 2; w.position.set(x, 0.42, z); rig.add(w); }
-    if (opts.guard) { const gd = new THREE.Mesh(new THREE.BoxGeometry(0.7, 1.2, 0.7), new THREE.MeshLambertMaterial({ color: 0x2f5d3a })); gd.position.set(0.6, 3.1, 2.9); rig.add(gd); const gun = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.15, 1.6), M.wheel); gun.position.set(0.6, 3.4, 1.8); rig.add(gun); }
+  let alive = true;
+  const proc = [];   // the procedural rig — hidden, not removed, when a model takes over
+  { const cab = new THREE.Mesh(new THREE.BoxGeometry(2.3, 2.3, 2.4), M.player); cab.position.set(0, 1.45, 2.9); rig.add(cab); proc.push(cab);
+    const gl = new THREE.Mesh(new THREE.BoxGeometry(2.1, 0.8, 0.1), M.glass); gl.position.set(0, 2.0, 4.12); rig.add(gl); proc.push(gl);
+    const bed = new THREE.Mesh(new THREE.BoxGeometry(2.4, 0.5, 6), new THREE.MeshLambertMaterial({ color: 0x333 })); bed.position.set(0, 0.85, -1.4); rig.add(bed); proc.push(bed);
+    /* Cargo: a GROUP per slot with the crate as its child, so a container model
+       can replace the crate and the cargo animation in draw() (scale + tilt on
+       every `userData.cargo` child of the rig) never has to know. The group's
+       origin is the slot's floor, so a shrinking container sinks onto the deck. */
+    for (let i = 0; i < 3; i++) { const slot = new THREE.Group(); slot.position.set(0, 1.1, 0.4 - i * 1.9); slot.userData.cargo = true; const c = new THREE.Mesh(new THREE.BoxGeometry(2.0, 1.4, 1.6), M.cargo); c.position.y = 0.7; slot.add(c); rig.add(slot); }
+    for (const [x, z] of [[-1.05, 2.9], [1.05, 2.9], [-1.05, -0.8], [1.05, -0.8], [-1.05, -3.4], [1.05, -3.4]]) { const w = new THREE.Mesh(G.wheel, M.wheel); w.rotation.z = Math.PI / 2; w.position.set(x, 0.42, z); rig.add(w); proc.push(w); }
+    if (opts.guard) { const gd = new THREE.Mesh(new THREE.BoxGeometry(0.7, 1.2, 0.7), new THREE.MeshLambertMaterial({ color: 0x2f5d3a })); gd.position.set(0.6, 3.1, 2.9); rig.add(gd); const gun = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.15, 1.6), M.wheel); gun.position.set(0.6, 3.4, 1.8); rig.add(gun); rig.userData.guard = [gd, gun]; }
     addBlinkers(rig, 1.2, 4.05, -4.35, 1.0);
     scene.add(rigOuter); }
+  /* 🚛 The chosen truck's model, when it has one. Fitted to the traffic
+     trucks' width (2.4 m) and capped at their length; the collision box and
+     the chase camera follow the fitted length; the containers go on the deck. */
+  (async () => {
+    if (!RIG.model || !RIG.model.url) return;
+    let truck, size;
+    try { const fit = haulFit(THREE, await haulLoadGLB(THREE, RIG.model.url), { w: 2.4, l: 14.0 }, RIG.model.rotY || 0, true); truck = fit.node; size = fit; }
+    catch (e) { try { console.warn('[haul] rig model', RIG.model.url, e && e.message); } catch (e2) {} return; }
+    if (!alive) return;
+    truck.userData.rigModel = true; rig.add(truck);
+    proc.forEach((o) => { o.visible = false; });
+    PLAYER_HALF_L = Math.max(BASE_PLAYER_HALF_L, Math.min(7.2, size.l / 2));
+    S.camExtra = Math.max(0, (PLAYER_HALF_L - BASE_PLAYER_HALF_L) * 1.15);
+    if (rig.userData.guard) { const y = size.h + 0.6; rig.userData.guard[0].position.set(0.6, y, size.l / 2 - 2.2); rig.userData.guard[1].position.set(0.6, y + 0.3, size.l / 2 - 3.3); }
+    const deck = haulDeckOf(THREE, truck, size, rig);
+    S._deck = deck;
+    // re-lay the cargo slots along the deck: one slot per container, rear first
+    const slots = rig.children.filter((c) => c.userData.cargo);
+    const span = Math.max(2.5, deck.z1 - deck.z0), gapZ = 0.25;
+    const usable = span - gapZ * (HAUL_CONTAINERS.length + 1);
+    let z = deck.z0 + gapZ;
+    slots.forEach((slot, i) => {
+      const spec = HAUL_CONTAINERS[i];
+      if (!spec) { slot.visible = false; slot.userData.cargo = false; return; }
+      const L = usable * spec.frac;
+      slot.position.set(0, deck.top, z + L / 2); z += L + gapZ;
+      slot.children.forEach((c) => { c.scale.set(1, 1, L / 1.6); c.position.y = 0.7; });   // the crate stretches to the slot until the model lands
+      haulLoadGLB(THREE, spec.url).then((box) => {
+        if (!alive) return;
+        const fit = haulFit(THREE, box, { w: Math.min(2.35, size.w), l: L, h: 2.3 }, spec.rotY, false);
+        slot.children.slice().forEach((c) => { c.visible = false; });
+        slot.add(fit.node);
+      }).catch((e) => { try { console.warn('[haul] container', spec.url, e && e.message); } catch (e2) {} });
+    });
+  })();
   const tracer = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.12, 30), M.tracer); tracer.visible = false; scene.add(tracer);
 
   // Rain: a cloud of short streaks that rides along with the camera.
@@ -818,7 +986,7 @@ async function play(opts) {
 
   // ── State ─────────────────────────────────────────────────────────────────
   const S = {
-    z: 0, x: 0, speed: 0, heading: 0, t: 0, cargo: 100, cc: 0, cr: 0, hz: 0, wrongExits: 0, detourM: 0, total, merge: null,
+    z: 0, x: 0, speed: 0, heading: 0, t: 0, cargo: 100, cc: 0, cr: 0, hz: 0, wrongExits: 0, detourM: 0, total, merge: null, camExtra: 0,
     railCd: 0, steer: 0, done: false, paused: false, abandoned: false, started: false, jIdx: 0, tollsHit: 0, tollsPaid: [],
     raider: null, raiderIdx: 0, raidersBeaten: 0, raiderHits: 0, guardUsed: false, tracerT: 0,
     keys: {}, touch: { left: false, right: false, brake: false },
@@ -1098,7 +1266,7 @@ async function play(opts) {
     if (!S.raider && nextRaid && S.z > nextRaid.z) {
       S.raiderIdx++;
       const mesh = makeCar(false, 0, M.raider); scene.add(mesh);
-      S.raider = { mesh, x: S.x, z: S.z - 90, speed: S.speed + 8, halfL: 2.2, halfW: 1.0, hitCd: 0, t: 0, hits: 0, lane: 0, toLane: 0, sigDir: 0, phase: 'raid' };
+      S.raider = { mesh, x: S.x, z: S.z - 90, speed: S.speed + 8, halfL: 2.2, halfW: 1.0, hitCd: 0, t: 0, hits: 0, lane: 0, toLane: 0, sigDir: 0, phase: 'raid', blockedT: 0 };
       flash('🚨 RAIDERS BEHIND'); setBlink(mesh.children[0], 2, true);
     }
     if (S.raider) {
@@ -1106,7 +1274,19 @@ async function play(opts) {
       // A shot raider coasts and spins; only a live one pursues. (The pursuit
       // update used to run first and re-accelerated the wreck for the rest of
       // the run, which also blocked every later raider event.)
-      if (!R.dead) { R.speed += Math.max(-20 * dt, Math.min(14 * dt, (Math.min(72, S.speed + 12)) - R.speed)); R.z += R.speed * dt; R.x += (S.x - R.x) * Math.min(1, dt * 1.6); }
+      if (!R.dead) {
+        /* 🚗 Traffic is cover. The raider brakes behind whatever car is between
+           it and the rig, swings round it when there is room, and gives up
+           after RAIDER_GIVE_UP_S seconds held off — that counts as beaten. */
+        const lead = raiderLead(R, S, traffic);
+        const want = raiderSteer(R, S, lead, ROAD_W / 2, dt);
+        R.speed += Math.max(-20 * dt, Math.min(14 * dt, want.speed - R.speed)); R.z += R.speed * dt;
+        R.x += (want.x - R.x) * Math.min(1, dt * (want.blocked ? 2.2 : 1.6));
+        if (lead && want.gap < 0.3 && lead.z - R.z > 0) R.z = lead.z - lead.halfL - R.halfL - 0.3;
+        R.blockedT = want.blocked ? R.blockedT + dt : Math.max(0, R.blockedT - dt * 0.5);
+        if (R.blockedT >= RAIDER_GIVE_UP_S) { S.raidersBeaten++; scene.remove(R.mesh); S.raider = null; flash('🚗 TRAFFIC HELD THE RAIDERS OFF'); }
+      }
+      if (!S.raider) { /* gave up */ } else {
       setBlink(R.mesh.children[0], 2, Math.floor(S.t * 6) % 2 === 0);
       const dist = S.z - R.z;
       // The guard: one engagement per run, fired when the raider closes in.
@@ -1121,6 +1301,7 @@ async function play(opts) {
           R.z = S.z - R.halfL - PLAYER_HALF_L - 1;
         }
         if (R.t > 14 || R.hits >= 2 || R.z < S.z - 160) { if (R.hits < 2) S.raidersBeaten++; scene.remove(R.mesh); S.raider = null; flash(R.hits >= 2 ? '🚨 RAIDERS GOT WHAT THEY CAME FOR' : '✓ RAIDERS FELL BACK'); }
+      }
       }
     }
     if (S.tracerT > 0) S.tracerT -= dt;
@@ -1170,8 +1351,8 @@ async function play(opts) {
       jj.laneLift = jj.laneLift || {};
       jj.arms.forEach((a, l) => { const t = jj.laneLift[l]; if (t > 0) jj.laneLift[l] = t - 1 / 60; const target = (jj.tollState === 'open' || jj.laneLift[l] > 0) ? -1.35 : 0; a.rotation.z += (target - a.rotation.z) * 0.12; });
     }
-    const camBack = 13 + S.speed * 0.08;
-    cam.position.set(centreX(S.z - camBack) + S.x * 0.6, 6.2 + S.speed * 0.02, -(S.z - camBack));
+    const camBack = 13 + (S.camExtra || 0) + S.speed * 0.08;
+    cam.position.set(centreX(S.z - camBack) + S.x * 0.6, 6.2 + (S.camExtra || 0) * 0.4 + S.speed * 0.02, -(S.z - camBack));
     cam.lookAt(cx + S.x * 0.8, 1.6, -(S.z + 18));
     cam.fov = 62 + (S.speed / MAX_SPEED) * 12; cam.updateProjectionMatrix();
     if (rain) { rain.position.set(cam.position.x, 0, cam.position.z - 30); rain.position.y = -((S.t * 18) % 4); }
@@ -1199,6 +1380,7 @@ async function play(opts) {
     });
   }
   function destroy() {
+    alive = false;
     cancelAnimationFrame(raf); clearInterval(countTimer);
     window.removeEventListener('keydown', onKey); window.removeEventListener('keyup', onKey); window.removeEventListener('resize', onResize);
     try { scene.traverse((o) => { if (o.geometry && !Object.values(G).includes(o.geometry)) o.geometry.dispose(); if (o.material && o.material.map) o.material.map.dispose(); }); } catch (e) {}
@@ -1645,7 +1827,7 @@ function paintHowItWorks() {
       ${row('🎁', 'On-time bonus', 'Optional, escrowed with the fare. The driver earns it by arriving within par with at least ' + Math.round((e.bonusMinCargo || 0.9) * 100) + '% cargo. Missed, it comes back to the shipper.')}
       ${row('🛡', 'Insurance', 'Shippers can insure a load for ' + e.insurePct + '% of the fare. The recipient then collects the FULL quantity whatever arrived. The premium is a sink and is not refunded on cancel.')}
       ${row('🛑', 'Toll plazas', 'A city owned by another player is a toll plaza: booths across the road, arms down. Stop at the booth, the toll pays in a moment, the arms lift. Running the arm stops you anyway and damages the cargo. ' + e.tollPct + '% of the fare per plaza goes to the node owner, out of the carrier\'s side — never the driver\'s wage.')}
-      ${row('🚨', 'Raiders and guards', 'Routes over 40 km draw raiders who come from behind and ram. Before a run the carrier can hire ONE guard for 🔥 ' + e.guardFee + ' (company treasury, or the freelancer\'s wallet); the guard opens fire once, the first time raiders close in.')}
+      ${row('🚨', 'Raiders and guards', 'Routes over 40 km draw raiders who come from behind and ram. Before a run the carrier can hire ONE guard for 🔥 ' + e.guardFee + ' (company treasury, or the freelancer\'s wallet); the guard opens fire once, the first time raiders close in. Raiders cannot drive through traffic: a car between you and them holds them off, and raiders held off long enough give up — use the traffic.')}
       ${row('⚠', 'Hazards and weather', 'Debris, breakdowns and closed lanes are signposted 250 m ahead. Rain cuts grip; night cuts how far you can see. Weather follows the destination region.')}
       ${row('🧱', 'Cargo classes', 'Fragile (medicine, water, DNA): rail scrapes hurt more, fare × ' + (e.cargoRisk && e.cargoRisk.fragile || 1.5) + '. Flammable (fuel): car hits hurt more and a hard hit starts a fire, fare × ' + (e.cargoRisk && e.cargoRisk.flammable || 1.8) + '. Heavy (metal, stone, wood): slower to speed up and stop, fare × ' + (e.cargoRisk && e.cargoRisk.heavy || 1.2) + '.')}
       ${row('🪪', 'Driver rank', 'Every run feeds a 0–100 rating from cargo integrity, clean driving per km, pace against par and reliability. Company owners see each driver\'s rank and what their record is worth against the wage they pay. Rig upgrades in the Garage are yours whoever you drive for.')}

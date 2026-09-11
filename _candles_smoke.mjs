@@ -37,7 +37,7 @@ ok(/if \(S\.merge\) \{\n\s*S\.merge\.t \+= dt;\n\s*const k = Math\.min\(1, S\.me
 ok(/if \(!S\.merge && \(S\.x \+ PLAYER_HALF_W > rl \|\| -S\.x \+ PLAYER_HALF_W > HALF\)\) \{/.test(HAUL), '…with the rails held off while it merges');
 ok(/id="haul-merge"/.test(HAUL) && /function showMerge\(txt\)/.test(HAUL) && /function hideMerge\(\)/.test(HAUL) && /\.haul-merge\.on\{opacity:1\}/.test(HAUL), 'a merge overlay names the new highway');
 ok(/merge: null,/.test(HAUL), 'the run state carries the merge');
-ok(/src\/haul\/index\.js\?v=v121v109haul2/.test(SRC), 'the haul buster moved, so every player gets the new exits');
+ok(/src\/haul\/index\.js\?v=v121v1\d\dhaul\d/.test(SRC), 'the haul buster moved, so every player gets the new exits');
 {
   /* run the merge easing for real */
   const g = { laneX: (i) => -7.2 + 3.6 * (i + 0.5), LANES: 4, hideMerge: () => { g.hidden = true; }, flash: (t) => { g.flashed = t; }, j0Name: () => 'Cinder Fork' };

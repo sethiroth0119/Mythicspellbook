@@ -184,11 +184,23 @@ const RIG_ACCENT = '#e0a45c';
      renderer multiplies by π/180). The fitter normalises every model to the
      same footprint first, so scale is a nudge, not a unit conversion.
 
-   📎 NOT WIRED, DELIBERATELY: models/trucks/freight_rig.glb and freight_box.glb
+   🚛 FREIGHT (v121v110): every freight row carries FREIGHT_MODEL — the white
+      flatbed semi, models/trucks/freight_semi.glb, packed by tools/glbprop.mjs
+      from the Meshy master in assets-source/glb-masters/trucks/
+      white-flatbed-semi.glb (26.7 MB / ~3M tris → 0.84 MB / 12k tris, 1024px
+      WebP). Its long axis is X with the cab at −X, hence rotY 90. The Highway
+      Haul drives the SAME file: the bridge hands the chosen lot row's model to
+      the run (index.html `rigs:`), which fits it over the procedural rig and
+      parks the two containers (container_red/blue.glb, same packer) on the
+      deck it finds in the mesh. One body for five body types is a deliberate
+      trade — the owner asked for this truck for "the freight trucks".
+
+   📎 STILL NOT WIRED: models/trucks/freight_rig.glb and freight_box.glb
       ship today and no row below claims them. Six freight rigs run across five
       body types (Flatbed, Box Hauler, Freighter, Longhaul, Roadtrain) and two
       files cannot honestly cover them — guessing would put a box body on a row
       the card calls a Flatbed. Left for whoever has looked at the two meshes. */
+const FREIGHT_MODEL = { url: '/models/trucks/freight_semi.glb', scale: 1, rotY: 90 };
 const FEED_MODEL  = { url: '/models/trucks/feed_truck.glb',      scale: 1, rotY: 0 };
 const STOCK_MODEL = { url: '/models/trucks/livestock_truck.glb', scale: 1, rotY: 0 };
 /* The tanker is the one existing model with no ambiguity about which rows it
@@ -313,7 +325,7 @@ export const PP_RIGS = [
     rarity: 'common', haul: true, baseValue: 46000,
     runs: 3, cargo: 1.00, risk: 0, speed: 1.00,
     lotSlots: 1, weight: 40,
-    emoji: '🚛', accent: RIG_ACCENT,
+    emoji: '🚛', accent: RIG_ACCENT, model: FREIGHT_MODEL,
     desc: 'A deck, six wheels and no promises. Every carrier starts here.',
   },
   {
@@ -321,7 +333,7 @@ export const PP_RIGS = [
     rarity: 'uncommon', haul: true, baseValue: 98000,
     runs: 4, cargo: 1.30, risk: -3, speed: 1.05,
     lotSlots: 1, weight: 26,
-    emoji: '🚛', accent: RIG_ACCENT,
+    emoji: '🚛', accent: RIG_ACCENT, model: FREIGHT_MODEL,
     desc: 'Enclosed box. What the road cannot see, the road does not take.',
   },
   {
@@ -329,7 +341,7 @@ export const PP_RIGS = [
     rarity: 'rare', haul: true, baseValue: 210000,
     runs: 5, cargo: 1.70, risk: -8, speed: 1.15,
     lotSlots: 1, weight: 18,
-    emoji: '🚛', accent: RIG_ACCENT,
+    emoji: '🚛', accent: RIG_ACCENT, model: FREIGHT_MODEL,
     desc: 'Hums like its namesake at speed. Crews say it is the engine. It is not.',
   },
   {
@@ -337,7 +349,7 @@ export const PP_RIGS = [
     rarity: 'epic', haul: true, baseValue: 480000,
     runs: 6, cargo: 2.20, risk: -14, speed: 1.25,
     lotSlots: 2, weight: 10,
-    emoji: '🚛', accent: RIG_ACCENT,
+    emoji: '🚛', accent: RIG_ACCENT, model: FREIGHT_MODEL,
     desc: 'Sleeper cab, armoured glass, range for the long dead stretches.',
   },
   {
@@ -345,7 +357,7 @@ export const PP_RIGS = [
     rarity: 'legendary', haul: true, baseValue: 1150000,
     runs: 8, cargo: 3.00, risk: -22, speed: 1.40,
     lotSlots: 2, weight: 5,
-    emoji: '🚛', accent: RIG_ACCENT,
+    emoji: '🚛', accent: RIG_ACCENT, model: FREIGHT_MODEL,
     desc: 'Three trailers and a saint bolted to the grille. Raiders wave it through.',
   },
   {
@@ -353,7 +365,7 @@ export const PP_RIGS = [
     rarity: 'mythic', haul: true, baseValue: 3400000,
     runs: 10, cargo: 4.20, risk: -32, speed: 1.60,
     lotSlots: 3, weight: 1,
-    emoji: '🚛', accent: RIG_ACCENT,
+    emoji: '🚛', accent: RIG_ACCENT, model: FREIGHT_MODEL,
     desc: 'Not a truck. A convoy with one driver and a name people already know.',
   },
 

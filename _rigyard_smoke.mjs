@@ -146,8 +146,8 @@ function litOf(name, open) {
   const own = of({ haul: true, rigId: 'haul_penfold', modelUrl: '/models/trucks/tanker.glb', modelScale: 0.6, modelRotY: 90 });
   ok(own.url === '/models/trucks/tanker.glb' && own.scale === 0.6 && own.rotY === 90,
     'a row that carries its OWN model keeps it — the catalogue is the fallback, not an override', JSON.stringify(own));
-  ok(of({ haul: true, rigId: 'haul_flatbed' }) === null,
-    'a freight rig claims no model today and says so honestly rather than borrowing another class\'s truck');
+  ok(of({ haul: true, rigId: 'haul_flatbed' }).url === '/models/trucks/freight_semi.glb',
+    'a freight rig resolves the white flatbed semi (v121v110 — the owner\'s truck for every freight rig)');
 }
 
 /* ── 5. THE CAPACITY READER, ONE PER CLASS ────────────────────────────────── */

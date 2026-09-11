@@ -77,6 +77,15 @@ assets/3d models/**/*.glb
 !models/trucks/feed_truck.glb
 !models/trucks/livestock_truck.glb
 
+# EXCEPTION (v121v110): the white flatbed semi every FREIGHT rig now shows in
+# the Truck Yard and drives in the Highway Haul, and the two shipping
+# containers that ride on its deck there. Same pipeline (tools/glbprop.mjs):
+# 26.7 MB → 0.84 MiB, 19.9 MB → 0.59 MiB, 16.7 MB → 0.53 MiB. Masters in
+# assets-source/glb-masters/{trucks,containers}/.
+!models/trucks/freight_semi.glb
+!models/trucks/container_blue.glb
+!models/trucks/container_red.glb
+
 # Belt-and-suspenders: any other oversized model formats that land in assets.
 *.glb.zip
 
