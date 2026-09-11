@@ -428,6 +428,9 @@ const FARM_ANIMALS = [
 /* ── Buildings and stations ──────────────────────────────────────────────── */
 /* 🏗 Costs raised on the owner's instruction (2026-09-10): resources ×2 and
    Cinder ×1.5 on every level of every building, from the v121v94 table. */
+/* 🪚 PLANKS (owner, v121v118): the feed business builds with planks from level 2 —
+   the Feed Mill, the pens and the Farm Kitchen. Planks are milled in the city
+   builder's Sawmill and reach the stash by themselves (node-city autoStashTick). */
 const FARM_BUILDINGS = [
   {
     id: 'feedmill', name: 'Feed Mill', emoji: '🌾', accent: '#d9c46a', station: true, role: 'feed',
@@ -435,8 +438,8 @@ const FARM_BUILDINGS = [
     maxLevel: 3, buildH: [0.5, 2, 6], plot: { x: 1, y: 1, w: 3, h: 2 },
     cost: [
       { cinder: 33000, wood: 60, stone: 40, water: 20 },
-      { cinder: 90000, wood: 140, stone: 90, metal: 40 },
-      { cinder: 225000, wood: 300, stone: 200, metal: 120 },
+      { cinder: 90000, wood: 140, stone: 90, metal: 40, planks: 40 },
+      { cinder: 225000, wood: 300, stone: 200, metal: 120, planks: 100 },
     ],
   },
   {
@@ -446,8 +449,8 @@ const FARM_BUILDINGS = [
     capacity: lv => 6 * lv,
     cost: [
       { cinder: 45000, wood: 80, cloth: 20 },
-      { cinder: 112500, wood: 180, cloth: 50, metal: 30 },
-      { cinder: 270000, wood: 360, cloth: 120, metal: 80 },
+      { cinder: 112500, wood: 180, cloth: 50, metal: 30, planks: 20 },
+      { cinder: 270000, wood: 360, cloth: 120, metal: 80, planks: 50 },
     ],
   },
   {
@@ -457,8 +460,8 @@ const FARM_BUILDINGS = [
     capacity: lv => 3 * lv,
     cost: [
       { cinder: 135000, wood: 240, stone: 120, metal: 60 },
-      { cinder: 330000, wood: 520, stone: 280, metal: 160 },
-      { cinder: 780000, wood: 1040, stone: 600, metal: 360, supplies: 120 },
+      { cinder: 330000, wood: 520, stone: 280, metal: 160, planks: 30 },
+      { cinder: 780000, wood: 1040, stone: 600, metal: 360, supplies: 120, planks: 80 },
     ],
   },
   {
@@ -468,8 +471,8 @@ const FARM_BUILDINGS = [
     capacity: lv => 4 * lv,
     cost: [
       { cinder: 67500, wood: 120, stone: 60, water: 40 },
-      { cinder: 165000, wood: 260, stone: 140, water: 90 },
-      { cinder: 390000, wood: 520, stone: 300, water: 200, metal: 60 },
+      { cinder: 165000, wood: 260, stone: 140, water: 90, planks: 20 },
+      { cinder: 390000, wood: 520, stone: 300, water: 200, metal: 60, planks: 50 },
     ],
   },
   {
@@ -479,8 +482,8 @@ const FARM_BUILDINGS = [
     capacity: lv => 5 * lv,
     cost: [
       { cinder: 60000, wood: 160, stone: 20 },
-      { cinder: 150000, wood: 340, stone: 60, cloth: 40 },
-      { cinder: 360000, wood: 680, stone: 140, cloth: 100, metal: 40 },
+      { cinder: 150000, wood: 340, stone: 60, cloth: 40, planks: 20 },
+      { cinder: 360000, wood: 680, stone: 140, cloth: 100, metal: 40, planks: 50 },
     ],
   },
   {
@@ -550,8 +553,8 @@ const FARM_BUILDINGS = [
     maxLevel: 3, buildH: [1.5, 4, 10], plot: { x: 5, y: 13, w: 3, h: 1 },
     cost: [
       { cinder: 57000, wood: 80, stone: 60, metal: 30 },
-      { cinder: 142500, wood: 160, stone: 140, metal: 70 },
-      { cinder: 345000, wood: 320, stone: 300, metal: 160, supplies: 50 },
+      { cinder: 142500, wood: 160, stone: 140, metal: 70, planks: 30 },
+      { cinder: 345000, wood: 320, stone: 300, metal: 160, supplies: 50, planks: 80 },
     ],
   },
 ];

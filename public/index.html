@@ -39407,7 +39407,7 @@ body:has(#pack-opener-frame) #chat-overlay {
   // the console. Bump this every deploy alongside sw.js's CACHE_VERSION. If two
   // machines show different stamps, the older one is on stale code (hard-refresh);
   // if they MATCH but content still differs, it is a DATA/publish issue, not code.
-  window.BUILD_VERSION = 'v121v117';
+  window.BUILD_VERSION = 'v121v118';
   try {
     console.info('%cMythic Spellbook ' + window.BUILD_VERSION + '%c — build check: run  __mg.version',
       'font-weight:700;color:#b48cff', 'color:#7d7499');
@@ -74690,9 +74690,9 @@ const CAMP_FACILITIES = [
     maxLevel: 4,
     cost: [
       { cinder: 60,  metal: 20,  supplies: 10 },
-      { cinder: 140, metal: 50,  supplies: 25,  fuel: 10 },
-      { cinder: 280, metal: 110, supplies: 60,  fuel: 30, ammo: 20 },
-      { cinder: 520, metal: 220, supplies: 130, fuel: 70, ammo: 50, memoryShards: 5 },
+      { cinder: 140, metal: 50,  supplies: 25,  fuel: 10, planks: 20 },
+      { cinder: 280, metal: 110, supplies: 60,  fuel: 30, ammo: 20, planks: 50 },
+      { cinder: 520, metal: 220, supplies: 130, fuel: 70, ammo: 50, memoryShards: 5, planks: 100 },
     ],
     buildH: [0.5, 1, 2, 4],
     bonus: lv => ({ slots: lv }) },
@@ -74701,9 +74701,9 @@ const CAMP_FACILITIES = [
     maxLevel: 4,
     cost: [
       { cinder: 80,  supplies: 18,  ammo: 12 },
-      { cinder: 180, supplies: 42,  ammo: 30,  metal: 15 },
-      { cinder: 360, supplies: 95,  ammo: 70,  metal: 40, food: 30, memoryShards: 4 },
-      { cinder: 640, supplies: 190, ammo: 145, metal: 85, food: 65, memoryShards: 11 },
+      { cinder: 180, supplies: 42,  ammo: 30,  metal: 15, planks: 15 },
+      { cinder: 360, supplies: 95,  ammo: 70,  metal: 40, food: 30, memoryShards: 4, planks: 40 },
+      { cinder: 640, supplies: 190, ammo: 145, metal: 85, food: 65, memoryShards: 11, planks: 80 },
     ],
     buildH: [1, 2, 4, 8],
     bonus: lv => ({ restXpMul: 1 + 0.25 * lv }) },
@@ -74745,9 +74745,9 @@ const CAMP_FACILITIES = [
     maxLevel: 4,
     cost: [
       { cinder: 70,  metal: 26,  supplies: 14,  fuel: 8 },
-      { cinder: 160, metal: 62,  supplies: 34,  fuel: 20 },
-      { cinder: 320, metal: 135, supplies: 75,  fuel: 45, ammo: 18, memoryShards: 4 },
-      { cinder: 600, metal: 270, supplies: 155, fuel: 95, ammo: 42, memoryShards: 12 },
+      { cinder: 160, metal: 62,  supplies: 34,  fuel: 20, planks: 25 },
+      { cinder: 320, metal: 135, supplies: 75,  fuel: 45, ammo: 18, memoryShards: 4, planks: 60 },
+      { cinder: 600, metal: 270, supplies: 155, fuel: 95, ammo: 42, memoryShards: 12, planks: 120 },
     ],
     buildH: [1, 2, 4, 8],
     bonus: lv => ({ buildSpeed: 0.12 * lv }) },
@@ -74756,9 +74756,9 @@ const CAMP_FACILITIES = [
     maxLevel: 4,
     cost: [
       { cinder: 120, supplies: 24,  fuel: 16,  metal: 12 },
-      { cinder: 260, supplies: 56,  fuel: 38,  metal: 28, memoryShards: 3 },
-      { cinder: 520, supplies: 120, fuel: 82,  metal: 62, memoryShards: 9,  corruptedEssence: 5 },
-      { cinder: 900, supplies: 245, fuel: 170, metal: 130, memoryShards: 22, corruptedEssence: 14 },
+      { cinder: 260, supplies: 56,  fuel: 38,  metal: 28, memoryShards: 3, planks: 20 },
+      { cinder: 520, supplies: 120, fuel: 82,  metal: 62, memoryShards: 9,  corruptedEssence: 5, planks: 50 },
+      { cinder: 900, supplies: 245, fuel: 170, metal: 130, memoryShards: 22, corruptedEssence: 14, planks: 100 },
     ],
     buildH: [2, 4, 8, 16],
     bonus: lv => ({ tithe: 5 * lv }) },
@@ -74767,8 +74767,8 @@ const CAMP_FACILITIES = [
     maxLevel: 3,
     cost: [
       { cinder: 80,  food: 20, water: 16, supplies: 10 },
-      { cinder: 180, food: 48, water: 40, supplies: 26, energyDrink: 8 },
-      { cinder: 360, food: 105, water: 90, supplies: 58, energyDrink: 20, memoryShards: 4 },
+      { cinder: 180, food: 48, water: 40, supplies: 26, energyDrink: 8, planks: 15 },
+      { cinder: 360, food: 105, water: 90, supplies: 58, energyDrink: 20, memoryShards: 4, planks: 40 },
     ],
     buildH: [1, 3, 6],
     bonus: lv => ({ moraleRegen: 3 * lv }) },
@@ -264695,7 +264695,7 @@ render();
        other static asset, and a missed bump ships invisibly. -->
 <script type="module" src="src/mercenary/index.js?v=v121v66merc1"></script>
 <script type="module" src="src/haul/index.js?v=v121v111haul4"></script>
-<script type="module" src="src/farm/index.js?v=v121v116farm4"></script>
+<script type="module" src="src/farm/index.js?v=v121v118farm5"></script>
 <!-- 🍔 MYTHIC KITCHEN — the fast-food / drive-thru sim. Registers
      window.MythicKitchen (+ __mk) and is INERT until the title tile opens it:
      no DOM, no RAF loop, no Supabase call happens on load. Everything it can
@@ -265132,8 +265132,8 @@ try {
        that works everywhere except the one early path nobody tested. It is
        2KB with no dependencies. -->
 <script src="src/econ/peg.js?v=v121q51"></script>
-<script src="src/battle/effects.js?v=v121v117" defer></script>
-<script src="src/phone/handset.js?v=v121v117" defer></script>
+<script src="src/battle/effects.js?v=v121v118" defer></script>
+<script src="src/phone/handset.js?v=v121v118" defer></script>
 <script src="src/battle/combat.js?v=120m4" defer></script>
 <script src="src/battle/targeting.js?v=121e3hex" defer></script>
 <link rel="stylesheet" href="src/sprites/frames.css?v=120k3">
@@ -265182,7 +265182,7 @@ try {
      Bump ?v= on every change — the service worker caches these like any asset. -->
 <link rel="stylesheet" href="src/hubui/hub-modals.css?v=121h0">
 <!-- 💬 tooltips: every title, every hub tile, every camp control, every resource icon (v121v112) -->
-<script src="src/hubui/tips.js?v=v121v117" defer></script>
+<script src="src/hubui/tips.js?v=v121v118" defer></script>
 <script src="src/sprites/frames.js?v=120k3" defer></script>
 <script src="src/sprites/idle.js?v=120k4" defer></script>
 </body>

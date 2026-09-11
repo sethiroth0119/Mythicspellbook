@@ -31,7 +31,7 @@ ok(/@media \(max-width:760px\)\{\.farm-panel\{left:0;right:0;top:auto;bottom:0;[
   const rows = [...block.matchAll(/\{ cinder: (\d+)((?:, [a-zA-Z]+: \d+)*) \}/g)];
   ok(rows.length >= 30, 'every building level has a cost row', rows.length);
   const mill = block.slice(block.indexOf("id: 'feedmill'"), block.indexOf("id: 'coop'"));
-  ok(/\{ cinder: 33000, wood: 60, stone: 40, water: 20 \}/.test(mill) && /\{ cinder: 90000, wood: 140, stone: 90, metal: 40 \}/.test(mill) && /\{ cinder: 225000, wood: 300, stone: 200, metal: 120 \}/.test(mill), 'Feed Mill: 22,000/30/20/10 → 33,000/60/40/20 (Cinder ×1.5, resources ×2), and so on up the levels');
+  ok(/\{ cinder: 33000, wood: 60, stone: 40, water: 20 \}/.test(mill) && /\{ cinder: 90000, wood: 140, stone: 90, metal: 40, planks: 40 \}/.test(mill) && /\{ cinder: 225000, wood: 300, stone: 200, metal: 120, planks: 100 \}/.test(mill), 'Feed Mill: 22,000/30/20/10 → 33,000/60/40/20 (Cinder ×1.5, resources ×2), and so on up the levels (+ planks from level 2, v121v118)');
   const barn = block.slice(block.indexOf("id: 'barn'"), block.indexOf("id: 'sty'"));
   ok(/\{ cinder: 135000, wood: 240, stone: 120, metal: 60 \}/.test(barn), 'Cattle Barn L1: 90,000/120/60/30 → 135,000/240/120/60');
   ok(rows.every((r) => Number(r[1]) % 500 === 0), 'no fractional Cinder from the ×1.5');

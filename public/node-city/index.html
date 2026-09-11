@@ -9,7 +9,7 @@
      believed the file was already live. Only a CONTENT change moves the hash
      and forces a re-upload, so bump this stamp whenever the city 404s, and
      probe it (grep NC_BUILD on the served page) to prove the deploy landed. -->
-<script>window.NC_BUILD = "v121v117-foundry";</script>
+<script>window.NC_BUILD = "v121v118-planks";</script>
 <!-- ════════════════════════════════════════════════════════════════════════
      NODE CITY — SimCity-style settlement layer for Mythic Spellbook.
      Three.js WebGPU (auto-falls back to WebGL2). Realistic sun/moon cycle.
@@ -4745,7 +4745,7 @@ const BUILDINGS = {
               desc: 'Cane rows, a cutting yard and drying racks. Cuts sugar cane and saves seed — the two field deposits neither the Farm nor the Fiber Croft will take.' },
   riftbore: { gen: { anomalousMatter: 0.04, dimensionalMaterial: 0.02 }, name: 'Deep Rift Bore', ico: '🌌', cost: { cinder: 110, metal: 26, fuel: 16 }, pop: 3, crew: 2,
               desc: 'A cased bore into the tear itself under a containment collar. Where the Rift Siphon skims what has already leaked out, this reaches the seams beneath — anomalous matter, reality matter, soul energy, dimensional material and reality fragments.' },
-  housing:  { name: 'Housing',       ico: '🏠', cost: { cinder: 26, metal: 10, supplies: 6 }, pop: 0, popCap: 6,
+  housing:  { name: 'Housing',       ico: '🏠', cost: { cinder: 26, metal: 10, supplies: 6 , planks: 4 }, pop: 0, popCap: 6,
               desc: 'Shelters citizens. +6 population cap per level.' },
   /* ══════════════════════════════════════════════════════════════════════
      🏢 THE DENSITY LADDER — four residential tiers above the house.
@@ -4771,21 +4771,21 @@ const BUILDINGS = {
      ⚠ NO `crew` ON ANY OF THEM. "Housing is not a job" — the owner's words
        from the job-newspaper round, and the reason housing stays out of the
        work table and the adverts. */
-  apartment:{ name: 'Apartment Building', ico: '🏘', cost: { cinder: 120, metal: 46, supplies: 22 }, pop: 0, popCap: 24,
+  apartment:{ name: 'Apartment Building', ico: '🏘', cost: { cinder: 120, metal: 46, supplies: 22 , planks: 16 }, pop: 0, popCap: 24,
               powerNeed: 0.45, sewer: { cap: -1.2 },
               desc: 'Four storeys of flats. +24 population cap per level — four houses of people on one plot, for more power and more waste.' },
-  aptblock: { name: 'Apartment Block',   ico: '🏢', cost: { cinder: 340, metal: 130, supplies: 60 }, pop: 0, popCap: 70,
+  aptblock: { name: 'Apartment Block',   ico: '🏢', cost: { cinder: 340, metal: 130, supplies: 60 , planks: 40 }, pop: 0, popCap: 70,
               powerNeed: 1.4, sewer: { cap: -3.6 },
               desc: 'A city block of flats. +70 population cap per level. Needs a real grid behind it.' },
-  apttower: { name: 'Apartment Tower',   ico: '🏬', cost: { cinder: 900, metal: 330, supplies: 150 }, pop: 0, popCap: 180,
+  apttower: { name: 'Apartment Tower',   ico: '🏬', cost: { cinder: 900, metal: 330, supplies: 150 , planks: 90 }, pop: 0, popCap: 180,
               powerNeed: 4.0, sewer: { cap: -9.5 },
               desc: 'Eighteen storeys. +180 population cap per level, and it will find the weak point in your power and water.' },
-  highrise: { name: 'High-Rise',         ico: '🌆', cost: { cinder: 2200, metal: 820, supplies: 380 }, pop: 0, popCap: 320,
+  highrise: { name: 'High-Rise',         ico: '🌆', cost: { cinder: 2200, metal: 820, supplies: 380 , planks: 200 }, pop: 0, popCap: 320,
               powerNeed: 8.0, sewer: { cap: -18 },
               desc: 'The tallest thing in New America. +320 population cap per level. A city that can keep one of these lit is a city that has arrived.' },
-  barracks: { name: 'Barracks',      ico: '⚔️', cost: { cinder: 50, metal: 20, supplies: 8 }, pop: 0, garrison: 4, defense: 6,
+  barracks: { name: 'Barracks',      ico: '⚔️', cost: { cinder: 50, metal: 20, supplies: 8 , planks: 6 }, pop: 0, garrison: 4, defense: 6,
               desc: 'Quarters for soldiers. Each level lets you station +4 soldiers.' },
-  tower:    { name: 'Watchtower',    ico: '🗼', cost: { cinder: 36, metal: 18 }, pop: 1, defense: 12,
+  tower:    { name: 'Watchtower',    ico: '🗼', cost: { cinder: 36, metal: 18 , planks: 4 }, pop: 1, defense: 12,
               desc: 'Static defense. Spends ammo when raids hit.' },
   tree:     { name: 'Tree',          ico: '🌳', cost: { cinder: 3 }, decor: true, decorPts: 1, maxLvl: 1,
               desc: 'A living tree. Greenery lifts city morale.' },
@@ -4795,13 +4795,13 @@ const BUILDINGS = {
               desc: 'Flower beds. Citizens love them.' },
   fountain: { name: 'Fountain',      ico: '⛲', cost: { cinder: 28, metal: 6 }, decor: true, decorPts: 4, maxLvl: 1,
               desc: 'A stone fountain — the pride of any plaza. Big morale boost.' },
-  arena:    { name: 'Duel Arena',    ico: '🏟️', cost: { cinder: 160, metal: 40, supplies: 20 }, pop: 3, crew: 2, sockets: 1,
+  arena:    { name: 'Duel Arena',    ico: '🏟️', cost: { cinder: 160, metal: 40, supplies: 20 , planks: 30 }, pop: 3, crew: 2, sockets: 1,
               gen: { cinder: 0.2 }, desc: 'Tactical card battles draw crowds. Income scales with morale; slot a card to headline.' },
-  shop:     { name: 'Player Shop',   ico: '🛒', cost: { cinder: 70, metal: 14, supplies: 10 }, pop: 2, crew: 1, sockets: 1,
+  shop:     { name: 'Player Shop',   ico: '🛒', cost: { cinder: 70, metal: 14, supplies: 10 , planks: 6 }, pop: 2, crew: 1, sockets: 1,
               gen: { cinder: 0.18 }, use: { supplies: 0.08 }, desc: 'A storefront on the world marketplace. Sells stock for Cinder.' },
   wall:     { name: 'Wall',          ico: '🧱', cost: { cinder: 14, metal: 8 }, pop: 0, defense: 4, noEnter: true, noRoadNeed: true,
               desc: 'Fortification. Counts DOUBLE during sieges.' },
-  gate:     { name: 'City Gate',     ico: '🚪', cost: { cinder: 60, metal: 24 }, pop: 1, defense: 8, cap: 1,
+  gate:     { name: 'City Gate',     ico: '🚪', cost: { cinder: 60, metal: 24 , planks: 10 }, pop: 1, defense: 8, cap: 1,
               desc: 'The way out into the wasteland. Launch expeditions here; refugees arrive here. One per city.' },
   caravanpost:{name:'Caravan Post',  ico: '🐪', cost: { cinder: 80, metal: 20, supplies: 12 }, pop: 2, crew: 1, cap: 2,
               desc: 'Sends trade caravans to other players\' cities. Pays out on return — Convoy PRN link boosts profits.' },
@@ -4904,7 +4904,7 @@ const BUILDINGS = {
               desc: 'Volume, not charm. Feeds a whole district on a thin margin — a city fed only on restaurants goes bankrupt, a city fed only on groceries has Morale in the floor.' },
 
   // ── Night, safety and infrastructure ──
-  club:     { name: 'Club',          ico: '🎵', cost: { cinder: 105, metal: 26, supplies: 12 }, pop: 2, crew: 2, powerNeed: 1.1,
+  club:     { name: 'Club',          ico: '🎵', cost: { cinder: 105, metal: 26, supplies: 12 , planks: 10 }, pop: 2, crew: 2, powerNeed: 1.1,
               svc: { need: 'leisure', supply: 1.8, input: 'goods', rate: 0.55, morale: 6 },
               gen: { cinder: 0.30, beverages: 0.18 },
               desc: 'Nightlife, and the best margin in the city. It wants a lit, policed block — dropped in the dark it costs more Security than the Morale it pays.' },
@@ -4938,7 +4938,7 @@ const BUILDINGS = {
        — and it will stop appearing in every gauntlet capture with it. It sells goods for leisure coverage exactly as the Club does, at a
        third of the Club's supply and none of its Morale, because a parade of
        shops is convenience, not a night out. */
-  retail:   { name: 'Retail Parade', ico: '🏬', cost: { cinder: 52, metal: 14, supplies: 8 }, pop: 2, crew: 1, powerNeed: 0.30,
+  retail:   { name: 'Retail Parade', ico: '🏬', cost: { cinder: 52, metal: 14, supplies: 8 , planks: 6 }, pop: 2, crew: 1, powerNeed: 0.30,
               svc: { need: 'leisure', supply: 0.60, input: 'goods', rate: 0.18 },
               desc: 'Four units under one roof: a glazing strip the width of the plot, a lit fascia band over it and a forecourt of marked bays. Low, wide and built to the property line — three in a row make a high street.' },
   /* 🏢 THE OFFICE BLOCK — round 17, and it exists because FOUR SYSTEMS WERE
@@ -4972,7 +4972,7 @@ const BUILDINGS = {
          exactly what hud/demand.js office() already says the meter measures
          ("read entirely off the LABOUR side"). Giving it a svc.supply to make
          it feel useful would be inventing a mechanic to justify a mesh. */
-  office:   { name: 'Office Block',  ico: '🏢', cost: { cinder: 90, metal: 20, supplies: 14 }, pop: 3, crew: 2, powerNeed: 0.5,
+  office:   { name: 'Office Block',  ico: '🏢', cost: { cinder: 90, metal: 20, supplies: 14 , planks: 12 }, pop: 3, crew: 2, powerNeed: 0.5,
               gen: { cinder: 0.18 }, use: { supplies: 0.08 },
               desc: 'Five floors of let space behind a glass curtain wall, with a lobby, a plant deck and its own car park. Clean work: no freight, no smoke, and the only building in the city that is taller than its plot is wide. Each level adds a floor.' },
 
@@ -28310,6 +28310,74 @@ function stockCap() {
   return c;
 }
 function stockOf(r) { return game.stock[r] || 0; }
+/* 🏥 WHAT A SERVICE MAY DRAW (owner, v121v118 — bug-mtuadu79 reopened twice):
+   "The Clinic should NOT be consuming more remedies than it creates." A
+   building that makes the very good it dispenses (the Clinic: medicine + water
+   → remedies → Health) draws AT MOST what it prepared this tick, scaled by the
+   same city-conditions multiplier its output is. Before, the output was scaled
+   and the draw was not, so below ~67 % conditions the shelf drained and the
+   chain read "eating its own lunch". Coverage now follows conditions instead
+   of amplifying a slump into an empty shelf. Buildings that only dispense
+   (kitchens on rations) are unchanged. */
+function svcWantFor(def, s, mult, omRes, dtMin) {
+  let want = s.rate * mult * dtMin;
+  if (def && def.gen && def.gen[s.input] > 0) want = Math.min(want, def.gen[s.input] * mult * omRes * dtMin);
+  return want;
+}
+/* 📤 AUTO-STASH (owner, v121v118 — bug-mtw1qg89 / bug-mtw1jo7k reopened: "Planks
+   now show up in the Ops Vault BUT it is showing ZERO, when I have over 4000
+   in the stash"). The 4,000 were CITY stock — the city builder's own shelf —
+   and the Ops Vault, the Reserve and the Player Market read the player's
+   stash. The v121v105 Send button moved them by hand; nobody found it. Now
+   every five minutes the city moves its SURPLUS of each stashable good
+   (rations, planks, remedies) into the stash by itself, keeping two hours of
+   its own draw plus a floor on the shelf so kitchens and the Clinic never run
+   dry because of it. A full stash declines (addRes returns false) and the
+   pile stays; the move is retried by halves so a nearly-full stash still
+   takes what fits. The phone leaderboard counts city stock, so a city that
+   ships its planks ranks lower there — by design, the planks are USABLE now. */
+const AUTO_STASH_EVERY_MS = 5 * 60 * 1000;
+const AUTO_STASH_RESERVE_MIN = 120;      // minutes of the city's own draw kept on the shelf
+const AUTO_STASH_FLOOR = 20;
+let _autoStashAt = 0, _autoStashBusy = false;
+function autoStashReserve(r, tiles, B) {
+  let perMin = 0;
+  for (const k in tiles) {
+    const t = tiles[k]; if (!t || !t.type || t.damaged) continue;
+    const def = B[t.type]; if (!def) continue;
+    const lv = Math.max(1, (t.lvl | 0) || 1);
+    if (def.svc && def.svc.input === r) perMin += (def.svc.rate || 0) * lv;
+    if (def.use && def.use[r] > 0) perMin += def.use[r] * lv;
+  }
+  return Math.ceil(perMin * AUTO_STASH_RESERVE_MIN) + AUTO_STASH_FLOOR;
+}
+async function autoStashTick(force) {
+  try {
+    if (_autoStashBusy) return null;
+    if (!force && Date.now() - _autoStashAt < AUTO_STASH_EVERY_MS) return null;
+    _autoStashAt = Date.now();
+    if (typeof MythicCityBridge === 'undefined' || !MythicCityBridge || typeof MythicCityBridge.addRes !== 'function') return null;
+    _autoStashBusy = true;
+    const moved = {};
+    for (const r of STOCK_STASHABLE) {
+      const reserve = autoStashReserve(r, game.tiles || {}, BUILDINGS);
+      let surplus = Math.floor(stockOf(r) - reserve);
+      while (surplus >= 10) {
+        game.stock[r] = Math.max(0, stockOf(r) - surplus);
+        let ok = false; try { ok = await MythicCityBridge.addRes(r, surplus); } catch (e) { ok = false; }
+        if (ok === false) { game.stock[r] = stockOf(r) + surplus; surplus = Math.floor(surplus / 2); continue; }
+        moved[r] = (moved[r] || 0) + surplus; break;
+      }
+    }
+    if (Object.keys(moved).length) {
+      try { saveSoon(); } catch (e) {}
+      try { toast('📤 Sent to your stash: ' + Object.keys(moved).map((r) => moved[r].toLocaleString() + ' ' + resName(r)).join(' · ') + ' — the Ops Vault, the Reserve and the Market can use them now.', 'good'); } catch (e) {}
+      try { updateHUD(); } catch (e) {}
+    }
+    return moved;
+  } catch (e) { return null; } finally { _autoStashBusy = false; }
+}
+
 /* Everything below reads a resource id that may be EITHER a city stock key or
    a game-ledger key. One accessor, so a recipe can mix the two freely. */
 function haveOf(r) { return CITY_STOCK[r] ? stockOf(r) : (game.res[r] | 0); }
@@ -30103,7 +30171,7 @@ async function economyTick(dtMin) {
     // 🍽 SERVICES: convert refined stock into COVERAGE.
     if (def.svc) {
       const s = def.svc;
-      const got = s.input ? svcDraw(s.input, s.rate * mult * dtMin, def) : 1;
+      const got = s.input ? svcDraw(s.input, svcWantFor(def, s, mult, omRes, dtMin), def) : 1;   // 🏥 never more than it prepared (v121v118)
       /* 🪦 A FULL GRAVEYARD IS NOT A GRAVEYARD. /src/mortality owns how many of
          a tile's `plots` are taken; this asks it for a 1-or-0 and folds it into
          the same `svcFed` the inspect panel already prints, so a full plot
@@ -30314,6 +30382,7 @@ async function economyTick(dtMin) {
      is already banked above) against what every consumer would draw. 0.9 keeps
      a tenth on the shelf so the `haveOf <= 0` gate never flips a whole class of
      buildings off for a tick. */
+  try { autoStashTick(false); } catch (e) {}   // 📤 surplus rations / planks / remedies → the stash (v121v118)
   economyTick._demandFull = demandFull;
   economyTick._spendFrac = economyTick._spendFrac || {};
   const SF = economyTick._spendFrac;
