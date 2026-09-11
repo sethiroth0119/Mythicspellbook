@@ -39394,7 +39394,7 @@ body:has(#pack-opener-frame) #chat-overlay {
   // the console. Bump this every deploy alongside sw.js's CACHE_VERSION. If two
   // machines show different stamps, the older one is on stale code (hard-refresh);
   // if they MATCH but content still differs, it is a DATA/publish issue, not code.
-  window.BUILD_VERSION = 'v121v106';
+  window.BUILD_VERSION = 'v121v107';
   try {
     console.info('%cMythic Spellbook ' + window.BUILD_VERSION + '%c — build check: run  __mg.version',
       'font-weight:700;color:#b48cff', 'color:#7d7499');
@@ -219660,6 +219660,55 @@ function getCrashExchange() {
 // before — nothing here removes or changes the existing local behaviour.
 // ============================================================================
 const CXCloud = { channel: null, rt: false, pulledAt: 0, pushQueue: {}, flushTimer: null, _mutedMissing: false, _rerenderT: null };
+/* 📈 THE SHARED TAPE (sql/131, v121v107). cx_price_history is every change of
+   the shared price, written by a trigger on cx_prices; these read it. Cached
+   60 s per key, one fetch in flight per key, and the exchange repaints when
+   a fetch lands. Nothing here is ever written by a client. */
+const CXHist = { series: {}, stats: {}, all: null, allAt: 0, inflight: {} };
+const CX_HIST_TTL_MS = 60000;
+function _cxRangeSeconds(range) { const s = CX_RANGE_SECONDS[range]; return (!s || s === Infinity) ? 315360000 : s; }
+function _cxHistRepaint() { try { if (App.screen === 'crashExchange' && typeof render === 'function') render(); } catch (e) {} }
+function _cxFetchHistory(id, range) {
+  if (!id || !_cxCloudReady()) return;
+  const key = id + '|' + (range || '24H');
+  const e = CXHist.series[key];
+  if (CXHist.inflight[key] || (e && Date.now() - e.at < CX_HIST_TTL_MS)) return;
+  CXHist.inflight[key] = 1;
+  Cloud.client.rpc('cx_history', { p_asset: id, p_seconds: _cxRangeSeconds(range || '24H') }).then(({ data, error }) => {
+    delete CXHist.inflight[key];
+    if (error) { CXHist.series[key] = { at: Date.now(), rows: [], err: true }; return; }
+    CXHist.series[key] = { at: Date.now(), rows: (data || []).map(r => ({ px: +r.px, at: Date.parse(r.at) || 0 })).filter(r => r.px > 0) };
+    _cxHistRepaint();
+  }).catch(() => { delete CXHist.inflight[key]; });
+}
+function _cxFetchStats(id) {
+  if (!id || !_cxCloudReady()) return;
+  const key = 's|' + id, e = CXHist.stats[id];
+  if (CXHist.inflight[key] || (e && Date.now() - e.at < CX_HIST_TTL_MS)) return;
+  CXHist.inflight[key] = 1;
+  Cloud.client.rpc('cx_stats', { p_asset: id }).then(({ data, error }) => {
+    delete CXHist.inflight[key];
+    const row = (!error && Array.isArray(data) && data[0]) ? data[0] : null;
+    CXHist.stats[id] = { at: Date.now(), row: row ? { h1: +row.h1 || 0, l1: +row.l1 || 0, h24: +row.h24 || 0, l24: +row.l24 || 0, ath: +row.ath || 0, atl: +row.atl || 0, athAt: Date.parse(row.ath_at) || 0, px24ago: +row.px24ago || 0, points: row.points | 0, firstAt: Date.parse(row.first_at) || 0 } : null };
+    _cxHistRepaint();
+  }).catch(() => { delete CXHist.inflight[key]; });
+}
+function _cxFetchStatsAll() {
+  if (!_cxCloudReady()) return;
+  if (CXHist.inflight.all || (CXHist.all && Date.now() - CXHist.allAt < CX_HIST_TTL_MS)) return;
+  CXHist.inflight.all = 1;
+  Cloud.client.rpc('cx_stats_all').then(({ data, error }) => {
+    delete CXHist.inflight.all;
+    if (error || !Array.isArray(data)) { CXHist.all = CXHist.all || {}; CXHist.allAt = Date.now(); return; }
+    const m = {};
+    for (const r of data) if (r && r.asset_id) m[r.asset_id] = { h1: +r.h1 || 0, l1: +r.l1 || 0, h24: +r.h24 || 0, l24: +r.l24 || 0, ath: +r.ath || 0, atl: +r.atl || 0, px24ago: +r.px24ago || 0, spark: Array.isArray(r.spark) ? r.spark.map(Number).filter(x => x > 0) : [] };
+    CXHist.all = m; CXHist.allAt = Date.now();
+    _cxHistRepaint();
+  }).catch(() => { delete CXHist.inflight.all; });
+}
+function _cxStatsOf(id) { try { const e = CXHist.stats[id]; if (e && e.row) return e.row; return (CXHist.all && CXHist.all[id]) || null; } catch (e) { return null; } }
+/* 24 h change against the SHARED price 24 h ago; the base-price delta only until the tape has a day. */
+function _cxDelta24(id, p) { try { const s = _cxStatsOf(id); if (s && s.px24ago > 0 && p && p.current > 0) return ((p.current - s.px24ago) / s.px24ago) * 100; } catch (e) {} return (p && p.delta24h) || 0; }
 
 function _cxCloudReady() {
   return !!(typeof initCloud === 'function' && initCloud() && typeof Cloud !== 'undefined' && Cloud.ready && Cloud.client &&
@@ -220269,7 +220318,20 @@ function _cxRecordHistory(id) {
   if (cx.history[id].length > CX_HISTORY_CAP_PER_ID) cx.history[id].splice(0, cx.history[id].length - CX_HISTORY_CAP_PER_ID);
 }
 
-function _cxGetHistory(id, range) {
+function _cxGetHistory(id, range, opts) {
+  /* 📈 The shared tape, when it has two points for this range — every player
+     sees the same line. `opts.local` skips the fetch (table sparks, which
+     have their own 16-point spark from cx_stats_all). */
+  try {
+    if (!(opts && opts.local)) _cxFetchHistory(id, range || '24H');
+    const e = CXHist.series[id + '|' + (range || '24H')];
+    if (e && e.rows && e.rows.length >= 2) {
+      const px = e.rows.map(r => r.px);
+      const cur = +(getMarketPrice(id).current) || 0;
+      if (cur > 0 && Math.abs(px[px.length - 1] - cur) > 1e-6) px.push(cur);
+      return px;
+    }
+  } catch (e) {}
   const cx = _cxEnsureHistory();
   const rs = CX_RANGE_SECONDS[range] || CX_RANGE_SECONDS['24H'];
   const cutoff = Date.now() - rs * 1000;
@@ -220436,7 +220498,7 @@ function _cxMarketCatalog() {
         const p = getMarketPrice(r.id);
         return { id: r.id, name: r.name || r.id, icon: r.icon || '◇',
                  cat: (r.cat || 'basic').toLowerCase(),
-                 price: p.current, base: p.base, delta: p.delta24h, vol: p.volume24h | 0,
+                 price: p.current, base: p.base, delta: _cxDelta24(r.id, p), vol: p.volume24h | 0,
                  tradable: true, kind: 'res' };
       })
     : [];
@@ -220454,7 +220516,7 @@ function _cxMarketCatalog() {
       const icon = (meta && meta.icon) || '🂠';
       const p = getMarketPrice('card:' + id);
       cards.push({ id: 'card:' + id, name: nm, icon, cat: 'card',
-                   price: p.current, base: p.base, delta: p.delta24h, vol: p.volume24h | 0,
+                   price: p.current, base: p.base, delta: _cxDelta24('card:' + id, p), vol: p.volume24h | 0,
                    tradable: false, kind: 'card' });
     }
   } catch (e) {}
@@ -220469,14 +220531,14 @@ function _cxMarketCatalog() {
       { id:'card:crown',  name:'ART // BONE CROWN',  icon:'♚', cat:'card' },
     ].map(c => {
       const p = getMarketPrice(c.id);
-      return Object.assign({}, c, { price: p.current, base: p.base, delta: p.delta24h, vol: p.volume24h | 0, tradable: false, kind: 'card' });
+      return Object.assign({}, c, { price: p.current, base: p.base, delta: _cxDelta24(c.id, p), vol: p.volume24h | 0, tradable: false, kind: 'card' });
     });
   }
 
   // CORPS / CHANNELS / OPS: hand-curated symbolic markets.
   const _seed = (arr, kind) => arr.map(c => {
     const p = getMarketPrice(c.id);
-    return Object.assign({}, c, { price: p.current, base: p.base, delta: p.delta24h, vol: p.volume24h | 0, tradable: false, kind });
+    return Object.assign({}, c, { price: p.current, base: p.base, delta: _cxDelta24(c.id, p), vol: p.volume24h | 0, tradable: false, kind });
   });
 
   const corps = _seed([
@@ -236482,6 +236544,7 @@ function renderTraderHub() {
 }
 
 function renderCrashExchange() {
+  try { _cxFetchStatsAll(); } catch (e) {}   // 📈 the shared tape's per-asset highs, for every row
   tickMarketDecay();
   // 🌐 Live shared prices — subscribe once + pull the shared ledger (throttled)
   // so the operator sees prices moved by every other player, in real time.
@@ -236515,7 +236578,7 @@ function renderCrashExchange() {
       return {
         id, name: meta.name || id, icon: meta.icon || '◇',
         cat: meta.cat || 'basic',
-        qty, price: p.current, base: p.base, delta: p.delta24h,
+        qty, price: p.current, base: p.base, delta: _cxDelta24(id, p),
         value: p.current * qty,
         avgCost, pnl, pnlPct,
       };
@@ -236663,6 +236726,11 @@ function renderCrashExchange() {
     const high = series.length ? Math.max.apply(null, series) : focus.price;
     const low  = series.length ? Math.min.apply(null, series) : focus.price;
     const volM = (focus.vol >= 1000) ? (focus.vol / 1000).toFixed(1) + 'K' : String(focus.vol);
+    /* 📈 1 h and all-time from the shared tape (sql/131). */
+    try { _cxFetchStats(focus.id); } catch (e) {}
+    const st = _cxStatsOf(focus.id) || null;
+    const _athDate = (st && st.athAt) ? new Date(st.athAt).toLocaleDateString() : '';
+    const _shared = !!(CXHist.series[focus.id + '|' + range] && CXHist.series[focus.id + '|' + range].rows && CXHist.series[focus.id + '|' + range].rows.length >= 2);
 
     const ranges = ['1H', '6H', '24H', '7D', '30D', 'ALL'];
     const tbHtml = ranges.map(r =>
@@ -236696,9 +236764,13 @@ function renderCrashExchange() {
     chartHtml =
       '<div class="cx-chart-toolbar">' + tbHtml +
         '<div class="cx-tb-spacer"></div>' +
-        '<div class="cx-tb-ind">HIGH <b>' + _cxFmt(high) + '</b></div>' +
+        (st && st.h1 > 0 ? '<div class="cx-tb-ind" title="Highest and lowest shared price in the last hour">1H <b>' + _cxFmt(st.h1) + '</b> / <b>' + _cxFmt(st.l1) + '</b></div>' : '') +
+        '<div class="cx-tb-ind" title="' + (_shared ? 'Shared tape — every player sees this line' : 'Local tape until the shared history lands') + '">' + range + ' HIGH <b>' + _cxFmt(high) + '</b></div>' +
         '<div class="cx-tb-ind">LOW <b>' + _cxFmt(low)  + '</b></div>' +
+        (st && st.ath > 0 ? '<div class="cx-tb-ind" title="All-time high of the shared price' + (_athDate ? ' — set ' + _athDate : '') + '">ATH <b style="color:#b6f0c8">' + _cxFmt(st.ath) + '</b></div>' +
+                            '<div class="cx-tb-ind" title="All-time low of the shared price">ATL <b style="color:#e8b6b6">' + _cxFmt(st.atl) + '</b></div>' : '') +
         '<div class="cx-tb-ind">VOL <b>' + volM + '</b></div>' +
+        (_shared ? '<div class="cx-tb-ind" title="' + (CXHist.series[focus.id + '|' + range].rows.length) + ' shared points in this range">● LIVE</div>' : '') +
       '</div>' +
       reserveHtml +
       '<div class="cx-chart-wrap">' + _cxChartSVG(series) + '</div>';
@@ -236791,7 +236863,8 @@ function renderCrashExchange() {
     ? '<div class="cx-empty" style="padding:2rem">No assets match the current filter.</div>'
     : items.slice(0, 120).map(r => {
         const sparkColor = (r.delta || 0) >= 0 ? '#4ade80' : '#ff3a1f';
-        const sparkData = _cxGetHistory(r.id, 'ALL').slice(-30);
+        const _sst = _cxStatsOf(r.id);
+        const sparkData = (_sst && _sst.spark && _sst.spark.length >= 2) ? _sst.spark : _cxGetHistory(r.id, 'ALL', { local: true }).slice(-30);
         const sparkSvg  = _cxSparkSVG(sparkData, sparkColor);
         const upDown = (r.delta || 0) >= 0 ? 'up' : 'down';
         const sym  = String(r.id || '').toUpperCase().split(':').pop();
@@ -264201,8 +264274,8 @@ render();
        that works everywhere except the one early path nobody tested. It is
        2KB with no dependencies. -->
 <script src="src/econ/peg.js?v=v121q51"></script>
-<script src="src/battle/effects.js?v=v121v106" defer></script>
-<script src="src/phone/handset.js?v=v121v106" defer></script>
+<script src="src/battle/effects.js?v=v121v107" defer></script>
+<script src="src/phone/handset.js?v=v121v107" defer></script>
 <script src="src/battle/combat.js?v=120m4" defer></script>
 <script src="src/battle/targeting.js?v=121e3hex" defer></script>
 <link rel="stylesheet" href="src/sprites/frames.css?v=120k3">
