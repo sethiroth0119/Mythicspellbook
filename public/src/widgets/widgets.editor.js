@@ -283,7 +283,7 @@ export async function openDesigner(opts) {
     box.querySelectorAll('[data-f="del"]').forEach(el => el.onclick = () => commit(() => { delete T.vars[el.dataset.k]; applyThemePreview(); }));
     $('#aw-th-css').onchange = (e) => commit(() => { T.css = e.target.value; applyThemePreview(); });
     $('#aw-th-css').onkeydown = (e) => e.stopPropagation();
-    $('#aw-th-add').onclick = () => { const k = window.prompt('Variable name (e.g. --gold):', '--'); if (!k || !/^--[A-Za-z0-9_-]{1,60}$/.test(k.trim())) return; commit(() => { T.vars[k.trim()] = getComputedStyle(document.documentElement).getPropertyValue(k.trim()).trim() || '#ffffff'; applyThemePreview(); }); };
+    $('#aw-th-add').onclick = async () => { let k = window.prompt('Variable name (e.g. --gold):', '--'); if (k && typeof k.then === 'function') { try { k = await k; } catch (e) { k = null; } } /* the game's prompt is an async modal (v121v119) */ if (!k || !/^--[A-Za-z0-9_-]{1,60}$/.test(k.trim())) return; commit(() => { T.vars[k.trim()] = getComputedStyle(document.documentElement).getPropertyValue(k.trim()).trim() || '#ffffff'; applyThemePreview(); }); };
     $('#aw-th-scan').onclick = () => {
       const found = {};
       try { Array.from(document.styleSheets).forEach(sh => { let rules; try { rules = sh.cssRules; } catch (e) { return; } Array.from(rules || []).forEach(r => { if (r.selectorText && /:root|^html$|^body$/.test(r.selectorText) && r.style) { for (let i = 0; i < r.style.length; i++) { const p = r.style[i]; if (p.startsWith('--') && !found[p]) found[p] = r.style.getPropertyValue(p).trim(); } } }); }); } catch (e) {}

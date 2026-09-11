@@ -8,7 +8,7 @@ const SRC = readFileSync('./public/index.html', 'utf8').replace(/\r\n/g, '\n');
 const HAUL = readFileSync('./public/src/haul/index.js', 'utf8').replace(/\r\n/g, '\n');
 
 /* ── 1. candlesticks ── */
-ok(/const CX_CANDLES_PER_RANGE = \{ '1H': 12, '6H': 24, '24H': 24, '7D': 28, '30D': 30, 'ALL': 40 \};/.test(SRC), 'a candle count per range');
+ok(/const CX_CANDLES_PER_RANGE = \{ '1H': 60, '6H': 72, '24H': 96, '7D': 84, '30D': 120, 'ALL': 120 \};/.test(SRC), 'a candle count per range (v121v119: many narrow buckets, like a market chart)');
 ok(/function _cxHistoryPts\(id, range\)/.test(SRC) && /function _cxCandles\(pts, n\)/.test(SRC) && /function _cxCandleSVG\(candles, w, h\)/.test(SRC), 'points → OHLC buckets → SVG');
 ok(/'<div class="cx-chart-wrap">' \+ _cxChartHtml\(focus\.id, range, series\) \+ '<\/div>';/.test(SRC), 'the focus chart goes through _cxChartHtml (candles when two or more, the line otherwise)');
 ok(/try \{ _cxBindCandleTip\(\); \} catch \(e\) \{\}/.test(SRC) && /document\.addEventListener\('mousemove', \(ev\) => \{\n\s*const g = ev\.target && ev\.target\.closest \? ev\.target\.closest\('\[data-cxc\]'\) : null;/.test(SRC), 'one delegated mousemove shows the candle tooltip');

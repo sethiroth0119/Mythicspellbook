@@ -21394,7 +21394,11 @@
   }
   .cx-chart-wrap svg { width: 100%; height: 100%; display: block; }
   /* 🕯 candlesticks — green up, red down; the hit rect makes a whole column hoverable */
-  .cx-candle line { stroke-width: 1.2; }
+  .cx-candle line { stroke-width: 1; }
+  .cx-candle.quiet line { stroke-width: 1; opacity: 0.55; }
+  .cx-last line { stroke: rgba(255,255,255,0.35); stroke-width: 1; stroke-dasharray: 4 3; }
+  .cx-last rect { fill: #d4af37; }
+  .cx-last text { fill: #1a1206; font-weight: 700; }
   .cx-candle.up line, .cx-candle.up rect:not(.hit) { stroke: #4ade80; fill: #4ade80; }
   .cx-candle.down line, .cx-candle.down rect:not(.hit) { stroke: #ff3a1f; fill: #ff3a1f; }
   .cx-candle:hover rect:not(.hit) { filter: brightness(1.4); }
@@ -39407,7 +39411,7 @@ body:has(#pack-opener-frame) #chat-overlay {
   // the console. Bump this every deploy alongside sw.js's CACHE_VERSION. If two
   // machines show different stamps, the older one is on stale code (hard-refresh);
   // if they MATCH but content still differs, it is a DATA/publish issue, not code.
-  window.BUILD_VERSION = 'v121v118';
+  window.BUILD_VERSION = 'v121v119';
   try {
     console.info('%cMythic Spellbook ' + window.BUILD_VERSION + '%c — build check: run  __mg.version',
       'font-weight:700;color:#b48cff', 'color:#7d7499');
@@ -220727,7 +220731,9 @@ function _cxChartSVG(data, w, h) {
 /* 🕯 CANDLESTICKS (owner, 2026-09-11). The chart is the shared tape bucketed
    into open/high/low/close bars; hovering a candle shows its prices. The
    line chart above stays for an asset with fewer than two candles. */
-const CX_CANDLES_PER_RANGE = { '1H': 12, '6H': 24, '24H': 24, '7D': 28, '30D': 30, 'ALL': 40 };
+/* 🕯 v121v119 (owner: "ours are huge and big — like the actual stock market"):
+   many narrow buckets, every candle the same width whatever the tape holds. */
+const CX_CANDLES_PER_RANGE = { '1H': 60, '6H': 72, '24H': 96, '7D': 84, '30D': 120, 'ALL': 120 };
 function _cxHistoryPts(id, range) {
   const out = [];
   try {
@@ -220754,33 +220760,53 @@ function _cxCandles(pts, n) {
     const b = buckets[i] || (buckets[i] = { i, t0: t0 + i * w, t1: t0 + (i + 1) * w, o: p.px, h: p.px, l: p.px, c: p.px, n: 0 });
     if (p.px > b.h) b.h = p.px; if (p.px < b.l) b.l = p.px; b.c = p.px; b.n++;
   }
-  return buckets.filter(Boolean);
+  /* 🕯 a bucket with no tick is a flat candle at the last close (a doji), the
+     way a market chart carries a quiet minute — the chart stays continuous
+     and every candle keeps its slot. Leading empties (before the first tick)
+     are dropped. */
+  const out = []; let last = null;
+  for (let i = 0; i < n; i++) {
+    const b = buckets[i];
+    if (b) { out.push(b); last = b.c; }
+    else if (last != null) out.push({ i, t0: t0 + i * w, t1: t0 + (i + 1) * w, o: last, h: last, l: last, c: last, n: 0 });
+  }
+  return out;
 }
 function _cxCandleSVG(candles, w, h) {
-  w = w || 800; h = h || 280;
+  w = w || 960; h = h || 320;
+  const PAD_R = 62, PAD_B = 22, PAD_T = 10;
   let min = Infinity, max = -Infinity;
   for (const c of candles) { if (c.l < min) min = c.l; if (c.h > max) max = c.h; }
-  const range = (max - min) || (max * 0.02) || 1;
-  const y = (v) => h - 20 - ((v - min) / range) * (h - 40);
-  const slot = w / candles.length, bw = Math.max(2, slot * 0.62);
+  const spread = (max - min) || (max * 0.02) || 1;
+  min -= spread * 0.06; max += spread * 0.06;   // a little air above the high and below the low, like a real chart
+  const range = max - min;
+  const y = (v) => PAD_T + (1 - (v - min) / range) * (h - PAD_T - PAD_B);
+  /* one slot per bucket, the newest candle hard against the price axis; a
+     candle body is at most 9 units wide however few candles there are */
+  const plotW = w - PAD_R, slots = Math.max(candles.length, 24), slot = plotW / slots;
+  const bw = Math.max(2, Math.min(9, slot * 0.66));
+  const x0 = plotW - candles.length * slot;   // right-aligned
   window._cxCandleData = candles;
   const bars = candles.map((c, i) => {
-    const x = i * slot + slot / 2, up = c.c >= c.o;
+    const x = x0 + i * slot + slot / 2, up = c.c >= c.o;
     const top = y(Math.max(c.o, c.c)), bot = y(Math.min(c.o, c.c));
-    return '<g class="cx-candle ' + (up ? 'up' : 'down') + '" data-cxc="' + i + '">' +
-      '<rect class="hit" x="' + (i * slot).toFixed(1) + '" y="0" width="' + slot.toFixed(1) + '" height="' + h + '" fill="transparent"/>' +
+    return '<g class="cx-candle ' + (up ? 'up' : 'down') + (c.n ? '' : ' quiet') + '" data-cxc="' + i + '">' +
+      '<rect class="hit" x="' + (x0 + i * slot).toFixed(1) + '" y="0" width="' + slot.toFixed(1) + '" height="' + h + '" fill="transparent"/>' +
       '<line x1="' + x.toFixed(1) + '" x2="' + x.toFixed(1) + '" y1="' + y(c.h).toFixed(1) + '" y2="' + y(c.l).toFixed(1) + '"/>' +
-      '<rect x="' + (x - bw / 2).toFixed(1) + '" y="' + top.toFixed(1) + '" width="' + bw.toFixed(1) + '" height="' + Math.max(1.2, bot - top).toFixed(1) + '"/></g>';
+      '<rect x="' + (x - bw / 2).toFixed(1) + '" y="' + top.toFixed(1) + '" width="' + bw.toFixed(1) + '" height="' + Math.max(1, bot - top).toFixed(1) + '"/></g>';
   }).join('');
+  // the price axis on the right (five rungs), time labels along the bottom
+  const rungs = [0, 0.25, 0.5, 0.75, 1].map((f) => { const v = min + f * range, yy = y(v); return '<line x1="0" y1="' + yy.toFixed(1) + '" x2="' + plotW + '" y2="' + yy.toFixed(1) + '"/><text x="' + (plotW + 6) + '" y="' + (yy + 4).toFixed(1) + '">' + _cxFmt(v) + '</text>'; }).join('');
+  const tf = (t) => { try { return new Date(t).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }); } catch (e) { return ''; } };
+  const first = candles[0], mid = candles[Math.floor(candles.length / 2)], lastC = candles[candles.length - 1];
+  const times = '<text x="' + (x0 + 2).toFixed(1) + '" y="' + (h - 6) + '">' + tf(first.t0) + '</text>' +
+    '<text x="' + (x0 + candles.length * slot / 2).toFixed(1) + '" y="' + (h - 6) + '" text-anchor="middle">' + tf(mid.t0) + '</text>' +
+    '<text x="' + (plotW - 2).toFixed(1) + '" y="' + (h - 6) + '" text-anchor="end">' + tf(lastC.t1) + '</text>';
+  // the last price, as a marker on the axis
+  const lastY = y(lastC.c);
+  const lastTag = '<g class="cx-last"><line x1="0" y1="' + lastY.toFixed(1) + '" x2="' + plotW + '" y2="' + lastY.toFixed(1) + '"/><rect x="' + (plotW + 2) + '" y="' + (lastY - 8).toFixed(1) + '" width="' + (PAD_R - 4) + '" height="16" rx="3"/><text x="' + (plotW + 6) + '" y="' + (lastY + 4).toFixed(1) + '">' + _cxFmt(lastC.c) + '</text></g>';
   return '<svg viewBox="0 0 ' + w + ' ' + h + '" preserveAspectRatio="none" class="cx-candles">' +
-    '<g class="cx-chart-axis">' +
-    '<line x1="0" y1="' + (h * 0.25) + '" x2="' + w + '" y2="' + (h * 0.25) + '"/>' +
-    '<line x1="0" y1="' + (h * 0.5)  + '" x2="' + w + '" y2="' + (h * 0.5)  + '"/>' +
-    '<line x1="0" y1="' + (h * 0.75) + '" x2="' + w + '" y2="' + (h * 0.75) + '"/>' +
-    '<text x="6" y="' + (h * 0.25 - 4) + '">' + _cxFmt(max) + '</text>' +
-    '<text x="6" y="' + (h * 0.5 - 4)  + '">MID</text>' +
-    '<text x="6" y="' + (h * 0.75 - 4) + '">' + _cxFmt(min) + '</text>' +
-    '</g>' + bars + '</svg>';
+    '<g class="cx-chart-axis">' + rungs + times + '</g>' + bars + lastTag + '</svg>';
 }
 function _cxChartHtml(id, range, series) {
   try {
@@ -264903,7 +264929,7 @@ render();
      ⚠ If this 404s nothing changes — the button reports "still loading".
      ⚠ Bump ?v= on every change — the service worker caches /src/* like any
        other static asset, and a missed bump ships invisibly. -->
-<script type="module" src="src/mapforge/index.js?v=mf18"></script>
+<script type="module" src="src/mapforge/index.js?v=mf19"></script>
 <!-- 🧩 ATHENA WIDGETS — Blueprint-style UI widgets and themes (/src/widgets).
      Registers window.AthenaUI. At boot it loads every LIVE widget/theme
      (public.ui_widgets, sql/040 — or the device's cached copy) and mounts
@@ -264914,7 +264940,7 @@ render();
      ⚠ If this 404s nothing changes — no widget shows, the button reports it.
      ⚠ Bump ?v= on every change — the service worker caches /src/* like any
        other static asset, and a missed bump ships invisibly. -->
-<script type="module" src="src/widgets/index.js?v=aw5"></script>
+<script type="module" src="src/widgets/index.js?v=aw6"></script>
 <!-- ⚔ BATTLE BOARD ↔ ATHENA (src/battle/battle.athena.js): the v3 battlemap as an Athena game scene; registers window.MythicBattleAthena. Bump ?v= on every change. -->
 <script type="module" src="src/battle/battle.athena.js?v=ba2"></script>
 <!-- ☣️ CONTAINMENT — the Research Facility's BSL-4 mini-game, its ward, and the
@@ -265132,8 +265158,8 @@ try {
        that works everywhere except the one early path nobody tested. It is
        2KB with no dependencies. -->
 <script src="src/econ/peg.js?v=v121q51"></script>
-<script src="src/battle/effects.js?v=v121v118" defer></script>
-<script src="src/phone/handset.js?v=v121v118" defer></script>
+<script src="src/battle/effects.js?v=v121v119" defer></script>
+<script src="src/phone/handset.js?v=v121v119" defer></script>
 <script src="src/battle/combat.js?v=120m4" defer></script>
 <script src="src/battle/targeting.js?v=121e3hex" defer></script>
 <link rel="stylesheet" href="src/sprites/frames.css?v=120k3">
@@ -265182,7 +265208,7 @@ try {
      Bump ?v= on every change — the service worker caches these like any asset. -->
 <link rel="stylesheet" href="src/hubui/hub-modals.css?v=121h0">
 <!-- 💬 tooltips: every title, every hub tile, every camp control, every resource icon (v121v112) -->
-<script src="src/hubui/tips.js?v=v121v118" defer></script>
+<script src="src/hubui/tips.js?v=v121v119" defer></script>
 <script src="src/sprites/frames.js?v=120k3" defer></script>
 <script src="src/sprites/idle.js?v=120k4" defer></script>
 </body>

@@ -927,11 +927,21 @@ export async function openEditor(opts) {
     (S.map.sounds || []).forEach(s => { if (s.url === oldUrl) { s.url = newUrl; n++; } });
     return n;
   }
+/* ✏️ ASK FOR TEXT (v121v119). The game replaces window.prompt with its themed
+   "Enter a value" modal, which returns a PROMISE — every synchronous
+   window.prompt(...) here stored "[object Promise]" as the new name (reported
+   with a model card literally labelled that). This awaits whichever prompt is
+   installed: the modal's promise, or the browser's plain string in a harness. */
+async function askText(msg, def) {
+  let r; try { r = window.prompt(msg, def == null ? '' : def); } catch (e) { r = null; }
+  if (r && typeof r.then === 'function') { try { r = await r; } catch (e) { r = null; } }
+  return r == null ? null : String(r);
+}
   /* Rename whatever the library entry is. Returns true when something changed. */
   async function renameEntry(e, name) {
     if (!e) return false;
     const cur = e.kind === 'prefab' || e.kind === 'shelf' ? e.ref.name : e.kind === 'cloud' || e.kind === 'csound' ? e.ref.name : e.label;
-    if (name == null) { name = window.prompt('Rename “' + cur + '” to:', cur); if (name == null) return false; }
+    if (name == null) { name = await askText('Rename “' + cur + '” to:', cur); if (name == null) return false; }
     name = String(name).trim().slice(0, 60); if (!name || name === cur) return false;
     if (e.kind === 'model') { beginObjectEdit(); e.ref.label = name; endObjectEdit(); setDirty(true); }
     else if (e.kind === 'sound') { beginObjectEdit(); e.ref.label = name; endObjectEdit(); setDirty(true); }
@@ -1044,7 +1054,7 @@ export async function openEditor(opts) {
     d.querySelector('#mf-cb-addcloud').onclick = () => d.querySelector('#mf-cb-cloudfile').click();
     d.querySelector('#mf-cb-cloudfile').onchange = (e) => { Array.from(e.target.files || []).forEach(f => uploadToCloud(f)); e.target.value = ''; };
     d.querySelector('#mf-cb-embed').onclick = () => $('#mf-glb-file').click();
-    d.querySelector('#mf-cb-url').onclick = () => { const u = window.prompt('Model or sound URL (https://… or /models/…):'); if (!u) return; if (/\.(mp3|wav|ogg|m4a|aac|flac)(\?|#|$)/i.test(u)) addSound(u); else addAsset(u); renderContentBrowser(); };
+    d.querySelector('#mf-cb-url').onclick = async () => { const u = await askText('Model or sound URL (https://… or /models/…):'); if (!u) return; if (/\.(mp3|wav|ogg|m4a|aac|flac)(\?|#|$)/i.test(u)) addSound(u); else addAsset(u); renderContentBrowser(); };
     d.querySelector('#mf-cb-refresh').onclick = () => loadCloud(true);
     $('#mf-cb-btn').onclick = () => toggleContentBrowser();
   }
@@ -1190,9 +1200,9 @@ export async function openEditor(opts) {
       renderLibrary(); refreshGhost(); setDirty(true);
     } catch (e) { toast('Could not read ' + a.label + ' (' + ((e && e.message) || 'bad file') + ').', 4200); }
   }
-  function relinkAsset(id) {
+  async function relinkAsset(id) {
     const a = S.map.assets.find(x => x.id === id); if (!a) return;
-    const url = window.prompt('URL this model is served from (e.g. /models/' + a.label.replace(/[^a-z0-9_-]+/gi, '_').toLowerCase() + '.glb):', a.url || '');
+    const url = await askText('URL this model is served from (e.g. /models/' + a.label.replace(/[^a-z0-9_-]+/gi, '_').toLowerCase() + '.glb):', a.url || '');
     if (!url) return;
     beginObjectEdit(); a.url = url.trim(); delete a.data; delete a.size; endObjectEdit();
     renderLibrary(); setDirty(true); toast('Relinked — it will load from the URL on next open.');
@@ -1312,7 +1322,7 @@ export async function openEditor(opts) {
     if ((e.ctrlKey || e.metaKey) && k === 'y') { e.preventDefault(); redo(); return; }
     if ((e.ctrlKey || e.metaKey) && k === 's') { e.preventDefault(); save(); return; }
     if ((e.ctrlKey || e.metaKey) && k === 'd') { e.preventDefault(); duplicateSelected(); return; }
-    if (k === 'f2') { e.preventDefault(); const o = S.selectedId ? objById(S.selectedId) : null; if (o) { const nm = window.prompt('Name this object:', o.n || ''); if (nm != null) { beginObjectEdit(); o.n = nm.trim().slice(0, 60) || undefined; endObjectEdit(); setDirty(true); renderInspector(); renderOutliner(); } } else { const sel = libSel ? entryByKey(libSel) : null; if (sel) renameEntry(sel); } return; }   // F2: the selected object first (Unreal's outliner), else the library item
+    if (k === 'f2') { e.preventDefault(); const o = S.selectedId ? objById(S.selectedId) : null; if (o) { askText('Name this object:', o.n || '').then((nm) => { if (nm != null) { beginObjectEdit(); o.n = nm.trim().slice(0, 60) || undefined; endObjectEdit(); setDirty(true); renderInspector(); renderOutliner(); } }); } else { const sel = libSel ? entryByKey(libSel) : null; if (sel) renameEntry(sel); } return; }   // F2: the selected object first (Unreal's outliner), else the library item
     if ((e.ctrlKey || e.metaKey) && k === ' ') { e.preventDefault(); toggleContentBrowser(); return; }
     const mod = e.ctrlKey || e.metaKey || e.altKey;
     if (S.hotkeys === 'unreal') {
@@ -1655,7 +1665,7 @@ export async function openEditor(opts) {
         box.querySelectorAll('[data-pf]').forEach(el => el.onclick = (e) => {
           const id = el.dataset.pf, act = e.target.dataset.pfact;
           if (act === 'del') { askConfirm('Delete this prefab and every placed instance?').then(ok => { if (ok) deletePrefab(id); }); return; }
-          if (act === 'rename') { const nm = window.prompt('Prefab name:', prefabById(id).name); if (nm) renamePrefab(id, nm); return; }
+          if (act === 'rename') { askText('Prefab name:', prefabById(id).name).then((nm) => { if (nm) renamePrefab(id, nm); }); return; }
           if (act === 'shelf') { shelfSave(id); return; }
           pickEntry(entryByKey('prefab:' + id));
         });
@@ -2247,7 +2257,7 @@ export async function openEditor(opts) {
   // map with it — which is how a game gets its first world.
   $('#mf-game').onchange = async e => {
     let v = e.target.value;
-    if (v === '__custom__') v = gameId(window.prompt('Mini-game id (letters, digits, - and _):', S.map.game || '') || '') || S.map.game || 'sandbox';
+    if (v === '__custom__') v = gameId((await askText('Mini-game id (letters, digits, - and _):', S.map.game || '')) || '') || S.map.game || 'sandbox';
     const game = gameId(v) || 'sandbox';
     if (game === (S.map.game || 'sandbox')) { setGameField(game); return; }
     const r = game === 'sandbox' ? { ok: false } : await api.loadLive(game);
