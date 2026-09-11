@@ -12,7 +12,7 @@ import { createReadStream, existsSync, statSync } from 'fs';
 import path from 'path';
 const H = path.resolve(new URL('.', import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1'));
 const ROOT = path.resolve(H, '..', '..');
-const MAP = [['/src/', path.join(ROOT, 'public', 'src')], ['/vendor/', path.join(ROOT, 'public', 'vendor')], ['/three/', path.join(H, 'three')], ['/models/', path.join(H, 'three', 'models')], ['/artifact/', path.join(H, 'artifact')], ['/', H]];
+const MAP = [['/src/', path.join(ROOT, 'public', 'src')], ['/models/trucks/', path.join(ROOT, 'public', 'models', 'trucks')], ['/prints/', path.join(ROOT, 'Content', 'BrucePrints')], ['/vendor/', path.join(ROOT, 'public', 'vendor')], ['/three/', path.join(H, 'three')], ['/models/', path.join(H, 'three', 'models')], ['/artifact/', path.join(H, 'artifact')], ['/', H]];
 const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.mjs': 'text/javascript', '.css': 'text/css', '.json': 'application/json', '.glb': 'model/gltf-binary', '.png': 'image/png', '.jpg': 'image/jpeg', '.webp': 'image/webp', '.mp3': 'audio/mpeg', '.wav': 'audio/wav' };
 const port = +(process.argv[2] || 8765);
 http.createServer((req, res) => {

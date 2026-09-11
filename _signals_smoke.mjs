@@ -27,7 +27,7 @@ ok(/const x = KEYPAN\.d - KEYPAN\.a, z = KEYPAN\.s - KEYPAN\.w;/.test(NC), 'D is
 /* ── 3. the haul drives the catalogue truck, auto-oriented ── */
 ok(/^function _haulModelOf\(v\) \{/m.test(SRC) && /const def = \(typeof _ppRigDef === 'function'\) \? _ppRigDef\(v\) : null;\n\s*const own = pick\(def && def\.model\);\n\s*if \(own\) return own;/.test(SRC), 'the class model (the semi for freight) comes first for the haul; a row upload only when the class has none');
 ok(/if \(v && v\.modelUrl\) return \{ url: v\.modelUrl/.test(SRC), '…while the yard card still lets a row\'s own render win (unchanged)');
-ok(/function haulAutoOrient\(THREE, obj\)/.test(HAUL) && /haulFit\(THREE, raw, \{ w: 2\.6, l: 15\.0 \}, haulAutoOrient\(THREE, raw\), true\)/.test(HAUL), 'the run measures the mesh for its rotation and fits it to 2.6 m wide / 15 m long');
+ok(/function haulAutoOrient\(THREE, obj, url\)/.test(HAUL) && /haulFit\(THREE, raw, \{ w: 2\.6, l: 15\.0 \}, haulAutoOrient\(THREE, raw, RIG\.model\.url\), true\)/.test(HAUL), 'the run measures the mesh for its rotation and fits it to 2.6 m wide / 15 m long');
 ok(/if \(deck\.guessed\) \{ slots\.forEach\(\(slot\) => \{ slot\.visible = false; slot\.userData\.cargo = false; \}\); return; \}/.test(HAUL), 'a truck with no deck in its mesh gets no containers stacked on it');
 
 /* ── 4. traffic ── */

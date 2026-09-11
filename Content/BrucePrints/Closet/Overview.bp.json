@@ -1,0 +1,55 @@
+{
+ "system": "Closet",
+ "label": "Player Closet",
+ "icon": "👕",
+ "print": "Overview",
+ "nodes": [
+  {
+   "id": "measureFixtures",
+   "name": "measureFixtures",
+   "kind": "function",
+   "file": "public/src/kitchen/kitchen.render.js",
+   "line": 912,
+   "params": [],
+   "async": false,
+   "reads": [],
+   "writes": [],
+   "calls": 0,
+   "x": 80,
+   "y": 80
+  },
+  {
+   "id": "measureCarry",
+   "name": "measureCarry",
+   "kind": "function",
+   "file": "public/src/biolab/scene.js",
+   "line": 699,
+   "params": [
+    "char"
+   ],
+   "async": false,
+   "reads": [],
+   "writes": [],
+   "calls": 0,
+   "x": 80,
+   "y": 212
+  },
+  {
+   "id": "dressSpot",
+   "name": "dressSpot",
+   "kind": "function",
+   "file": "public/src/foundry/world.js",
+   "line": 191,
+   "params": [
+    "rec"
+   ],
+   "async": false,
+   "reads": [],
+   "writes": [],
+   "calls": 0,
+   "x": 80,
+   "y": 344
+  }
+ ],
+ "edges": []
+}

@@ -1,0 +1,1254 @@
+{
+ "system": "Corporations",
+ "label": "Corporations & Treasury",
+ "icon": "🏢",
+ "print": "Overview",
+ "nodes": [
+  {
+   "id": "_corpEnsureRun",
+   "name": "_corpEnsureRun",
+   "kind": "data",
+   "file": "public/index.html",
+   "line": 94024,
+   "params": [],
+   "async": true,
+   "reads": [
+    "Profile.cloud",
+    "Profile.account",
+    "Cloud.client",
+    "Profile.corpPick",
+    "Corp.myCorps",
+    "Corp.amOwner",
+    "Corp.roster",
+    "Corp.licenses"
+   ],
+   "writes": [
+    "Corp._memberWriteErr",
+    "Corp._memberErr",
+    "Corp._healed",
+    "Corp._err",
+    "Corp._multi",
+    "Corp.myCorps",
+    "Corp.owned",
+    "Corp._pickWhy"
+   ],
+   "calls": 6,
+   "x": 760,
+   "y": 80
+  },
+  {
+   "id": "corpLawSet",
+   "name": "corpLawSet",
+   "kind": "data",
+   "file": "public/index.html",
+   "line": 93354,
+   "params": [
+    "key",
+    "value"
+   ],
+   "async": true,
+   "reads": [
+    "Corp.mine",
+    "Corp.amOwner",
+    "Corp.compliance",
+    "Cloud.client",
+    "Profile.cloud"
+   ],
+   "writes": [
+    "Corp.laws",
+    "Corp.lawsUnknown"
+   ],
+   "calls": 4,
+   "x": 80,
+   "y": 80
+  },
+  {
+   "id": "corpEnsure",
+   "name": "corpEnsure",
+   "kind": "data",
+   "file": "public/index.html",
+   "line": 94012,
+   "params": [],
+   "async": true,
+   "reads": [
+    "Corp._ensuring",
+    "Corp._ensurePromise",
+    "Profile.cloud",
+    "Corp.mine"
+   ],
+   "writes": [
+    "Corp._checked",
+    "Corp._ensuring",
+    "Corp._ensurePromise",
+    "Corp._err"
+   ],
+   "calls": 1,
+   "x": 420,
+   "y": 80
+  },
+  {
+   "id": "cityHallFetch",
+   "name": "cityHallFetch",
+   "kind": "data",
+   "file": "public/index.html",
+   "line": 63996,
+   "params": [],
+   "async": true,
+   "reads": [
+    "Profile.cloud",
+    "CityHall.loading",
+    "Cloud.client"
+   ],
+   "writes": [
+    "CityHall._err",
+    "CityHall.loading",
+    "CityHall.corps",
+    "CityHall.lastFetch"
+   ],
+   "calls": 0,
+   "x": 80,
+   "y": 212
+  },
+  {
+   "id": "corpTreasuryFetch",
+   "name": "corpTreasuryFetch",
+   "kind": "data",
+   "file": "public/index.html",
+   "line": 91428,
+   "params": [],
+   "async": true,
+   "reads": [
+    "Corp.mine",
+    "Profile.cloud",
+    "Cloud.client",
+    "Corp.roster",
+    "Corp.treasury"
+   ],
+   "writes": [
+    "Corp.treasury",
+    "Corp.treasury24h",
+    "Corp.treasuryLog",
+    "Corp.treasuryKnown"
+   ],
+   "calls": 0,
+   "x": 1100,
+   "y": 80
+  },
+  {
+   "id": "_opSettle",
+   "name": "_opSettle",
+   "kind": "function",
+   "file": "public/index.html",
+   "line": 93062,
+   "params": [
+    "o"
+   ],
+   "async": true,
+   "reads": [
+    "Corp.treasury",
+    "Cloud.client"
+   ],
+   "writes": [],
+   "calls": 4,
+   "x": 80,
+   "y": 344
+  },
+  {
+   "id": "corpScoreCompliance",
+   "name": "corpScoreCompliance",
+   "kind": "data",
+   "file": "public/index.html",
+   "line": 93285,
+   "params": [],
+   "async": false,
+   "reads": [
+    "Corp._compRaw",
+    "Corp.compliance"
+   ],
+   "writes": [
+    "Corp.compliance",
+    "Corp.complianceParts"
+   ],
+   "calls": 2,
+   "x": 1100,
+   "y": 212
+  },
+  {
+   "id": "corpLawsFetch",
+   "name": "corpLawsFetch",
+   "kind": "data",
+   "file": "public/index.html",
+   "line": 93330,
+   "params": [
+    "corpId"
+   ],
+   "async": true,
+   "reads": [
+    "Cloud.client",
+    "Corp.laws"
+   ],
+   "writes": [
+    "Corp.lawsUnknown",
+    "Corp.laws"
+   ],
+   "calls": 2,
+   "x": 1100,
+   "y": 344
+  },
+  {
+   "id": "_corpAssetMove",
+   "name": "_corpAssetMove",
+   "kind": "data",
+   "file": "public/index.html",
+   "line": 97704,
+   "params": [
+    "row",
+    "dir"
+   ],
+   "async": false,
+   "reads": [
+    "Profile.gems",
+    "Profile.salvage",
+    "Profile.itemInventory",
+    "Profile.cardCollection"
+   ],
+   "writes": [
+    "Profile.gems",
+    "Profile.salvage",
+    "Profile.itemInventory",
+    "Profile.cardCollection"
+   ],
+   "calls": 0,
+   "x": 80,
+   "y": 476
+  },
+  {
+   "id": "_opComputed",
+   "name": "_opComputed",
+   "kind": "function",
+   "file": "public/index.html",
+   "line": 92269,
+   "params": [
+    "o"
+   ],
+   "async": false,
+   "reads": [],
+   "writes": [],
+   "calls": 3,
+   "x": 420,
+   "y": 212
+  },
+  {
+   "id": "corpStaffFetch",
+   "name": "corpStaffFetch",
+   "kind": "data",
+   "file": "public/index.html",
+   "line": 92420,
+   "params": [],
+   "async": true,
+   "reads": [
+    "Corp.mine",
+    "Cloud.client",
+    "Profile.cloud",
+    "Corp.staff",
+    "Profile._staffSeen"
+   ],
+   "writes": [
+    "Corp.staff",
+    "Corp.staffRpc",
+    "Profile._staffSeen"
+   ],
+   "calls": 0,
+   "x": 760,
+   "y": 212
+  },
+  {
+   "id": "_corpStaffAction",
+   "name": "_corpStaffAction",
+   "kind": "function",
+   "file": "public/index.html",
+   "line": 92480,
+   "params": [
+    "a"
+   ],
+   "async": true,
+   "reads": [
+    "Corp.mine",
+    "Cloud.client",
+    "Profile.cloud",
+    "Profile.name"
+   ],
+   "writes": [],
+   "calls": 3,
+   "x": 80,
+   "y": 608
+  },
+  {
+   "id": "_opAfterFound",
+   "name": "_opAfterFound",
+   "kind": "data",
+   "file": "public/index.html",
+   "line": 92522,
+   "params": [
+    "opId"
+   ],
+   "async": false,
+   "reads": [
+    "Profile.cardShopUnlocked",
+    "Profile.weaponSmithUnlocked",
+    "Profile.dojoUnlocked"
+   ],
+   "writes": [
+    "Profile.cardShopUnlocked",
+    "Profile.weaponSmithUnlocked",
+    "Profile.dojoUnlocked"
+   ],
+   "calls": 0,
+   "x": 420,
+   "y": 344
+  },
+  {
+   "id": "boeCorpDeposit",
+   "name": "boeCorpDeposit",
+   "kind": "data",
+   "file": "public/index.html",
+   "line": 91503,
+   "params": [
+    "amount"
+   ],
+   "async": true,
+   "reads": [
+    "Profile.cloud",
+    "Corp.owned",
+    "Corp.mine",
+    "Profile.gems",
+    "Cloud.client",
+    "Corp.treasury",
+    "Corp.treasuryKnown"
+   ],
+   "writes": [
+    "Corp.treasury"
+   ],
+   "calls": 1,
+   "x": 80,
+   "y": 740
+  },
+  {
+   "id": "corpTreasuryDeposit",
+   "name": "corpTreasuryDeposit",
+   "kind": "data",
+   "file": "public/index.html",
+   "line": 91563,
+   "params": [
+    "amount"
+   ],
+   "async": true,
+   "reads": [
+    "Profile.cloud",
+    "Corp.mine",
+    "Profile.gems",
+    "Cloud.client",
+    "Corp.treasury",
+    "Corp.treasuryKnown"
+   ],
+   "writes": [
+    "Corp.treasury"
+   ],
+   "calls": 1,
+   "x": 80,
+   "y": 872
+  },
+  {
+   "id": "corpStaffPayroll",
+   "name": "corpStaffPayroll",
+   "kind": "function",
+   "file": "public/index.html",
+   "line": 92451,
+   "params": [
+    "force"
+   ],
+   "async": true,
+   "reads": [
+    "Corp.mine",
+    "Cloud.client",
+    "Profile.cloud",
+    "Corp.staffRpc",
+    "Corp.staff",
+    "Corp.amOwner"
+   ],
+   "writes": [],
+   "calls": 2,
+   "x": 420,
+   "y": 476
+  },
+  {
+   "id": "corpLawsPanelHtml",
+   "name": "corpLawsPanelHtml",
+   "kind": "function",
+   "file": "public/index.html",
+   "line": 93401,
+   "params": [
+    "owner"
+   ],
+   "async": false,
+   "reads": [
+    "Corp.lawsUnknown"
+   ],
+   "writes": [],
+   "calls": 2,
+   "x": 80,
+   "y": 1004
+  },
+  {
+   "id": "corpLawApplyMood",
+   "name": "corpLawApplyMood",
+   "kind": "function",
+   "file": "public/index.html",
+   "line": 93477,
+   "params": [],
+   "async": false,
+   "reads": [
+    "Corp.mine"
+   ],
+   "writes": [],
+   "calls": 2,
+   "x": 1100,
+   "y": 476
+  },
+  {
+   "id": "_corpMemberCitiesFetch",
+   "name": "_corpMemberCitiesFetch",
+   "kind": "data",
+   "file": "public/index.html",
+   "line": 93809,
+   "params": [],
+   "async": true,
+   "reads": [
+    "Corp.roster",
+    "Cloud.client"
+   ],
+   "writes": [
+    "Corp.memberCities",
+    "Corp.memberCitiesState"
+   ],
+   "calls": 0,
+   "x": 1100,
+   "y": 608
+  },
+  {
+   "id": "_opCreateLocal",
+   "name": "_opCreateLocal",
+   "kind": "function",
+   "file": "public/index.html",
+   "line": 91985,
+   "params": [
+    "opType",
+    "cost",
+    "fundedBy"
+   ],
+   "async": true,
+   "reads": [
+    "Corp.mine",
+    "Cloud.client"
+   ],
+   "writes": [],
+   "calls": 1,
+   "x": 80,
+   "y": 1136
+  },
+  {
+   "id": "_opStaffCount",
+   "name": "_opStaffCount",
+   "kind": "pure",
+   "file": "public/index.html",
+   "line": 92419,
+   "params": [
+    "opId"
+   ],
+   "async": false,
+   "reads": [],
+   "writes": [],
+   "calls": 1,
+   "x": 760,
+   "y": 344
+  },
+  {
+   "id": "_opTreasuryRow",
+   "name": "_opTreasuryRow",
+   "kind": "data",
+   "file": "public/index.html",
+   "line": 92979,
+   "params": [
+    "amount",
+    "kind",
+    "note"
+   ],
+   "async": true,
+   "reads": [
+    "Cloud.client",
+    "Corp.mine",
+    "Profile.cloud",
+    "Corp.treasury"
+   ],
+   "writes": [
+    "Corp.treasury"
+   ],
+   "calls": 0,
+   "x": 420,
+   "y": 608
+  },
+  {
+   "id": "corpLawOpt",
+   "name": "corpLawOpt",
+   "kind": "pure",
+   "file": "public/index.html",
+   "line": 93265,
+   "params": [
+    "k"
+   ],
+   "async": false,
+   "reads": [],
+   "writes": [],
+   "calls": 1,
+   "x": 1780,
+   "y": 80
+  },
+  {
+   "id": "corpLawTaxRate",
+   "name": "corpLawTaxRate",
+   "kind": "pure",
+   "file": "public/index.html",
+   "line": 93268,
+   "params": [],
+   "async": false,
+   "reads": [
+    "Corp.mine"
+   ],
+   "writes": [],
+   "calls": 1,
+   "x": 80,
+   "y": 1268
+  },
+  {
+   "id": "corpLawMemberCap",
+   "name": "corpLawMemberCap",
+   "kind": "pure",
+   "file": "public/index.html",
+   "line": 93270,
+   "params": [],
+   "async": false,
+   "reads": [],
+   "writes": [],
+   "calls": 1,
+   "x": 80,
+   "y": 1400
+  },
+  {
+   "id": "corpLawRaidMult",
+   "name": "corpLawRaidMult",
+   "kind": "pure",
+   "file": "public/index.html",
+   "line": 93274,
+   "params": [],
+   "async": false,
+   "reads": [],
+   "writes": [],
+   "calls": 1,
+   "x": 1440,
+   "y": 80
+  },
+  {
+   "id": "corpLawMoodDelta",
+   "name": "corpLawMoodDelta",
+   "kind": "function",
+   "file": "public/index.html",
+   "line": 93275,
+   "params": [],
+   "async": false,
+   "reads": [
+    "Corp.mine"
+   ],
+   "writes": [],
+   "calls": 1,
+   "x": 1440,
+   "y": 212
+  },
+  {
+   "id": "corpLawsLocalSet",
+   "name": "corpLawsLocalSet",
+   "kind": "data",
+   "file": "public/index.html",
+   "line": 93323,
+   "params": [
+    "corpId",
+    "laws"
+   ],
+   "async": false,
+   "reads": [
+    "Profile.corpLaws"
+   ],
+   "writes": [
+    "Profile.corpLaws"
+   ],
+   "calls": 0,
+   "x": 1440,
+   "y": 344
+  },
+  {
+   "id": "corpLawMoodStart",
+   "name": "corpLawMoodStart",
+   "kind": "function",
+   "file": "public/index.html",
+   "line": 93490,
+   "params": [],
+   "async": false,
+   "reads": [],
+   "writes": [],
+   "calls": 1,
+   "x": 80,
+   "y": 1532
+  },
+  {
+   "id": "_corpAnnounceIncoming",
+   "name": "_corpAnnounceIncoming",
+   "kind": "data",
+   "file": "public/index.html",
+   "line": 93978,
+   "params": [],
+   "async": false,
+   "reads": [
+    "Corp.transfers",
+    "Profile._corpXferSeen"
+   ],
+   "writes": [
+    "Profile._corpXferSeen"
+   ],
+   "calls": 0,
+   "x": 1100,
+   "y": 740
+  },
+  {
+   "id": "corpDesk",
+   "name": "corpDesk",
+   "kind": "pure",
+   "file": "public/index.html",
+   "line": 241457,
+   "params": [],
+   "async": false,
+   "reads": [],
+   "writes": [],
+   "calls": 1,
+   "x": 80,
+   "y": 1664
+  },
+  {
+   "id": "corpTreasuryRefresh",
+   "name": "corpTreasuryRefresh",
+   "kind": "pure",
+   "file": "public/index.html",
+   "line": 241885,
+   "params": [],
+   "async": true,
+   "reads": [
+    "Corp.treasury"
+   ],
+   "writes": [],
+   "calls": 1,
+   "x": 80,
+   "y": 1796
+  },
+  {
+   "id": "corp",
+   "name": "corp",
+   "kind": "pure",
+   "file": "public/index.html",
+   "line": 241934,
+   "params": [],
+   "async": false,
+   "reads": [
+    "Corp.mine"
+   ],
+   "writes": [],
+   "calls": 1,
+   "x": 80,
+   "y": 1928
+  },
+  {
+   "id": "_opRowCounts",
+   "name": "_opRowCounts",
+   "kind": "pure",
+   "file": "public/index.html",
+   "line": 246059,
+   "params": [
+    "o"
+   ],
+   "async": false,
+   "reads": [],
+   "writes": [],
+   "calls": 1,
+   "x": 80,
+   "y": 2060
+  },
+  {
+   "id": "_opInterior",
+   "name": "_opInterior",
+   "kind": "pure",
+   "file": "public/index.html",
+   "line": 246103,
+   "params": [
+    "type"
+   ],
+   "async": false,
+   "reads": [],
+   "writes": [],
+   "calls": 1,
+   "x": 80,
+   "y": 2192
+  },
+  {
+   "id": "_opSiteEff",
+   "name": "_opSiteEff",
+   "kind": "function",
+   "file": "public/index.html",
+   "line": 246121,
+   "params": [
+    "o"
+   ],
+   "async": false,
+   "reads": [],
+   "writes": [],
+   "calls": 1,
+   "x": 760,
+   "y": 476
+  },
+  {
+   "id": "_corpHasSecurity",
+   "name": "_corpHasSecurity",
+   "kind": "pure",
+   "file": "public/index.html",
+   "line": 69558,
+   "params": [],
+   "async": false,
+   "reads": [
+    "Corp.licenses"
+   ],
+   "writes": [],
+   "calls": 0,
+   "x": 80,
+   "y": 2324
+  },
+  {
+   "id": "_opEcon",
+   "name": "_opEcon",
+   "kind": "pure",
+   "file": "public/index.html",
+   "line": 92161,
+   "params": [
+    "t"
+   ],
+   "async": false,
+   "reads": [],
+   "writes": [],
+   "calls": 0,
+   "x": 760,
+   "y": 608
+  },
+  {
+   "id": "_opStaffRows",
+   "name": "_opStaffRows",
+   "kind": "pure",
+   "file": "public/index.html",
+   "line": 92418,
+   "params": [
+    "opId"
+   ],
+   "async": false,
+   "reads": [
+    "Corp.staff"
+   ],
+   "writes": [],
+   "calls": 0,
+   "x": 1100,
+   "y": 872
+  },
+  {
+   "id": "_opLaborPool",
+   "name": "_opLaborPool",
+   "kind": "pure",
+   "file": "public/index.html",
+   "line": 92518,
+   "params": [],
+   "async": false,
+   "reads": [
+    "Corp.roster"
+   ],
+   "writes": [],
+   "calls": 0,
+   "x": 80,
+   "y": 2456
+  },
+  {
+   "id": "_opLaborUsed",
+   "name": "_opLaborUsed",
+   "kind": "pure",
+   "file": "public/index.html",
+   "line": 92976,
+   "params": [
+    "exceptId"
+   ],
+   "async": false,
+   "reads": [],
+   "writes": [],
+   "calls": 0,
+   "x": 80,
+   "y": 2588
+  },
+  {
+   "id": "corpLawsGet",
+   "name": "corpLawsGet",
+   "kind": "pure",
+   "file": "public/index.html",
+   "line": 93253,
+   "params": [],
+   "async": false,
+   "reads": [
+    "Corp.laws"
+   ],
+   "writes": [],
+   "calls": 0,
+   "x": 2120,
+   "y": 80
+  },
+  {
+   "id": "corpLawsLocalGet",
+   "name": "corpLawsLocalGet",
+   "kind": "pure",
+   "file": "public/index.html",
+   "line": 93320,
+   "params": [
+    "corpId"
+   ],
+   "async": false,
+   "reads": [
+    "Profile.corpLaws"
+   ],
+   "writes": [],
+   "calls": 0,
+   "x": 1440,
+   "y": 476
+  },
+  {
+   "id": "_corpLawCitizens",
+   "name": "_corpLawCitizens",
+   "kind": "pure",
+   "file": "public/index.html",
+   "line": 93469,
+   "params": [],
+   "async": false,
+   "reads": [],
+   "writes": [],
+   "calls": 0,
+   "x": 1440,
+   "y": 608
+  },
+  {
+   "id": "_corpVaultFullModal",
+   "name": "_corpVaultFullModal",
+   "kind": "function",
+   "file": "public/index.html",
+   "line": 135478,
+   "params": [
+    "d"
+   ],
+   "async": false,
+   "reads": [],
+   "writes": [],
+   "calls": 0,
+   "x": 80,
+   "y": 2720
+  },
+  {
+   "id": "_corpOnlyOneModal",
+   "name": "_corpOnlyOneModal",
+   "kind": "function",
+   "file": "public/index.html",
+   "line": 135522,
+   "params": [
+    "have"
+   ],
+   "async": false,
+   "reads": [],
+   "writes": [],
+   "calls": 0,
+   "x": 80,
+   "y": 2852
+  },
+  {
+   "id": "corpRegionControl",
+   "name": "corpRegionControl",
+   "kind": "pure",
+   "file": "public/index.html",
+   "line": 241328,
+   "params": [
+    "corpId"
+   ],
+   "async": false,
+   "reads": [
+    "Forge.territoryWars"
+   ],
+   "writes": [],
+   "calls": 0,
+   "x": 80,
+   "y": 2984
+  },
+  {
+   "id": "corpTreasury",
+   "name": "corpTreasury",
+   "kind": "pure",
+   "file": "public/index.html",
+   "line": 241338,
+   "params": [
+    "corpId"
+   ],
+   "async": false,
+   "reads": [
+    "Corp.mine",
+    "Corp.treasury"
+   ],
+   "writes": [],
+   "calls": 0,
+   "x": 80,
+   "y": 3116
+  },
+  {
+   "id": "corpRoster",
+   "name": "corpRoster",
+   "kind": "pure",
+   "file": "public/index.html",
+   "line": 241882,
+   "params": [],
+   "async": false,
+   "reads": [
+    "Corp.members"
+   ],
+   "writes": [],
+   "calls": 0,
+   "x": 80,
+   "y": 3248
+  },
+  {
+   "id": "_opStatusTerminal",
+   "name": "_opStatusTerminal",
+   "kind": "pure",
+   "file": "public/index.html",
+   "line": 246053,
+   "params": [
+    "s"
+   ],
+   "async": false,
+   "reads": [],
+   "writes": [],
+   "calls": 0,
+   "x": 420,
+   "y": 740
+  },
+  {
+   "id": "_opIsType",
+   "name": "_opIsType",
+   "kind": "pure",
+   "file": "public/index.html",
+   "line": 246065,
+   "params": [
+    "o",
+    "type"
+   ],
+   "async": false,
+   "reads": [],
+   "writes": [],
+   "calls": 0,
+   "x": 80,
+   "y": 3380
+  },
+  {
+   "id": "_opInteriorRoute",
+   "name": "_opInteriorRoute",
+   "kind": "pure",
+   "file": "public/index.html",
+   "line": 246095,
+   "params": [
+    "type"
+   ],
+   "async": false,
+   "reads": [],
+   "writes": [],
+   "calls": 0,
+   "x": 420,
+   "y": 872
+  },
+  {
+   "id": "_opRowById",
+   "name": "_opRowById",
+   "kind": "pure",
+   "file": "public/index.html",
+   "line": 246104,
+   "params": [
+    "id"
+   ],
+   "async": false,
+   "reads": [],
+   "writes": [],
+   "calls": 0,
+   "x": 80,
+   "y": 3512
+  },
+  {
+   "id": "_opSite",
+   "name": "_opSite",
+   "kind": "function",
+   "file": "public/index.html",
+   "line": 246107,
+   "params": [
+    "o"
+   ],
+   "async": false,
+   "reads": [],
+   "writes": [],
+   "calls": 0,
+   "x": 1100,
+   "y": 1004
+  },
+  {
+   "id": "_opWriteMeta",
+   "name": "_opWriteMeta",
+   "kind": "function",
+   "file": "public/index.html",
+   "line": 246132,
+   "params": [
+    "o",
+    "patch",
+    "opts"
+   ],
+   "async": true,
+   "reads": [
+    "Cloud.client",
+    "Profile.cloud"
+   ],
+   "writes": [],
+   "calls": 0,
+   "x": 80,
+   "y": 3644
+  },
+  {
+   "id": "corpsByIds",
+   "name": "corpsByIds",
+   "kind": "function",
+   "file": "public/src/community/community.api.js",
+   "line": 97,
+   "params": [
+    "ids"
+   ],
+   "async": true,
+   "reads": [],
+   "writes": [],
+   "calls": 0,
+   "x": 80,
+   "y": 3776
+  },
+  {
+   "id": "corpsHtml",
+   "name": "corpsHtml",
+   "kind": "function",
+   "file": "public/src/community/community.render.js",
+   "line": 347,
+   "params": [],
+   "async": false,
+   "reads": [],
+   "writes": [],
+   "calls": 0,
+   "x": 80,
+   "y": 3908
+  }
+ ],
+ "edges": [
+  {
+   "from": "_corpEnsureRun",
+   "to": "_corpMemberCitiesFetch"
+  },
+  {
+   "from": "_corpEnsureRun",
+   "to": "_corpAnnounceIncoming"
+  },
+  {
+   "from": "_corpEnsureRun",
+   "to": "corpLawsFetch"
+  },
+  {
+   "from": "_corpEnsureRun",
+   "to": "corpLawApplyMood"
+  },
+  {
+   "from": "_corpEnsureRun",
+   "to": "corpScoreCompliance"
+  },
+  {
+   "from": "_corpEnsureRun",
+   "to": "corpTreasuryFetch"
+  },
+  {
+   "from": "corpLawSet",
+   "to": "corpLawsGet"
+  },
+  {
+   "from": "corpLawSet",
+   "to": "corpScoreCompliance"
+  },
+  {
+   "from": "corpLawSet",
+   "to": "corpLawsLocalSet"
+  },
+  {
+   "from": "corpLawSet",
+   "to": "corpLawApplyMood"
+  },
+  {
+   "from": "corpEnsure",
+   "to": "_corpEnsureRun"
+  },
+  {
+   "from": "_opSettle",
+   "to": "_opComputed"
+  },
+  {
+   "from": "_opSettle",
+   "to": "corpTreasuryFetch"
+  },
+  {
+   "from": "_opSettle",
+   "to": "_opTreasuryRow"
+  },
+  {
+   "from": "_opSettle",
+   "to": "corpStaffPayroll"
+  },
+  {
+   "from": "corpScoreCompliance",
+   "to": "corpLawOpt"
+  },
+  {
+   "from": "corpScoreCompliance",
+   "to": "corpLawRaidMult"
+  },
+  {
+   "from": "corpLawsFetch",
+   "to": "corpLawsLocalGet"
+  },
+  {
+   "from": "corpLawsFetch",
+   "to": "corpLawsLocalSet"
+  },
+  {
+   "from": "_opComputed",
+   "to": "_opEcon"
+  },
+  {
+   "from": "_opComputed",
+   "to": "_opStaffCount"
+  },
+  {
+   "from": "_opComputed",
+   "to": "_opSiteEff"
+  },
+  {
+   "from": "_corpStaffAction",
+   "to": "corpStaffFetch"
+  },
+  {
+   "from": "_corpStaffAction",
+   "to": "corpTreasuryFetch"
+  },
+  {
+   "from": "_corpStaffAction",
+   "to": "corpEnsure"
+  },
+  {
+   "from": "boeCorpDeposit",
+   "to": "corpTreasuryFetch"
+  },
+  {
+   "from": "corpTreasuryDeposit",
+   "to": "corpTreasuryFetch"
+  },
+  {
+   "from": "corpStaffPayroll",
+   "to": "corpTreasuryFetch"
+  },
+  {
+   "from": "corpStaffPayroll",
+   "to": "corpStaffFetch"
+  },
+  {
+   "from": "corpLawsPanelHtml",
+   "to": "corpLawsGet"
+  },
+  {
+   "from": "corpLawsPanelHtml",
+   "to": "corpLawMoodDelta"
+  },
+  {
+   "from": "corpLawApplyMood",
+   "to": "corpLawMoodDelta"
+  },
+  {
+   "from": "corpLawApplyMood",
+   "to": "_corpLawCitizens"
+  },
+  {
+   "from": "_opCreateLocal",
+   "to": "_opAfterFound"
+  },
+  {
+   "from": "_opStaffCount",
+   "to": "_opStaffRows"
+  },
+  {
+   "from": "corpLawOpt",
+   "to": "corpLawsGet"
+  },
+  {
+   "from": "corpLawTaxRate",
+   "to": "corpLawOpt"
+  },
+  {
+   "from": "corpLawMemberCap",
+   "to": "corpLawOpt"
+  },
+  {
+   "from": "corpLawRaidMult",
+   "to": "corpLawOpt"
+  },
+  {
+   "from": "corpLawMoodDelta",
+   "to": "corpLawOpt"
+  },
+  {
+   "from": "corpLawMoodStart",
+   "to": "corpLawApplyMood"
+  },
+  {
+   "from": "corpTreasuryRefresh",
+   "to": "corpTreasuryFetch"
+  },
+  {
+   "from": "_opRowCounts",
+   "to": "_opStatusTerminal"
+  },
+  {
+   "from": "_opInterior",
+   "to": "_opInteriorRoute"
+  },
+  {
+   "from": "_opSiteEff",
+   "to": "_opSite"
+  }
+ ]
+}

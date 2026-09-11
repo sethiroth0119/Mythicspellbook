@@ -1,0 +1,696 @@
+{
+ "system": "City",
+ "label": "City & Nodes",
+ "icon": "🏙",
+ "print": "Detail_5",
+ "nodes": [
+  {
+   "id": "_twNodeOwnerUser",
+   "name": "_twNodeOwnerUser",
+   "kind": "pure",
+   "file": "public/index.html",
+   "line": 256393,
+   "params": [
+    "nodeId"
+   ],
+   "async": false,
+   "reads": [
+    "App._twNodeOwners"
+   ],
+   "writes": [],
+   "calls": 0,
+   "x": 80,
+   "y": 80
+  },
+  {
+   "id": "_twClearsRequired",
+   "name": "_twClearsRequired",
+   "kind": "function",
+   "file": "public/index.html",
+   "line": 257336,
+   "params": [
+    "node",
+    "own"
+   ],
+   "async": false,
+   "reads": [],
+   "writes": [],
+   "calls": 0,
+   "x": 80,
+   "y": 212
+  },
+  {
+   "id": "_twNodeReconDefaults",
+   "name": "_twNodeReconDefaults",
+   "kind": "pure",
+   "file": "public/index.html",
+   "line": 258034,
+   "params": [],
+   "async": false,
+   "reads": [],
+   "writes": [],
+   "calls": 0,
+   "x": 80,
+   "y": 344
+  },
+  {
+   "id": "_twCityVitalsFor",
+   "name": "_twCityVitalsFor",
+   "kind": "pure",
+   "file": "public/index.html",
+   "line": 258253,
+   "params": [
+    "node"
+   ],
+   "async": false,
+   "reads": [],
+   "writes": [],
+   "calls": 0,
+   "x": 80,
+   "y": 476
+  },
+  {
+   "id": "_twNodeRegisteredCount",
+   "name": "_twNodeRegisteredCount",
+   "kind": "pure",
+   "file": "public/index.html",
+   "line": 258310,
+   "params": [
+    "nodeId"
+   ],
+   "async": false,
+   "reads": [
+    "Profile.cloud",
+    "App._twNodeCamps",
+    "Profile.campNodeId"
+   ],
+   "writes": [],
+   "calls": 0,
+   "x": 80,
+   "y": 608
+  },
+  {
+   "id": "_twNodeContributorCount",
+   "name": "_twNodeContributorCount",
+   "kind": "pure",
+   "file": "public/index.html",
+   "line": 258320,
+   "params": [
+    "nodeId"
+   ],
+   "async": false,
+   "reads": [
+    "App._twNodeContrib"
+   ],
+   "writes": [],
+   "calls": 0,
+   "x": 80,
+   "y": 740
+  },
+  {
+   "id": "_twFmtSpan",
+   "name": "_twFmtSpan",
+   "kind": "pure",
+   "file": "public/index.html",
+   "line": 258591,
+   "params": [
+    "ms"
+   ],
+   "async": false,
+   "reads": [],
+   "writes": [],
+   "calls": 0,
+   "x": 80,
+   "y": 872
+  },
+  {
+   "id": "_twNodeResId",
+   "name": "_twNodeResId",
+   "kind": "pure",
+   "file": "public/index.html",
+   "line": 258682,
+   "params": [
+    "node"
+   ],
+   "async": false,
+   "reads": [],
+   "writes": [],
+   "calls": 0,
+   "x": 80,
+   "y": 1004
+  },
+  {
+   "id": "_twCollectNodeBank",
+   "name": "_twCollectNodeBank",
+   "kind": "function",
+   "file": "public/index.html",
+   "line": 258718,
+   "params": [
+    "nodeId"
+   ],
+   "async": true,
+   "reads": [
+    "Cloud.ready",
+    "App._twNodeReconCloud"
+   ],
+   "writes": [],
+   "calls": 0,
+   "x": 80,
+   "y": 1136
+  },
+  {
+   "id": "_twCloseNodeListModal",
+   "name": "_twCloseNodeListModal",
+   "kind": "function",
+   "file": "public/index.html",
+   "line": 258805,
+   "params": [],
+   "async": false,
+   "reads": [],
+   "writes": [],
+   "calls": 0,
+   "x": 80,
+   "y": 1268
+  },
+  {
+   "id": "_twBindNodeListModal",
+   "name": "_twBindNodeListModal",
+   "kind": "function",
+   "file": "public/index.html",
+   "line": 258806,
+   "params": [],
+   "async": false,
+   "reads": [],
+   "writes": [],
+   "calls": 0,
+   "x": 80,
+   "y": 1400
+  },
+  {
+   "id": "nodePaint",
+   "name": "nodePaint",
+   "kind": "function",
+   "file": "public/index.html",
+   "line": 259942,
+   "params": [
+    "n"
+   ],
+   "async": false,
+   "reads": [],
+   "writes": [],
+   "calls": 0,
+   "x": 80,
+   "y": 1532
+  },
+  {
+   "id": "_twYieldTotal",
+   "name": "_twYieldTotal",
+   "kind": "pure",
+   "file": "public/index.html",
+   "line": 260206,
+   "params": [
+    "n"
+   ],
+   "async": false,
+   "reads": [],
+   "writes": [],
+   "calls": 0,
+   "x": 80,
+   "y": 1664
+  },
+  {
+   "id": "_twIcoSvg",
+   "name": "_twIcoSvg",
+   "kind": "pure",
+   "file": "public/index.html",
+   "line": 260242,
+   "params": [
+    "kind",
+    "col"
+   ],
+   "async": false,
+   "reads": [],
+   "writes": [],
+   "calls": 0,
+   "x": 80,
+   "y": 1796
+  },
+  {
+   "id": "_twNodeResBadge",
+   "name": "_twNodeResBadge",
+   "kind": "function",
+   "file": "public/index.html",
+   "line": 260263,
+   "params": [
+    "n"
+   ],
+   "async": false,
+   "reads": [],
+   "writes": [],
+   "calls": 0,
+   "x": 80,
+   "y": 1928
+  },
+  {
+   "id": "_twAdminGate",
+   "name": "_twAdminGate",
+   "kind": "pure",
+   "file": "public/index.html",
+   "line": 261771,
+   "params": [
+    "what"
+   ],
+   "async": false,
+   "reads": [],
+   "writes": [],
+   "calls": 0,
+   "x": 80,
+   "y": 2060
+  },
+  {
+   "id": "_twRenderNodeEditor",
+   "name": "_twRenderNodeEditor",
+   "kind": "function",
+   "file": "public/index.html",
+   "line": 263039,
+   "params": [
+    "node",
+    "t"
+   ],
+   "async": false,
+   "reads": [
+    "Forge.customCards"
+   ],
+   "writes": [],
+   "calls": 0,
+   "x": 80,
+   "y": 2192
+  },
+  {
+   "id": "_twBindNodeEditor",
+   "name": "_twBindNodeEditor",
+   "kind": "function",
+   "file": "public/index.html",
+   "line": 263122,
+   "params": [
+    "t"
+   ],
+   "async": false,
+   "reads": [
+    "App._twEditNode"
+   ],
+   "writes": [],
+   "calls": 0,
+   "x": 80,
+   "y": 2324
+  },
+  {
+   "id": "nodeResidents",
+   "name": "nodeResidents",
+   "kind": "pure",
+   "file": "public/src/city/stadium.economy.js",
+   "line": 373,
+   "params": [
+    "node",
+    "E"
+   ],
+   "async": false,
+   "reads": [],
+   "writes": [],
+   "calls": 0,
+   "x": 80,
+   "y": 2456
+  },
+  {
+   "id": "nodeStockView",
+   "name": "nodeStockView",
+   "kind": "pure",
+   "file": "public/src/city/stadium.economy.js",
+   "line": 934,
+   "params": [
+    "node"
+   ],
+   "async": false,
+   "reads": [],
+   "writes": [],
+   "calls": 0,
+   "x": 80,
+   "y": 2588
+  },
+  {
+   "id": "nodeSnapshot",
+   "name": "nodeSnapshot",
+   "kind": "function",
+   "file": "public/src/city/stadium.city.js",
+   "line": 134,
+   "params": [],
+   "async": false,
+   "reads": [],
+   "writes": [],
+   "calls": 0,
+   "x": 80,
+   "y": 2720
+  },
+  {
+   "id": "cityVirusForWorldEvent",
+   "name": "cityVirusForWorldEvent",
+   "kind": "pure",
+   "file": "public/src/city/plague.city.js",
+   "line": 77,
+   "params": [
+    "defId"
+   ],
+   "async": false,
+   "reads": [],
+   "writes": [],
+   "calls": 0,
+   "x": 80,
+   "y": 2852
+  },
+  {
+   "id": "cityAgeMin",
+   "name": "cityAgeMin",
+   "kind": "pure",
+   "file": "public/src/city/plague.city.js",
+   "line": 173,
+   "params": [],
+   "async": false,
+   "reads": [],
+   "writes": [],
+   "calls": 0,
+   "x": 80,
+   "y": 2984
+  },
+  {
+   "id": "cityProdDef",
+   "name": "cityProdDef",
+   "kind": "pure",
+   "file": "public/src/city/production.data.js",
+   "line": 776,
+   "params": [
+    "id"
+   ],
+   "async": false,
+   "reads": [],
+   "writes": [],
+   "calls": 0,
+   "x": 80,
+   "y": 3116
+  },
+  {
+   "id": "cityPop",
+   "name": "cityPop",
+   "kind": "function",
+   "file": "public/src/broadcast/index.js",
+   "line": 265,
+   "params": [],
+   "async": false,
+   "reads": [],
+   "writes": [],
+   "calls": 0,
+   "x": 80,
+   "y": 3248
+  },
+  {
+   "id": "cityBase",
+   "name": "cityBase",
+   "kind": "pure",
+   "file": "public/src/landvalue/field.js",
+   "line": 402,
+   "params": [],
+   "async": false,
+   "reads": [],
+   "writes": [],
+   "calls": 0,
+   "x": 80,
+   "y": 3380
+  },
+  {
+   "id": "cityRoads",
+   "name": "cityRoads",
+   "kind": "function",
+   "file": "public/src/outside/link.js",
+   "line": 39,
+   "params": [
+    "C"
+   ],
+   "async": false,
+   "reads": [],
+   "writes": [],
+   "calls": 0,
+   "x": 80,
+   "y": 3512
+  },
+  {
+   "id": "cityTileCount",
+   "name": "cityTileCount",
+   "kind": "pure",
+   "file": "public/src/outside/link.js",
+   "line": 142,
+   "params": [
+    "C"
+   ],
+   "async": false,
+   "reads": [],
+   "writes": [],
+   "calls": 0,
+   "x": 80,
+   "y": 3644
+  },
+  {
+   "id": "nodeById",
+   "name": "nodeById",
+   "kind": "function",
+   "file": "public/src/progression/index.js",
+   "line": 430,
+   "params": [
+    "id"
+   ],
+   "async": false,
+   "reads": [],
+   "writes": [],
+   "calls": 0,
+   "x": 80,
+   "y": 3776
+  },
+  {
+   "id": "nodeForSpec",
+   "name": "nodeForSpec",
+   "kind": "pure",
+   "file": "public/src/progression/state.js",
+   "line": 94,
+   "params": [
+    "id"
+   ],
+   "async": false,
+   "reads": [],
+   "writes": [],
+   "calls": 0,
+   "x": 80,
+   "y": 3908
+  },
+  {
+   "id": "nodeForZone",
+   "name": "nodeForZone",
+   "kind": "pure",
+   "file": "public/src/progression/state.js",
+   "line": 116,
+   "params": [
+    "id"
+   ],
+   "async": false,
+   "reads": [],
+   "writes": [],
+   "calls": 0,
+   "x": 80,
+   "y": 4040
+  },
+  {
+   "id": "nodeForBuilding",
+   "name": "nodeForBuilding",
+   "kind": "pure",
+   "file": "public/src/progression/state.js",
+   "line": 117,
+   "params": [
+    "t"
+   ],
+   "async": false,
+   "reads": [],
+   "writes": [],
+   "calls": 0,
+   "x": 80,
+   "y": 4172
+  },
+  {
+   "id": "cityNow",
+   "name": "cityNow",
+   "kind": "pure",
+   "file": "public/src/streets/traffic.js",
+   "line": 101,
+   "params": [],
+   "async": false,
+   "reads": [],
+   "writes": [],
+   "calls": 0,
+   "x": 80,
+   "y": 4304
+  },
+  {
+   "id": "cityWeights",
+   "name": "cityWeights",
+   "kind": "pure",
+   "file": "public/src/transit/routes.js",
+   "line": 217,
+   "params": [],
+   "async": false,
+   "reads": [],
+   "writes": [],
+   "calls": 0,
+   "x": 80,
+   "y": 4436
+  },
+  {
+   "id": "cityId",
+   "name": "cityId",
+   "kind": "function",
+   "file": "public/src/resmap/index.js",
+   "line": 503,
+   "params": [],
+   "async": false,
+   "reads": [],
+   "writes": [],
+   "calls": 0,
+   "x": 80,
+   "y": 4568
+  },
+  {
+   "id": "cityLive",
+   "name": "cityLive",
+   "kind": "pure",
+   "file": "public/src/transport/depot.js",
+   "line": 234,
+   "params": [
+    "MP"
+   ],
+   "async": false,
+   "reads": [],
+   "writes": [],
+   "calls": 0,
+   "x": 80,
+   "y": 4700
+  },
+  {
+   "id": "cityHost",
+   "name": "cityHost",
+   "kind": "pure",
+   "file": "public/src/biolab/index.js",
+   "line": 741,
+   "params": [],
+   "async": false,
+   "reads": [],
+   "writes": [],
+   "calls": 0,
+   "x": 80,
+   "y": 4832
+  },
+  {
+   "id": "cityTick",
+   "name": "cityTick",
+   "kind": "function",
+   "file": "public/src/plague/state.js",
+   "line": 135,
+   "params": [
+    "host",
+    "dtMs"
+   ],
+   "async": false,
+   "reads": [],
+   "writes": [],
+   "calls": 0,
+   "x": 80,
+   "y": 4964
+  },
+  {
+   "id": "cityName",
+   "name": "cityName",
+   "kind": "pure",
+   "file": "public/src/haul/index.js",
+   "line": 1868,
+   "params": [
+    "id"
+   ],
+   "async": false,
+   "reads": [],
+   "writes": [],
+   "calls": 0,
+   "x": 80,
+   "y": 5096
+  },
+  {
+   "id": "citySelect",
+   "name": "citySelect",
+   "kind": "function",
+   "file": "public/src/haul/index.js",
+   "line": 1919,
+   "params": [
+    "name",
+    "val",
+    "exclude"
+   ],
+   "async": false,
+   "reads": [],
+   "writes": [],
+   "calls": 0,
+   "x": 80,
+   "y": 5228
+  },
+  {
+   "id": "cityWeatherAt",
+   "name": "cityWeatherAt",
+   "kind": "function",
+   "file": "public/src/farm/index.js",
+   "line": 840,
+   "params": [
+    "now"
+   ],
+   "async": false,
+   "reads": [],
+   "writes": [],
+   "calls": 0,
+   "x": 80,
+   "y": 5360
+  },
+  {
+   "id": "cityHourNow",
+   "name": "cityHourNow",
+   "kind": "pure",
+   "file": "public/src/farm/index.js",
+   "line": 857,
+   "params": [],
+   "async": false,
+   "reads": [],
+   "writes": [],
+   "calls": 0,
+   "x": 80,
+   "y": 5492
+  },
+  {
+   "id": "nodeByName",
+   "name": "nodeByName",
+   "kind": "pure",
+   "file": "public/src/widgets/widgets.format.js",
+   "line": 194,
+   "params": [
+    "root",
+    "name"
+   ],
+   "async": false,
+   "reads": [],
+   "writes": [],
+   "calls": 0,
+   "x": 80,
+   "y": 5624
+  }
+ ],
+ "edges": []
+}

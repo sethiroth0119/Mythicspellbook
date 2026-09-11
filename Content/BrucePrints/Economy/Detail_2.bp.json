@@ -1,0 +1,88 @@
+{
+ "system": "Economy",
+ "label": "Economy & Crash Exchange",
+ "icon": "📈",
+ "print": "Detail_2",
+ "nodes": [
+  {
+   "id": "_cxIntel",
+   "name": "_cxIntel",
+   "kind": "function",
+   "file": "public/index.html",
+   "line": 221094,
+   "params": [],
+   "async": false,
+   "reads": [],
+   "writes": [],
+   "calls": 0,
+   "x": 80,
+   "y": 80
+  },
+  {
+   "id": "cx",
+   "name": "cx",
+   "kind": "function",
+   "file": "public/src/pollution/overlay.js",
+   "line": 108,
+   "params": [
+    "x"
+   ],
+   "async": false,
+   "reads": [],
+   "writes": [],
+   "calls": 0,
+   "x": 80,
+   "y": 212
+  },
+  {
+   "id": "cxSeam",
+   "name": "cxSeam",
+   "kind": "pure",
+   "file": "public/src/phone/handset.js",
+   "line": 392,
+   "params": [],
+   "async": false,
+   "reads": [],
+   "writes": [],
+   "calls": 0,
+   "x": 80,
+   "y": 344
+  },
+  {
+   "id": "cxSpark",
+   "name": "cxSpark",
+   "kind": "function",
+   "file": "public/src/phone/handset.js",
+   "line": 394,
+   "params": [
+    "arr",
+    "w",
+    "h",
+    "up"
+   ],
+   "async": false,
+   "reads": [],
+   "writes": [],
+   "calls": 0,
+   "x": 80,
+   "y": 476
+  },
+  {
+   "id": "cxDelta",
+   "name": "cxDelta",
+   "kind": "function",
+   "file": "public/src/phone/handset.js",
+   "line": 401,
+   "params": [
+    "d"
+   ],
+   "async": false,
+   "reads": [],
+   "writes": [],
+   "calls": 0,
+   "x": 80,
+   "y": 608
+  }
+ ],
+ "edges": []
+}

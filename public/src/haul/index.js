@@ -431,6 +431,7 @@ const HAUL_CONTAINERS = [
 const HAUL_THREE_ADDONS = 'https://cdn.jsdelivr.net/npm/three@0.171.0/examples/jsm/loaders/GLTFLoader.js';
 const _glbCache = new Map();
 let _gltfLoaderP = null;
+let HAUL_ANISO = 8;   // the run sets this from the renderer before any model loads
 function haulGLTFLoader(THREE) {
   if (!_gltfLoaderP) _gltfLoaderP = (async () => {
     if (THREE.GLTFLoader) return new THREE.GLTFLoader();
@@ -439,45 +440,100 @@ function haulGLTFLoader(THREE) {
   })().catch((e) => { _gltfLoaderP = null; throw e; });
   return _gltfLoaderP;
 }
-/* A fresh clone per call, materials flattened to Lambert so a model lights
-   like the rest of the road (and costs a phone what a box costs). */
+/* A fresh clone per call. v121v120: the material keeps the scan's NORMAL map
+   (Lambert threw it away, and a photogrammetry truck with no normal map reads
+   as a crumpled smudge — the owner's "fix the resolution"), and both textures
+   are sampled with anisotropy so the box sides and the deck stay sharp at the
+   chase camera's grazing angle. Metalness 0: there is no environment map on
+   the road, and a metal truck with nothing to reflect renders black. */
 async function haulLoadGLB(THREE, url) {
   if (!_glbCache.has(url)) _glbCache.set(url, (async () => {
     const loader = await haulGLTFLoader(THREE);
     const g = await new Promise((res, rej) => loader.load(url, res, undefined, rej));
     const sc = g.scene || (g.scenes && g.scenes[0]);
     if (!sc) throw new Error('empty glb ' + url);
-    sc.traverse((o) => { if (o.isMesh && o.material) { const m = o.material; o.material = new THREE.MeshLambertMaterial({ map: m.map || null, color: m.color ? m.color.clone() : 0xffffff }); } });
+    sc.traverse((o) => { if (o.isMesh && o.material) { const m = o.material; for (const t of [m.map, m.normalMap]) if (t) { t.anisotropy = HAUL_ANISO; t.needsUpdate = true; } o.material = new THREE.MeshStandardMaterial({ map: m.map || null, normalMap: m.normalMap || null, color: m.color ? m.color.clone() : 0xffffff, metalness: 0, roughness: 0.78, side: m.side }); } });
     return sc;
   })().catch((e) => { _glbCache.delete(url); throw e; }));
   return (await _glbCache.get(url)).clone(true);
 }
-/* Which way round is this truck? Measure it, do not trust a knob: the long
-   axis goes along Z, and the tall end (the cab) goes to +Z — the nose, inside
-   `rig`. Works for the semi, for an admin-uploaded box truck, for anything
-   with a cab. Returns the rotation in degrees that haulFit should apply. */
-function haulAutoOrient(THREE, obj) {
+/* Which way round is this truck? (v121v120)
+   1. A truck file this game ships is looked up. Every one was checked by eye
+      in tools/athena-harness (pw-truckview.mjs renders each from both ends and
+      the side): all are long along X with the cab at −X, which 90° sends to
+      +Z — the nose, inside `rig`.
+   2. Anything else (an admin's upload) is measured. The old rule, "the tall
+      end is the cab", is right for a flatbed and BACKWARDS for a box truck, a
+      stock truck or a tanker, whose body stands taller than the cab — the
+      owner's HidnEx feed truck drove tail-first. The cab end is the one with
+      (a) a STEP in the roofline a short way in (the back of the cab against a
+      low deck, or the gap between cab and box) and (b) a TAPERED tip (bumper
+      and bonnet below the cab roof), where a deck, a box or a tank ends
+      square. The roofline is read along the centre strip, so mirrors and the
+      sides of the body stay out of it; the tall-end rule only breaks a tie.
+   Returns the rotation in degrees that haulFit should apply. */
+const HAUL_KNOWN_ROT = { 'freight_semi.glb': 90, 'freight_semi_wrecked.glb': 90, 'feed_truck.glb': 90, 'livestock_truck.glb': 90, 'tanker.glb': 90 };
+function haulKnownRot(url) {
+  const u = String(url || '').split('?')[0], f = u.split('/').pop();
+  return (/(^|\/)models\/trucks\/[^/]+$/.test(u) && Object.prototype.hasOwnProperty.call(HAUL_KNOWN_ROT, f)) ? HAUL_KNOWN_ROT[f] : null;
+}
+function haulRooflineScore(h) {   // h runs from one end inward, heights 0..1
+  const N = h.length; let step = 0;
+  for (let i = Math.floor(N * 0.1); i < Math.floor(N * 0.45); i++) step = Math.max(step, Math.abs(h[i + 2] - h[i]));
+  /* the RAMP: how far the first sixth of the roofline sits below the roof of
+     its end. A median, so a tow hitch or a tail-lift two bins long at the back
+     of a box cannot pass for a bonnet. */
+  const near = Math.max(...h.slice(0, Math.ceil(N * 0.25)));
+  const first = h.slice(0, Math.ceil(N * 0.15)).sort((a, b) => a - b), med = first[Math.floor(first.length / 2)];
+  const taper = near > 0 ? Math.max(0, 1 - med / near) : 0;
+  return { step, taper, score: step + taper };
+}
+function haulAutoOrient(THREE, obj, url) {
+  const known = haulKnownRot(url);
+  if (known != null) return known;
   const wrap = new THREE.Group(); wrap.add(obj); wrap.updateMatrixWorld(true);
   const b = new THREE.Box3().setFromObject(obj), sz = new THREE.Vector3(); b.getSize(sz);
-  let rot = sz.x > sz.z ? 90 : 0;
-  // height at each end of the long axis, sampled from the vertices
-  const axis = sz.x > sz.z ? 'x' : 'z', lo = b.min[axis], len = Math.max(1e-6, sz[axis]);
-  let tallLo = -Infinity, tallHi = -Infinity; const v = new THREE.Vector3();
+  const axis = sz.x > sz.z ? 'x' : 'z', across = axis === 'x' ? 'z' : 'x';
+  const lo = b.min[axis], len = Math.max(1e-6, sz[axis]), tall = Math.max(1e-6, sz.y);
+  const mid = (b.min[across] + b.max[across]) / 2, strip = Math.max(1e-6, sz[across] * 0.3);
+  const N = 40, top = new Array(N).fill(-Infinity), topAll = new Array(N).fill(-Infinity); const v = new THREE.Vector3();
+  /* Sampled along every triangle EDGE, not at the vertices: a decimated scan
+     has roof triangles several bins long with no vertex in between, and the
+     vertex-only profile read those bins as dips in the roof. */
+  const p = new THREE.Vector3(), q = new THREE.Vector3(), binW = len / N;
+  const put = (pt) => {
+    const k = Math.max(0, Math.min(N - 1, Math.floor((pt[axis] - lo) / len * N))), hn = (pt.y - b.min.y) / tall;
+    if (hn > topAll[k]) topAll[k] = hn;
+    if (Math.abs(pt[across] - mid) <= strip && hn > top[k]) top[k] = hn;
+  };
   obj.traverse((o) => {
     if (!o.isMesh || !o.geometry || !o.geometry.attributes || !o.geometry.attributes.position) return;
-    const pos = o.geometry.attributes.position, step = Math.max(1, Math.floor(pos.count / 6000));
-    for (let i = 0; i < pos.count; i += step) {
-      v.fromBufferAttribute(pos, i).applyMatrix4(o.matrixWorld);
-      const f = (v[axis] - lo) / len;
-      if (f < 0.3) tallLo = Math.max(tallLo, v.y); else if (f > 0.7) tallHi = Math.max(tallHi, v.y);
+    const pos = o.geometry.attributes.position, idx = o.geometry.index;
+    const tris = Math.floor((idx ? idx.count : pos.count) / 3), every = Math.max(1, Math.floor(tris / 60000));
+    const corner = (t, c, out) => out.fromBufferAttribute(pos, idx ? idx.getX(t * 3 + c) : t * 3 + c).applyMatrix4(o.matrixWorld);
+    for (let t = 0; t < tris; t += every) {
+      for (let c = 0; c < 3; c++) {
+        corner(t, c, p); corner(t, (c + 1) % 3, q);
+        const n = Math.min(48, Math.ceil(Math.abs(q[axis] - p[axis]) / binW * 2));
+        for (let j = 0; j <= n; j++) put(v.lerpVectors(p, q, n ? j / n : 0));
+      }
     }
   });
   wrap.remove(obj);
+  // a bin the centre strip missed takes the full width's height; a bin nothing reached takes its neighbour's
+  for (let i = 0; i < N; i++) if (!isFinite(top[i])) top[i] = topAll[i];
+  for (let i = 1; i < N; i++) if (!isFinite(top[i])) top[i] = top[i - 1];
+  for (let i = N - 2; i >= 0; i--) if (!isFinite(top[i])) top[i] = top[i + 1];
+  for (let i = 0; i < N; i++) if (!isFinite(top[i])) top[i] = 0;
+  const sLo = haulRooflineScore(top), sHi = haulRooflineScore(top.slice().reverse());
+  let cabAtHi;
+  if (Math.abs(sLo.score - sHi.score) > 0.08) cabAtHi = sHi.score > sLo.score;
+  else { let tLo = -Infinity, tHi = -Infinity; for (let i = 0; i < N; i++) { if (i < N * 0.3) tLo = Math.max(tLo, top[i]); else if (i >= N * 0.7) tHi = Math.max(tHi, top[i]); } cabAtHi = tHi >= tLo; }
   /* rot 0 keeps +z as the nose; rot 90 sends −x to +z. The cab must end at +Z:
-     for axis z the tall end must be the HIGH end (else +180); for axis x the
-     tall end must be the LOW end (else +180). */
-  const tallAtHi = tallHi >= tallLo;
-  if (axis === 'z' ? !tallAtHi : tallAtHi) rot += 180;
+     for axis z the cab must be the HIGH end (else +180); for axis x the cab
+     must be the LOW end (else +180). */
+  let rot = axis === 'x' ? 90 : 0;
+  if (axis === 'z' ? !cabAtHi : cabAtHi) rot += 180;
   return rot;
 }
 /* Fit a loaded model into a box. rotY (degrees) is applied FIRST so the
@@ -724,6 +780,7 @@ async function play(opts) {
   try { await renderer.init(); }
   catch (e) { root.remove(); throw new Error('The 3D renderer could not start on this device. ' + ((e && e.message) || '')); }
   renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
+  try { const mx = typeof renderer.getMaxAnisotropy === 'function' ? renderer.getMaxAnisotropy() : 8; HAUL_ANISO = Math.max(1, Math.min(16, +mx || 8)); } catch (e) {}
   const scene = new THREE.Scene();
   const sky = new THREE.Color().setHSL(weather.skyH, weather.skyS, weather.skyL);
   scene.background = sky;
@@ -776,6 +833,16 @@ async function play(opts) {
     wheel: new THREE.CylinderGeometry(0.42, 0.42, 0.3, 10), cone: new THREE.ConeGeometry(0.35, 0.9, 8), blinkG: new THREE.BoxGeometry(0.22, 0.16, 0.12),
   };
 
+  /* 🚗 v121v120: every car used to build its own boxes and its own paint, and a
+     despawned car was dropped with its GPU buffers still held — ten to twenty
+     new vehicles a minute for the whole run, which a phone pays for in hitches
+     (the flicker) and, on a long haul, in a road that stops filling. Boxes and
+     paints are shared now, and a car that leaves the road goes back in a pool. */
+  const CAR_G = {};
+  const carGeo = (k, w, h, d) => CAR_G[k] || (CAR_G[k] = new THREE.BoxGeometry(w, h, d));
+  const CAR_M = new Map();
+  const carMat = (c) => { if (!CAR_M.has(c)) CAR_M.set(c, new THREE.MeshLambertMaterial({ color: c })); return CAR_M.get(c); };
+  const BOX_M = new THREE.MeshLambertMaterial({ color: 0xc8c8c8 });
   /* Text on a sign: a 2D canvas painted once, used as a texture. */
   function textPanel(lines, w, h, bg, fg, fontPx) {
     const c = document.createElement('canvas'); c.width = 512; c.height = Math.round(512 * h / w);
@@ -919,24 +986,34 @@ async function play(opts) {
      readability and turned 180° here. */
   function makeCar(truck, color, mat) {
     const outer = new THREE.Group(); const g = new THREE.Group(); g.rotation.y = Math.PI; outer.add(g);
-    const body = mat || new THREE.MeshLambertMaterial({ color });
+    const body = mat || carMat(color);
     if (truck) {
-      const cab = new THREE.Mesh(new THREE.BoxGeometry(2.4, 2.4, 2.6), body); cab.position.set(0, 1.5, 3.2); g.add(cab);
-      const box = new THREE.Mesh(new THREE.BoxGeometry(2.5, 2.8, 8.5), new THREE.MeshLambertMaterial({ color: 0xc8c8c8 })); box.position.set(0, 1.7, -2.4); g.add(box);
-      const gl = new THREE.Mesh(new THREE.BoxGeometry(2.2, 0.8, 0.1), M.glass); gl.position.set(0, 2.1, 4.52); g.add(gl);
+      const cab = new THREE.Mesh(carGeo('cab', 2.4, 2.4, 2.6), body); cab.position.set(0, 1.5, 3.2); cab.userData.body = true; g.add(cab);
+      const box = new THREE.Mesh(carGeo('box', 2.5, 2.8, 8.5), BOX_M); box.position.set(0, 1.7, -2.4); g.add(box);
+      const gl = new THREE.Mesh(carGeo('tgl', 2.2, 0.8, 0.1), M.glass); gl.position.set(0, 2.1, 4.52); g.add(gl);
       for (const [x, z] of [[-1.1, 3.2], [1.1, 3.2], [-1.1, -1], [1.1, -1], [-1.1, -5], [1.1, -5]]) { const w = new THREE.Mesh(G.wheel, M.wheel); w.rotation.z = Math.PI / 2; w.position.set(x, 0.42, z); g.add(w); }
       addBlinkers(g, 1.25, 4.45, -6.6, 1.1);
       outer.userData.halfL = 6.6; outer.userData.halfW = 1.3;
     } else {
-      const b = new THREE.Mesh(new THREE.BoxGeometry(1.9, 0.8, 4.3), body); b.position.y = 0.7; g.add(b);
-      const top = new THREE.Mesh(new THREE.BoxGeometry(1.6, 0.6, 2.2), body); top.position.set(0, 1.4, -0.2); g.add(top);
-      const gl = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.5, 0.1), M.glass); gl.position.set(0, 1.4, 0.95); g.add(gl);
+      const b = new THREE.Mesh(carGeo('car', 1.9, 0.8, 4.3), body); b.position.y = 0.7; b.userData.body = true; g.add(b);
+      const top = new THREE.Mesh(carGeo('roof', 1.6, 0.6, 2.2), body); top.position.set(0, 1.4, -0.2); top.userData.body = true; g.add(top);
+      const gl = new THREE.Mesh(carGeo('cgl', 1.5, 0.5, 0.1), M.glass); gl.position.set(0, 1.4, 0.95); g.add(gl);
       for (const [x, z] of [[-0.9, 1.4], [0.9, 1.4], [-0.9, -1.4], [0.9, -1.4]]) { const w = new THREE.Mesh(G.wheel, M.wheel); w.rotation.z = Math.PI / 2; w.position.set(x, 0.42, z); g.add(w); }
       addBlinkers(g, 0.95, 2.1, -2.1, 0.75);
       outer.userData.halfL = 2.2; outer.userData.halfW = 1.0;
     }
     return outer;
   }
+  const carPool = { t: [], c: [] };
+  function takeCar(truck, color) {
+    const m = carPool[truck ? 't' : 'c'].pop();
+    if (!m) return makeCar(truck, color);
+    const paint = carMat(color);
+    m.children[0].children.forEach((c) => { if (c.userData.body) c.material = paint; });
+    m.rotation.set(0, 0, 0); setBlink(m.children[0], 0, false);
+    return m;
+  }
+  function dropCar(v) { scene.remove(v.mesh); carPool[v.truck ? 't' : 'c'].push(v.mesh); }
   const rigOuter = new THREE.Group(); const rig = new THREE.Group(); rig.rotation.y = Math.PI; rigOuter.add(rig);
   let alive = true;
   const proc = [];   // the procedural rig — hidden, not removed, when a model takes over
@@ -958,15 +1035,20 @@ async function play(opts) {
   (async () => {
     if (!RIG.model || !RIG.model.url) return;
     let truck, size;
-    /* 🚧 A Wrecked or Salvage rig drives the wrecked pack of its model when
-       it has one — crumpled panels, dimmed paint. Anything better drives the
-       clean one. */
-    const wrecked = /^(Wrecked|Salvage)$/.test(String(RIG.condition || '')) && RIG.model.wrecked;
-    try { const raw = await haulLoadGLB(THREE, wrecked ? RIG.model.wrecked : RIG.model.url); if (wrecked) raw.traverse((o) => { if (o.isMesh && o.material && o.material.color) { o.material = o.material.clone(); o.material.color.multiplyScalar(0.55); } }); const fit = haulFit(THREE, raw, { w: 2.6, l: 15.0 }, haulAutoOrient(THREE, raw), true); truck = fit.node; size = fit; }
+    /* 🚧 A Wrecked or Salvage rig drives the SAME full-resolution model with its
+       paint dimmed. v121v120: the 1.1k-tri "wrecked" pack it used to swap in
+       fell apart to a handful of triangles — the owner asked for resolution. */
+    const wrecked = /^(Wrecked|Salvage)$/.test(String(RIG.condition || ''));
+    try { const raw = await haulLoadGLB(THREE, RIG.model.url); if (wrecked) raw.traverse((o) => { if (o.isMesh && o.material && o.material.color) { o.material = o.material.clone(); o.material.color.multiplyScalar(0.6); } }); const fit = haulFit(THREE, raw, { w: 2.6, l: 15.0 }, haulAutoOrient(THREE, raw, RIG.model.url), true); truck = fit.node; size = fit; }
     catch (e) { try { console.warn('[haul] rig model', RIG.model.url, e && e.message); } catch (e2) {} return; }
     if (!alive) return;
     truck.userData.rigModel = true; rig.add(truck);
     proc.forEach((o) => { o.visible = false; });
+    /* 🟧 The blinkers move onto the model's own four corners. They stayed where
+       the old box rig's corners were — inside a 15 m truck, halfway along it,
+       where a player could not tell which side was lit. */
+    { const bl = rig.userData.blink, hw = size.w / 2 + 0.02, fz = size.l / 2 - 0.3, rz = -size.l / 2 + 0.3, by = Math.min(1.3, Math.max(0.8, size.h * 0.3));
+      if (bl) for (const [key, sx] of [['L', 1], ['R', -1]]) bl[key].forEach((m, i) => { m.position.set(sx * hw, by, i === 0 ? fz : rz); m.scale.setScalar(1.8); }); }
     PLAYER_HALF_L = Math.max(BASE_PLAYER_HALF_L, Math.min(7.6, size.l / 2));
     S.camExtra = Math.max(0, (PLAYER_HALF_L - BASE_PLAYER_HALF_L) * 1.15);
     if (rig.userData.guard) { const y = size.h + 0.6; rig.userData.guard[0].position.set(0.6, y, size.l / 2 - 2.2); rig.userData.guard[1].position.set(0.6, y + 0.3, size.l / 2 - 3.3); }
@@ -1008,18 +1090,19 @@ async function play(opts) {
 
   const traffic = [];
   const TRAFFIC_COLORS = [0x7a8aa0, 0xa04040, 0x4060a0, 0x9a9a70, 0x507050, 0xc0c0c0, 0x604080];
-  function spawnTraffic(zAhead) {
+  function spawnTraffic(zAhead, behind) {
     const truck = Math.random() < 0.3;
     const lane = Math.floor(Math.random() * LANES);
     if (hazards.some((h) => Math.abs(h.z - zAhead) < 120)) return;
     // Nothing spawns inside a toll plaza: the rig has to pull away from the
     // booth into clear road, not into a car crawling through the arms.
     if (junctions.some((j) => j.toll && Math.abs(j.zArm - zAhead) < 260)) return;
-    const mesh = makeCar(truck, TRAFFIC_COLORS[Math.floor(Math.random() * TRAFFIC_COLORS.length)]);
-    const cruise = (truck ? 17 : 22) + Math.random() * (truck ? 5 : 11);
+    if (traffic.some((t) => t.lane === lane && Math.abs(t.z - zAhead) < 24)) return;   // checked BEFORE a car is taken
+    // a car coming up from behind must actually be faster than the rig it is joining
+    const cruise = Math.max((truck ? 17 : 22) + Math.random() * (truck ? 5 : 11), behind ? S.speed + 6 + Math.random() * 6 : 0);
+    const mesh = takeCar(truck, TRAFFIC_COLORS[Math.floor(Math.random() * TRAFFIC_COLORS.length)]);
     const v = { mesh, lane, x: laneX(lane), z: zAhead, speed: cruise, cruise, truck, halfL: mesh.userData.halfL, halfW: mesh.userData.halfW, hitCd: 0,
                 phase: 'cruise', toLane: lane, sigDir: 0, sigT: 0, decideCd: 1 + Math.random() * 3 };
-    if (traffic.some((t) => t.lane === lane && Math.abs(t.z - v.z) < 24)) return;
     scene.add(mesh); traffic.push(v);
   }
 
@@ -1044,6 +1127,8 @@ async function play(opts) {
     if (['arrowup', 'arrowdown', 'arrowleft', 'arrowright', 'w', 'a', 's', 'd', ' '].includes(k)) { S.keys[k] = (e.type === 'keydown'); e.preventDefault(); }
   };
   window.addEventListener('keydown', onKey); window.addEventListener('keyup', onKey);
+  /* a read-only window for the test harness (tools/athena-harness/pw-haul.mjs); off unless a page sets window.__HAUL_DEBUG */
+  try { if (window.__HAUL_DEBUG) window.__HAUL_DEBUG.run = { S, traffic, rig, rigOuter, cam, scene, get halfL() { return PLAYER_HALF_L; } }; } catch (e) {}
   root.querySelectorAll('.haul-tbtn').forEach((b) => {
     const t = b.dataset.t;
     const on = (ev) => { ev.preventDefault(); S.touch[t] = true; };
@@ -1250,7 +1335,7 @@ async function play(opts) {
       return true;
     };
     const density = 1 / (30 - Math.min(10, (S.z / total) * 10));
-    const want = Math.floor(320 * density);
+    const want = Math.floor(320 * density * Math.min(1.25, (110 + weather.fogFar) / 490));   // the road is as long as you can see down it
     for (let i = traffic.length - 1; i >= 0; i--) {
       const v = traffic[i];
       v.hitCd = Math.max(0, v.hitCd - dt);
@@ -1287,7 +1372,7 @@ async function play(opts) {
         if (Math.abs(tx - v.x) < 0.08) { v.x = tx; v.phase = 'cruise'; }
       }
       setBlink(v.mesh.children[0], v.sigDir || 0, v.phase !== 'cruise' && (Math.floor(S.t * 3) % 2 === 0));
-      if (v.z < S.z - 70 || v.z > S.z + 420) { scene.remove(v.mesh); traffic.splice(i, 1); continue; }
+      if (v.z < S.z - 70 || v.z > S.z + weather.fogFar + 40) { dropCar(v); traffic.splice(i, 1); continue; }
       // Toll booths: every car stops at the arm in its lane, pays (1.2 s),
       // and rolls on. They queue behind each other like anyone else, and
       // the rig queues behind them — nothing vanishes.
@@ -1300,7 +1385,18 @@ async function play(opts) {
     }
     // Bounded: spawnTraffic can decline (hazard or toll plaza in the window),
     // and an unbounded while spun forever beside a plaza and froze the page.
-    for (let tries = 0; traffic.length < want && tries < 6; tries++) spawnTraffic(S.z + 140 + Math.random() * 260);
+    /* 🚗 v121v120: a car used to appear 140–400 m ahead — inside clear weather's
+       sight line, so it popped into view (the flicker). It comes in at the fog
+       line now. And a rig slower than traffic used to watch every car pull away
+       and nothing replace them ("does not appear after a while"): below
+       20 m/s half the new cars come up from behind the camera instead. */
+    const sightZ = weather.fogFar * 0.85;
+    // the first tick lays the whole visible road with traffic, so a run never opens on an empty highway
+    if (!S.trafficSeeded) { S.trafficSeeded = true; for (let tries = 0; traffic.length < want && tries < want * 4; tries++) spawnTraffic(S.z + 60 + Math.random() * (sightZ - 60), false); }
+    for (let tries = 0; traffic.length < want && tries < 6; tries++) {
+      const behind = S.speed < 20 && Math.random() < 0.5;
+      spawnTraffic(behind ? S.z - 45 - Math.random() * 20 : S.z + sightZ + Math.random() * 30, behind);
+    }
     // ── Raiders: one event at a time, from behind, fast, aimed at the rig.
     const nextRaid = plan.raiders[S.raiderIdx];
     if (!S.raider && nextRaid && S.z > nextRaid.z) {
