@@ -39407,7 +39407,7 @@ body:has(#pack-opener-frame) #chat-overlay {
   // the console. Bump this every deploy alongside sw.js's CACHE_VERSION. If two
   // machines show different stamps, the older one is on stale code (hard-refresh);
   // if they MATCH but content still differs, it is a DATA/publish issue, not code.
-  window.BUILD_VERSION = 'v121v114';
+  window.BUILD_VERSION = 'v121v115';
   try {
     console.info('%cMythic Spellbook ' + window.BUILD_VERSION + '%c — build check: run  __mg.version',
       'font-weight:700;color:#b48cff', 'color:#7d7499');
@@ -138240,33 +138240,15 @@ function renderTitle() {
       // with LIVE online + queue counters so the player sees the world is
       // populated before clicking. Routes to deckSelect with a "go online"
       // intent so the picker auto-fires Find Match instead of solo Battle.
-      { id: 'btn-play-online', icon: '🌐', name: 'Play Online', sub: (() => {
-            const sig = (Profile.cloud && Profile.cloud.signedIn);
-            if (!sig) return 'Sign in to face real players';
-            // 🔒 Live online + queue counts are ADMIN-ONLY — regular players just
-            // get the call-to-action so the population numbers aren't exposed.
-            const _adm = (typeof isAdmin === 'function') && isAdmin();
-            if (!_adm) return 'Find a real opponent · ranked';
-            const online = (typeof LobbyPresence !== 'undefined' && LobbyPresence.count) || 0;
-            const q = (typeof LobbyPresence !== 'undefined' && LobbyPresence.queueCount) || 0;
-            return online > 0
-              ? `🟢 ${online} online · 🔍 ${q} searching`
-              : 'Find a real opponent · ranked';
-          })(), accent: '#b888ff',
-        badge: (() => {
-          // 🔒 Admin-only online badge.
-          if (!((typeof isAdmin === 'function') && isAdmin())) return null;
-          const online = (typeof LobbyPresence !== 'undefined' && LobbyPresence.count) || 0;
-          if (online >= 2) return `🟢 ${online} online`;
-          return null;
-        })(),
-        alertBadge: (() => {
-          // 🔒 Admin-only — pulse if someone else is searching. Hidden from
-          // regular players so queue activity isn't exposed.
-          if (!((typeof isAdmin === 'function') && isAdmin())) return false;
-          const q = (typeof LobbyPresence !== 'undefined' && LobbyPresence.queueCount) || 0;
-          return q > 0;
-        })(),
+      /* 🔒 NO population numbers on this tile — for anyone (owner, v121v115:
+         "do not show how many players are online and searching on the Play
+         Online post, never"). The live online / searching counts live in
+         🛡️ User Management (Arcanum → admin), where _umLobbyLine() paints them. */
+      { id: 'btn-play-online', icon: '🌐', name: 'Play Online',
+        sub: (Profile.cloud && Profile.cloud.signedIn) ? 'Find a real opponent · ranked' : 'Sign in to face real players',
+        accent: '#b888ff',
+        badge: null,
+        alertBadge: false,   // no queue pulse either — the lobby numbers live in User Management
         onclick: () => {
           if (!Profile.cloud || !Profile.cloud.signedIn) {
             showToast('☁ Sign in to play multiplayer.', 2500);
@@ -192030,7 +192012,24 @@ async function _admRelease(handle) {
   AdmUM._busy = false;
   if (AdmUM.sel) _admSelect(AdmUM.sel); else render();
 }
+/* 🌐 The live lobby numbers (moved off the Play Online tile in v121v115):
+   presence count from the lobby channel and the matchmaking queue, both kept
+   fresh by joinLobbyPresence(); the line re-paints in place on every tick
+   while the screen is open (one subscription, never a rebuild). */
+function _umLobbyLine() {
+  const online = (typeof LobbyPresence !== 'undefined' && LobbyPresence.count) | 0;
+  const q = (typeof LobbyPresence !== 'undefined' && LobbyPresence.queueCount) | 0;
+  return '🌐 Lobby right now: 🟢 ' + online + ' online · 🔍 ' + q + ' searching for a match';
+}
+function _umLobbyWatch() {
+  try {
+    if (AdmUM._lobbyUnsub) return;
+    if (typeof onLobbyPresence !== 'function') return;
+    AdmUM._lobbyUnsub = onLobbyPresence(() => { const el = document.getElementById('um-lobby-line'); if (el) el.textContent = _umLobbyLine(); });
+  } catch (e) {}
+}
 function renderUserManagement() {
+  _umLobbyWatch();
   if (!((typeof isAdmin === 'function') && isAdmin())) {
     showToast('🛡️ Admin only.', 2600);
     App.screen = 'title'; App.titleHub = 'arcanum'; setTimeout(() => render(), 0); return;
@@ -192179,6 +192178,7 @@ function renderUserManagement() {
           <div class="small-text ink-dim">${full
             ? '🟢 ' + (AdmUM.onlineCount | 0) + ' online · ' + (AdmUM.total | 0).toLocaleString() + ' accounts · click for full dossier · jail / release'
             : 'Public search mode' + (AdmUM._adminErr ? ' (' + esc(AdmUM._adminErr) + ')' : '') + ' — set the SB_SERVICE Worker secret for the full account directory.'}</div>
+          <div class="small-text" id="um-lobby-line" style="margin-top:0.25rem;color:#b888ff" title="Live lobby presence and the matchmaking queue — moved here from the Play Online tile; players never see these numbers">${_umLobbyLine()}</div>
         </div>
         <button class="btn-secondary btn-mini" id="um-back">← Arcanum</button>
       </div>
@@ -264577,8 +264577,8 @@ render();
        that works everywhere except the one early path nobody tested. It is
        2KB with no dependencies. -->
 <script src="src/econ/peg.js?v=v121q51"></script>
-<script src="src/battle/effects.js?v=v121v114" defer></script>
-<script src="src/phone/handset.js?v=v121v114" defer></script>
+<script src="src/battle/effects.js?v=v121v115" defer></script>
+<script src="src/phone/handset.js?v=v121v115" defer></script>
 <script src="src/battle/combat.js?v=120m4" defer></script>
 <script src="src/battle/targeting.js?v=121e3hex" defer></script>
 <link rel="stylesheet" href="src/sprites/frames.css?v=120k3">
@@ -264627,7 +264627,7 @@ render();
      Bump ?v= on every change — the service worker caches these like any asset. -->
 <link rel="stylesheet" href="src/hubui/hub-modals.css?v=121h0">
 <!-- 💬 tooltips: every title, every hub tile, every camp control, every resource icon (v121v112) -->
-<script src="src/hubui/tips.js?v=v121v114" defer></script>
+<script src="src/hubui/tips.js?v=v121v115" defer></script>
 <script src="src/sprites/frames.js?v=120k3" defer></script>
 <script src="src/sprites/idle.js?v=120k4" defer></script>
 </body>
