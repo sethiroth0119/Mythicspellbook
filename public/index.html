@@ -39394,7 +39394,7 @@ body:has(#pack-opener-frame) #chat-overlay {
   // the console. Bump this every deploy alongside sw.js's CACHE_VERSION. If two
   // machines show different stamps, the older one is on stale code (hard-refresh);
   // if they MATCH but content still differs, it is a DATA/publish issue, not code.
-  window.BUILD_VERSION = 'v121v105';
+  window.BUILD_VERSION = 'v121v106';
   try {
     console.info('%cMythic Spellbook ' + window.BUILD_VERSION + '%c — build check: run  __mg.version',
       'font-weight:700;color:#b48cff', 'color:#7d7499');
@@ -180900,7 +180900,7 @@ function _luniFetchHistory(key) {
     delete Luni._inflight['h:' + k];
     if (error) { if (_luniMissing(error)) Luni.missing = true; Luni.hist[k] = { err: true, rows: [] }; }
     else Luni.hist[k] = { rows: (data || []).map(r => ({ price: +r.price || 0, currency: r.currency || 'cinders', qty: r.qty | 0, at: Date.parse(r.at) || 0 })) };
-    if (App.screen === 'market' && App.marketTab === 'item') render();
+    if ((App.screen === 'market' && App.marketTab === 'item') || App.dvsAssetId) render();   // 💹 the valuation modal reads this too
   }).catch(() => { delete Luni._inflight['h:' + k]; });
 }
 /* local sales (NPC / offline play) are a second source for the same chart */
@@ -182425,6 +182425,26 @@ function renderDvsAssetModal() {
   const range = App.dvsRange || '7d';
   const RANGES = [['24h', 86400000], ['7d', 604800000], ['30d', 2592000000], ['all', 0]];
   const rangeMs = (RANGES.find(r => r[0] === range) || RANGES[1])[1];
+  /* 💹 REAL SALES FIRST (owner, 2026-09-10). sql/115 luni_price_history('card',
+     id) is every sold player listing of this card — the same feed the item
+     pages draw. Fetched through the Luni cache (re-renders when it lands);
+     Aza-priced sales are left out of the Cinder maths. */
+  const _realKey = 'card:' + id;
+  try { if (typeof _luniFetchHistory === 'function') _luniFetchHistory({ kind: 'card', ref: id }); } catch (e) {}
+  const _realRows = (((typeof Luni !== 'undefined' && Luni.hist && Luni.hist[_realKey]) || {}).rows || []).filter(r => r && r.price > 0 && r.currency !== 'aza').slice().sort((a, b) => b.at - a.at);
+  const _realWin = rangeMs ? _realRows.filter(r => (Date.now() - r.at) <= rangeMs) : _realRows;
+  const _realUse = _realWin.length ? _realWin : _realRows;
+  const _realLast = _realRows[0] || null;
+  const _realAvg = _realUse.length ? _realUse.reduce((s, r) => s + r.price, 0) / _realUse.length : null;
+  /* The suggested value FOLLOWS THE MARKET once it has traded: 70% the real
+     average in view, 30% the model — so one real sale moves it, and the model
+     still anchors it against a single outlier. */
+  const _marketCinder = (_realAvg != null) ? Math.round(0.7 * _realAvg + 0.3 * (v.cinder || 0)) : v.cinder;
+  const _realDelta = (ms) => {
+    const rows = (ms ? _realRows.filter(r => (Date.now() - r.at) <= ms) : _realRows).slice().sort((a, b) => a.at - b.at);
+    if (rows.length < 2 || !(rows[0].price > 0)) return null;
+    return +(((rows[rows.length - 1].price - rows[0].price) / rows[0].price) * 100).toFixed(1);
+  };
 
   // 🪖 If this modal was opened from a specific market listing of a UNIT, show
   // the seller's exact copy. Prefer the frozen snapshot taken at list time; for
@@ -182481,7 +182501,10 @@ function renderDvsAssetModal() {
     </div>`).join('');
 
   // Price-history sparkline from the snapshot trail.
-  const series = dvsSeries(id, rangeMs);
+  /* 💹 The chart is REAL SALES when there are two or more in view; the hourly
+     model snapshots only fill in for a card nobody has traded yet. */
+  const _realSeries = _realUse.length >= 2 ? _realUse.slice().sort((a, b) => a.at - b.at).map(r => r.price) : null;
+  const series = _realSeries || dvsSeries(id, rangeMs);
   let chart;
   if (series.length >= 2) {
     const w = 640, h = 120, pad = 6;
@@ -182503,15 +182526,20 @@ function renderDvsAssetModal() {
         <polyline points="${pts.join(' ')}" fill="none" stroke="${stroke}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"></polyline>
       </svg>`;
   } else {
-    chart = `<div class="dvs-row-sub" style="padding:1.2rem 0;text-align:center">Not enough price history yet — snapshots accrue hourly, so the chart fills in as the market ticks.</div>`;
+    chart = `<div class="dvs-row-sub" style="padding:1.2rem 0;text-align:center">${_realRows.length === 1 ? 'One real sale so far — the chart draws from the second player sale on.' : 'Not enough price history yet — player sales draw this chart; until then hourly model snapshots fill it in.'}</div>`;
   }
+  const chartNote = _realSeries ? `<div class="dvs-row-sub">${_realUse.length} real player sale${_realUse.length === 1 ? '' : 's'} in view · average <b>${Math.round(_realAvg).toLocaleString()}</b> 🔥</div>` : '';
 
   const sales = (Market.salesLog || []).filter(s => s.itemId === id || (card && s.itemName === card.name)).slice(0, 6);
-  const salesHtml = sales.length
+  const salesHtml = _realRows.length
+    ? _realRows.slice(0, 6).map(r => `<div class="dvs-kv"><span class="k">${escapeHtml(new Date(r.at).toLocaleDateString())} · player sale</span><span class="v"><span class="cinder-icon"></span> ${Math.round(r.price).toLocaleString()}</span></div>`).join('')
+      + `<div class="dvs-row-sub">Last sold <b>${Math.round(_realLast.price).toLocaleString()}</b> 🔥 · ${_realRows.length} recorded player sale${_realRows.length === 1 ? '' : 's'}${_realRows.length > 6 ? ' (latest 6 shown)' : ''}</div>`
+    : sales.length
     ? sales.map(s => `<div class="dvs-kv"><span class="k">${escapeHtml(s.buyerName || 'Buyer')} ← ${escapeHtml(s.sellerName || 'Seller')}</span><span class="v"><span class="cinder-icon"></span> ${s.price || 0}</span></div>`).join('')
-    : '<div class="dvs-row-sub">No recorded sales yet.</div>';
+    : `<div class="dvs-row-sub">No recorded sales yet${(typeof Luni !== 'undefined' && Luni.missing) ? '' : ' — a player sale shows here the moment it clears'}.</div>`;
 
-  const d24 = dvsDelta(id, 86400000), d7 = dvsDelta(id, 604800000), d30 = dvsDelta(id, 2592000000);
+  /* 💹 Deltas from real sales when there are two in the window; the model otherwise. */
+  const d24 = _realDelta(86400000) ?? dvsDelta(id, 86400000), d7 = _realDelta(604800000) ?? dvsDelta(id, 604800000), d30 = _realDelta(2592000000) ?? dvsDelta(id, 2592000000);
 
   return `
     <div class="dvs-modal-overlay" id="dvs-modal-overlay">
@@ -182527,8 +182555,8 @@ function renderDvsAssetModal() {
               <span class="dvs-big-score-label"> / 100 Value Score</span>
             </div>
             <div class="dvs-value-row">
-              <div class="dvs-value-box"><div class="v"><span class="cinder-icon"></span> ${v.cinder}</div><div class="l">Suggested Cinder Value</div></div>
-              <div class="dvs-value-box"><div class="v">${_dvsUsd(v.cinder)}</div><div class="l">Suggested USD</div></div>
+              <div class="dvs-value-box" title="${_realAvg != null ? '70% the average real player sale in view (' + Math.round(_realAvg).toLocaleString() + ' 🔥) + 30% the model (' + v.cinder + ' 🔥)' : 'The model — no player sale of this card yet'}"><div class="v"><span class="cinder-icon"></span> ${_marketCinder.toLocaleString()}</div><div class="l">${_realAvg != null ? 'Market Cinder Value' : 'Suggested Cinder Value'}</div></div>
+              <div class="dvs-value-box"><div class="v">${_dvsUsd(_marketCinder)}</div><div class="l">${_realAvg != null ? 'Market USD' : 'Suggested USD'}</div></div>
             </div>
           </div>
         </div>
@@ -182542,7 +182570,7 @@ function renderDvsAssetModal() {
           <div class="dvs-range-btns">
             ${RANGES.map(([k]) => `<button class="dvs-range-btn ${range === k ? 'active' : ''}" data-dvs-range="${k}">${k.toUpperCase()}</button>`).join('')}
           </div>
-          ${chart}
+          ${chart}${chartNote}
           <div style="display:flex;gap:0.6rem;margin-top:0.5rem;flex-wrap:wrap">
             <span class="dvs-stat-pill">24h ${_dvsDeltaHtml(d24)}</span>
             <span class="dvs-stat-pill">7d ${_dvsDeltaHtml(d7)}</span>
@@ -264173,8 +264201,8 @@ render();
        that works everywhere except the one early path nobody tested. It is
        2KB with no dependencies. -->
 <script src="src/econ/peg.js?v=v121q51"></script>
-<script src="src/battle/effects.js?v=v121v105" defer></script>
-<script src="src/phone/handset.js?v=v121v105" defer></script>
+<script src="src/battle/effects.js?v=v121v106" defer></script>
+<script src="src/phone/handset.js?v=v121v106" defer></script>
 <script src="src/battle/combat.js?v=120m4" defer></script>
 <script src="src/battle/targeting.js?v=121e3hex" defer></script>
 <link rel="stylesheet" href="src/sprites/frames.css?v=120k3">
