@@ -137,7 +137,7 @@ const FARM_IDS = ['animalFeed', 'eggs', 'feathers', 'rawMilk', 'meat', 'wool', '
 
 /* ── 5. the modules and their bridges ────────────────────────────────────── */
 {
-  ok(/<script type="module" src="src\/haul\/index\.js\?v=v121v94haul1"><\/script>/.test(SRC), 'Highway Haul is loaded');
+  ok(/<script type="module" src="src\/haul\/index\.js\?v=v121v\d+haul\d+"><\/script>/.test(SRC), 'Highway Haul is loaded (any haul buster — v121v109 moved it to haul2)');
   ok(/<script type="module" src="src\/farm\/index\.js\?v=v121v\d+farm\d+"><\/script>/.test(SRC), 'the Homestead Farm is loaded (any farm buster — v121v102 moved it to farm2)');
   ok(/window\.MythicHaul = MythicHaul;/.test(HAUL) && !/getElementById\('(st|open)'\)/.test(HAUL), 'the haul module publishes window.MythicHaul and the test-page lines are gone');
   ok(/window\.MythicFarm = api;/.test(FARM) && !/mount\(document\.getElementById\('app'\)\)/.test(FARM), 'the farm module publishes window.MythicFarm and the sandbox auto-mount is gone');

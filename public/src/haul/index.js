@@ -548,6 +548,7 @@ async function play(opts) {
         <button class="haul-tbtn" data-t="right">▶</button>
       </div>
       <div class="haul-flash" id="haul-flash"></div>
+      <div class="haul-merge" id="haul-merge"><div class="haul-merge-txt"></div><div class="haul-merge-sub">merging onto the new highway</div></div>
       <div class="haul-pause" id="haul-pause" hidden>
         <div class="haul-pause-card">
           <h3>Paused</h3>
@@ -586,7 +587,16 @@ async function play(opts) {
     rail: new THREE.MeshLambertMaterial({ color: 0x9aa4b0 }),
     post: new THREE.MeshLambertMaterial({ color: 0x555a60 }),
     ground: new THREE.MeshLambertMaterial({ color: 0x2a2620 }),
-    bld: [0x4a5068, 0x5a4848, 0x445a50, 0x605840].map((c) => new THREE.MeshLambertMaterial({ color: c })),
+    /* 🛣 One palette per HIGHWAY. Taking an exit moves the rig onto the next
+       road, and a new road has its own buildings — the palette index steps
+       with every exit taken (see the merge below). */
+    bldSets: [
+      [0x4a5068, 0x5a4848, 0x445a50, 0x605840],
+      [0x6a4a3a, 0x7a5a48, 0x5a4a40, 0x8a6a50],
+      [0x3a4a5a, 0x4a5a6a, 0x2a3a4a, 0x5a6a7a],
+      [0x4a5a3a, 0x5a6a4a, 0x3a4a2a, 0x6a7a5a],
+    ].map((set) => set.map((c) => new THREE.MeshLambertMaterial({ color: c }))),
+    get bld() { return this.bldSets[legPal % this.bldSets.length]; },
     win: new THREE.MeshBasicMaterial({ color: 0xffc070 }),
     wheel: new THREE.MeshLambertMaterial({ color: 0x151515 }),
     glass: new THREE.MeshLambertMaterial({ color: 0x8fd0ff }),
@@ -667,6 +677,9 @@ async function play(opts) {
     scene.add(g);
     const seg = { g, z0 }; placeSegment(seg, z0); return seg;
   }
+  /* 🛣 The highway the rig is on: a seed that reshuffles every segment's props
+     and a palette index. Both step when a correct exit is taken. */
+  let legSeed = 0, legPal = 0;
   function rampAt(z) { return junctions.some((j) => z > j.z - RAMP_IN && z < j.z + RAMP_OUT); }
   function placeSegment(seg, z0) {
     seg.z0 = z0;
@@ -681,7 +694,7 @@ async function play(opts) {
     seg.g.userData.parts.railR.position.x = ramp ? LANE_W : 0;
     const P = seg.g.userData.props;
     while (P.children.length) { const c = P.children.pop(); P.remove(c); c.geometry.dispose(); }
-    const rnd = mulberry(Math.floor(z0 / SEG_LEN) * 7919 + Math.floor(km * 13));
+    const rnd = mulberry(Math.floor(z0 / SEG_LEN) * 7919 + Math.floor(km * 13) + (legSeed | 0));
     const n = 3 + Math.floor(rnd() * 4);
     for (let i = 0; i < n; i++) {
       const side = rnd() < 0.5 ? -1 : 1;
@@ -805,7 +818,7 @@ async function play(opts) {
 
   // ── State ─────────────────────────────────────────────────────────────────
   const S = {
-    z: 0, x: 0, speed: 0, heading: 0, t: 0, cargo: 100, cc: 0, cr: 0, hz: 0, wrongExits: 0, detourM: 0, total,
+    z: 0, x: 0, speed: 0, heading: 0, t: 0, cargo: 100, cc: 0, cr: 0, hz: 0, wrongExits: 0, detourM: 0, total, merge: null,
     railCd: 0, steer: 0, done: false, paused: false, abandoned: false, started: false, jIdx: 0, tollsHit: 0, tollsPaid: [],
     raider: null, raiderIdx: 0, raidersBeaten: 0, raiderHits: 0, guardUsed: false, tracerT: 0,
     keys: {}, touch: { left: false, right: false, brake: false },
@@ -921,10 +934,19 @@ async function play(opts) {
     const jNow = junctions[S.jIdx];
     const rampOpen = !!(jNow && jNow.viaExit && S.z > jNow.z - RAMP_IN && S.z < jNow.z + RAMP_OUT);
     setBlink(rig, steer || (rampOpen ? 1 : 0), (steer !== 0 || rampOpen) && (Math.floor(S.t * 3) % 2 === 0));
+    // 🛣 Merging onto the next highway: ease the rig from the ramp into the
+    //    slow lane over the merge, and hold the rails off while it does.
+    if (S.merge) {
+      S.merge.t += dt;
+      const k = Math.min(1, S.merge.t / S.merge.dur), e = k * k * (3 - 2 * k);
+      S.x = S.merge.fromX + (laneX(LANES - 1) - S.merge.fromX) * e;
+      S.heading *= 0.8;
+      if (k >= 1) { S.merge = null; hideMerge(); flash('🛣 ' + String(j0Name()).toUpperCase() + ' HIGHWAY'); }
+    }
     // Rails. The right rail moves out a lane inside a ramp window.
     S.railCd = Math.max(0, S.railCd - dt);
     const rl = rightLimit();
-    if (S.x + PLAYER_HALF_W > rl || -S.x + PLAYER_HALF_W > HALF) {
+    if (!S.merge && (S.x + PLAYER_HALF_W > rl || -S.x + PLAYER_HALF_W > HALF)) {
       S.x = S.x > 0 ? rl - PLAYER_HALF_W : -(HALF - PLAYER_HALF_W);
       S.heading *= 0.3; S.steer *= 0.5;   // the rail straightens you out
       if (S.railCd <= 0) { S.cr++; S.railCd = 0.7; damage(RAIL_HIT_DMG * (0.5 + S.speed / MAX_SPEED) * cls.railMul); flash('🛤 RAIL'); }
@@ -953,7 +975,18 @@ async function play(opts) {
         gate.position.set(centreX(S.total), 0, -S.total);
         flash('✖ WRONG ' + (tookExit ? 'EXIT' : 'TURN') + ' — REROUTING +' + detour + ' m');
       }
-      if (tookExit) { S.x = Math.min(S.x, ROAD_W / 2 - PLAYER_HALF_W - 0.2); }
+      if (tookExit) {
+        if (j.viaExit && !j.last) {
+          /* 🛣 A REAL EXIT (owner, 2026-09-11): the ramp leaves this highway for
+             the next one. New scenery seed and palette on every segment, a
+             merge overlay naming the road, and the rig eased into the slow
+             lane over the merge instead of being clamped back where it was. */
+          legSeed = hash(j.nextName + '|' + S.jIdx); legPal = legPal + 1;
+          for (const sg of segs) placeSegment(sg, sg.z0);
+          S.merge = { t: 0, dur: 2.4, fromX: S.x, name: j.nextName };
+          showMerge('↗ EXIT → ' + String(j.nextName).toUpperCase() + ' HIGHWAY');
+        } else { S.x = Math.min(S.x, ROAD_W / 2 - PLAYER_HALF_W - 0.2); }
+      }
       S.jIdx++;
     }
     // ── Toll plazas: a full stop at the booth, then the arms lift.
@@ -1119,6 +1152,10 @@ async function play(opts) {
   }
   function damage(pct) { S.cargo = Math.max(0, S.cargo - pct * up.bed * RIG.armor); if (S.cargo <= 0) { flash('💥 CARGO LOST'); setTimeout(finish, 600); } }
   function flash(txt) { const f = $('haul-flash'); f.textContent = txt; f.classList.add('on'); flashT = 0.7; }
+  /* 🛣 the merge overlay: a short dark wash with the new highway's name */
+  function showMerge(txt) { const m = $('haul-merge'); if (!m) return; m.querySelector('.haul-merge-txt').textContent = txt; m.classList.add('on'); }
+  function hideMerge() { const m = $('haul-merge'); if (m) m.classList.remove('on'); }
+  function j0Name() { try { const jj = junctions[S.jIdx - 1]; return (jj && jj.nextName) || 'OPEN'; } catch (e) { return 'OPEN'; } }
   function draw() {
     const cx = centreX(S.z);
     const yaw = -Math.atan2((centreX(S.z + 1) - centreX(S.z - 1)) / 2, 1);
@@ -1200,6 +1237,10 @@ const GAME_CSS = `
 .haul-is-touch .haul-touch{display:flex}
 .haul-tbtn{pointer-events:auto;width:88px;height:88px;border-radius:50%;border:2px solid rgba(255,255,255,.25);background:rgba(20,22,30,.7);color:#fff;font-size:1.6rem;font-weight:800;touch-action:none}
 .haul-tbtn[data-t=brake]{width:120px;border-radius:20px;font-size:1rem;background:rgba(120,30,30,.7)}
+.haul-merge{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:.4rem;background:radial-gradient(ellipse at center,rgba(0,0,0,.35),rgba(0,0,0,.85));opacity:0;transition:opacity .35s;pointer-events:none;z-index:6}
+.haul-merge.on{opacity:1}
+.haul-merge-txt{font-size:2.2rem;font-weight:900;color:#ffd166;text-shadow:0 0 22px #000;letter-spacing:.06em;text-align:center}
+.haul-merge-sub{font-size:.9rem;color:#cfd6e4;letter-spacing:.2em;text-transform:uppercase}
 .haul-flash{position:absolute;left:50%;top:38%;transform:translate(-50%,-50%);font-size:2rem;font-weight:900;color:#ff6a4a;text-shadow:0 0 18px #000;opacity:0;transition:opacity .15s;text-align:center;max-width:90vw}
 .haul-flash.on{opacity:1}
 .haul-countdown{position:absolute;left:50%;top:45%;transform:translate(-50%,-50%);font-size:6rem;font-weight:900;color:#ffd166;text-shadow:0 0 30px #000}

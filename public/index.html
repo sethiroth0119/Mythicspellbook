@@ -21393,6 +21393,19 @@
     border: 1px solid #2a201c; padding: 0.5rem;
   }
   .cx-chart-wrap svg { width: 100%; height: 100%; display: block; }
+  /* 🕯 candlesticks — green up, red down; the hit rect makes a whole column hoverable */
+  .cx-candle line { stroke-width: 1.2; }
+  .cx-candle.up line, .cx-candle.up rect:not(.hit) { stroke: #4ade80; fill: #4ade80; }
+  .cx-candle.down line, .cx-candle.down rect:not(.hit) { stroke: #ff3a1f; fill: #ff3a1f; }
+  .cx-candle:hover rect:not(.hit) { filter: brightness(1.4); }
+  .cx-candle:hover .hit { fill: rgba(255,255,255,0.05); }
+  #cx-candle-tip { position: fixed; z-index: 2147483646; pointer-events: none; opacity: 0; transition: opacity .08s;
+    background: rgba(12,9,8,0.96); border: 1px solid rgba(255,120,80,0.45); border-radius: 4px; padding: 0.45rem 0.6rem;
+    font-family: 'Roboto Mono', 'Courier New', monospace; font-size: 0.72rem; color: #f2e6d8; line-height: 1.45; min-width: 150px; }
+  #cx-candle-tip.on { opacity: 1; }
+  #cx-candle-tip .t { color: #a89878; font-size: 0.64rem; margin-bottom: 0.25rem; letter-spacing: 0.06em; }
+  #cx-candle-tip span { display: inline-block; width: 1.1em; color: #a89878; }
+  #cx-candle-tip .up { color: #4ade80; } #cx-candle-tip .down { color: #ff6a4a; }
   .cx-chart-line {
     fill: none; stroke: #ff3a1f; stroke-width: 1.5;
     filter: drop-shadow(0 0 4px rgba(255,58,31,0.6));
@@ -39394,7 +39407,7 @@ body:has(#pack-opener-frame) #chat-overlay {
   // the console. Bump this every deploy alongside sw.js's CACHE_VERSION. If two
   // machines show different stamps, the older one is on stale code (hard-refresh);
   // if they MATCH but content still differs, it is a DATA/publish issue, not code.
-  window.BUILD_VERSION = 'v121v108';
+  window.BUILD_VERSION = 'v121v109';
   try {
     console.info('%cMythic Spellbook ' + window.BUILD_VERSION + '%c — build check: run  __mg.version',
       'font-weight:700;color:#b48cff', 'color:#7d7499');
@@ -220421,6 +220434,94 @@ function _cxChartSVG(data, w, h) {
     '</svg>';
 }
 
+/* 🕯 CANDLESTICKS (owner, 2026-09-11). The chart is the shared tape bucketed
+   into open/high/low/close bars; hovering a candle shows its prices. The
+   line chart above stays for an asset with fewer than two candles. */
+const CX_CANDLES_PER_RANGE = { '1H': 12, '6H': 24, '24H': 24, '7D': 28, '30D': 30, 'ALL': 40 };
+function _cxHistoryPts(id, range) {
+  const out = [];
+  try {
+    const e = CXHist.series[id + '|' + (range || '24H')];
+    if (e && e.rows && e.rows.length >= 2) for (const r of e.rows) out.push({ px: +r.px, at: +r.at });
+    else {
+      const cx = _cxEnsureHistory();
+      const rs = CX_RANGE_SECONDS[range] || CX_RANGE_SECONDS['24H'];
+      const cutoff = Date.now() - (rs === Infinity ? 1e15 : rs * 1000);
+      for (const p of (cx.history[id] || [])) if (p.ts >= cutoff) out.push({ px: +p.px, at: +p.ts });
+    }
+    const cur = +(getMarketPrice(id).current) || 0;
+    if (cur > 0) out.push({ px: cur, at: Date.now() });
+  } catch (e) {}
+  return out.filter(p => p.px > 0 && p.at > 0).sort((a, b) => a.at - b.at);
+}
+function _cxCandles(pts, n) {
+  if (!Array.isArray(pts) || pts.length < 2) return [];
+  const t0 = pts[0].at, t1 = pts[pts.length - 1].at;
+  const span = Math.max(1, t1 - t0), w = span / Math.max(1, n);
+  const buckets = [];
+  for (const p of pts) {
+    const i = Math.min(n - 1, Math.floor((p.at - t0) / w));
+    const b = buckets[i] || (buckets[i] = { i, t0: t0 + i * w, t1: t0 + (i + 1) * w, o: p.px, h: p.px, l: p.px, c: p.px, n: 0 });
+    if (p.px > b.h) b.h = p.px; if (p.px < b.l) b.l = p.px; b.c = p.px; b.n++;
+  }
+  return buckets.filter(Boolean);
+}
+function _cxCandleSVG(candles, w, h) {
+  w = w || 800; h = h || 280;
+  let min = Infinity, max = -Infinity;
+  for (const c of candles) { if (c.l < min) min = c.l; if (c.h > max) max = c.h; }
+  const range = (max - min) || (max * 0.02) || 1;
+  const y = (v) => h - 20 - ((v - min) / range) * (h - 40);
+  const slot = w / candles.length, bw = Math.max(2, slot * 0.62);
+  window._cxCandleData = candles;
+  const bars = candles.map((c, i) => {
+    const x = i * slot + slot / 2, up = c.c >= c.o;
+    const top = y(Math.max(c.o, c.c)), bot = y(Math.min(c.o, c.c));
+    return '<g class="cx-candle ' + (up ? 'up' : 'down') + '" data-cxc="' + i + '">' +
+      '<rect class="hit" x="' + (i * slot).toFixed(1) + '" y="0" width="' + slot.toFixed(1) + '" height="' + h + '" fill="transparent"/>' +
+      '<line x1="' + x.toFixed(1) + '" x2="' + x.toFixed(1) + '" y1="' + y(c.h).toFixed(1) + '" y2="' + y(c.l).toFixed(1) + '"/>' +
+      '<rect x="' + (x - bw / 2).toFixed(1) + '" y="' + top.toFixed(1) + '" width="' + bw.toFixed(1) + '" height="' + Math.max(1.2, bot - top).toFixed(1) + '"/></g>';
+  }).join('');
+  return '<svg viewBox="0 0 ' + w + ' ' + h + '" preserveAspectRatio="none" class="cx-candles">' +
+    '<g class="cx-chart-axis">' +
+    '<line x1="0" y1="' + (h * 0.25) + '" x2="' + w + '" y2="' + (h * 0.25) + '"/>' +
+    '<line x1="0" y1="' + (h * 0.5)  + '" x2="' + w + '" y2="' + (h * 0.5)  + '"/>' +
+    '<line x1="0" y1="' + (h * 0.75) + '" x2="' + w + '" y2="' + (h * 0.75) + '"/>' +
+    '<text x="6" y="' + (h * 0.25 - 4) + '">' + _cxFmt(max) + '</text>' +
+    '<text x="6" y="' + (h * 0.5 - 4)  + '">MID</text>' +
+    '<text x="6" y="' + (h * 0.75 - 4) + '">' + _cxFmt(min) + '</text>' +
+    '</g>' + bars + '</svg>';
+}
+function _cxChartHtml(id, range, series) {
+  try {
+    const candles = _cxCandles(_cxHistoryPts(id, range), CX_CANDLES_PER_RANGE[range] || 24);
+    if (candles.length >= 2) return _cxCandleSVG(candles);
+  } catch (e) {}
+  return _cxChartSVG(series);
+}
+function _cxCandleTipHtml(c) {
+  const up = c.c >= c.o, d = c.o > 0 ? ((c.c - c.o) / c.o) * 100 : 0;
+  const fmtT = (t) => { try { return new Date(t).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }); } catch (e) { return ''; } };
+  return '<div class="t">' + fmtT(c.t0) + ' → ' + fmtT(c.t1) + ' · ' + c.n + ' tick' + (c.n === 1 ? '' : 's') + '</div>' +
+    '<div><span>O</span> ' + _cxFmt(c.o) + '</div><div><span>H</span> ' + _cxFmt(c.h) + '</div><div><span>L</span> ' + _cxFmt(c.l) + '</div><div><span>C</span> ' + _cxFmt(c.c) + '</div>' +
+    '<div class="' + (up ? 'up' : 'down') + '">' + (up ? '▲ +' : '▼ ') + d.toFixed(2) + '%</div>';
+}
+function _cxBindCandleTip() {
+  if (window._cxTipBound) return; window._cxTipBound = true;
+  let tip = null;
+  const ensure = () => { if (!tip) { tip = document.createElement('div'); tip.id = 'cx-candle-tip'; document.body.appendChild(tip); } return tip; };
+  document.addEventListener('mousemove', (ev) => {
+    const g = ev.target && ev.target.closest ? ev.target.closest('[data-cxc]') : null;
+    if (!g || !window._cxCandleData) { if (tip) tip.classList.remove('on'); return; }
+    const c = window._cxCandleData[g.getAttribute('data-cxc') | 0]; if (!c) return;
+    const el = ensure(); el.innerHTML = _cxCandleTipHtml(c); el.classList.add('on');
+    const pad = 14, W = el.offsetWidth || 180, H = el.offsetHeight || 120;
+    let x = ev.clientX + pad, yy = ev.clientY - H - pad;
+    if (x + W > window.innerWidth - 8) x = ev.clientX - W - pad; if (yy < 8) yy = ev.clientY + pad;
+    el.style.left = x + 'px'; el.style.top = yy + 'px';
+  }, { passive: true });
+  document.addEventListener('mouseleave', () => { if (tip) tip.classList.remove('on'); });
+}
 function _cxFmt(n) {
   if (typeof n !== 'number' || !isFinite(n)) return '—';
   if (n >= 100000) return n.toLocaleString('en-US', { maximumFractionDigits: 0 });
@@ -236773,7 +236874,7 @@ function renderCrashExchange() {
         (_shared ? '<div class="cx-tb-ind" title="' + (CXHist.series[focus.id + '|' + range].rows.length) + ' shared points in this range">● LIVE</div>' : '') +
       '</div>' +
       reserveHtml +
-      '<div class="cx-chart-wrap">' + _cxChartSVG(series) + '</div>';
+      '<div class="cx-chart-wrap">' + _cxChartHtml(focus.id, range, series) + '</div>';
 
     // -------- 6. TRADE BOXES --------
     const tradable = (mkt.tradable && (typeof _SALVAGE_BY_ID !== 'undefined' && _SALVAGE_BY_ID[focus.id]));
@@ -237040,6 +237141,7 @@ function renderCrashExchange() {
   document.querySelectorAll('[data-cx-range]').forEach(b => {
     b.onclick = () => { App._cxRange = b.dataset.cxRange; render(); };
   });
+  try { _cxBindCandleTip(); } catch (e) {}   // 🕯 hover a candle → its prices
 
   // Asset row click → focus
   document.querySelectorAll('[data-cx-asset]').forEach(row => {
@@ -263881,7 +263983,7 @@ render();
      ⚠ Bump ?v= on every change — the service worker caches /src/* like any
        other static asset, and a missed bump ships invisibly. -->
 <script type="module" src="src/mercenary/index.js?v=v121v66merc1"></script>
-<script type="module" src="src/haul/index.js?v=v121v94haul1"></script>
+<script type="module" src="src/haul/index.js?v=v121v109haul2"></script>
 <script type="module" src="src/farm/index.js?v=v121v103farm3"></script>
 <!-- 🍔 MYTHIC KITCHEN — the fast-food / drive-thru sim. Registers
      window.MythicKitchen (+ __mk) and is INERT until the title tile opens it:
@@ -264274,8 +264376,8 @@ render();
        that works everywhere except the one early path nobody tested. It is
        2KB with no dependencies. -->
 <script src="src/econ/peg.js?v=v121q51"></script>
-<script src="src/battle/effects.js?v=v121v108" defer></script>
-<script src="src/phone/handset.js?v=v121v108" defer></script>
+<script src="src/battle/effects.js?v=v121v109" defer></script>
+<script src="src/phone/handset.js?v=v121v109" defer></script>
 <script src="src/battle/combat.js?v=120m4" defer></script>
 <script src="src/battle/targeting.js?v=121e3hex" defer></script>
 <link rel="stylesheet" href="src/sprites/frames.css?v=120k3">
