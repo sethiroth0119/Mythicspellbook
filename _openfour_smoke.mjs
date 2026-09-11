@@ -81,10 +81,12 @@ const SHELL = readFileSync('./public/corp/shell.jsx', 'utf8');
     .map(r => /label: '([^']*)'/.exec(r)[1]);
   ok(new Set(labels).size === 2, 'and they no longer share a name', labels.join(' | '));
   ok(labels.includes('Haulage Board'), 'the Transportation Company keeps the board\'s own name', labels.join(' | '));
-  ok(/trashcrusher: \{ label: 'Post a Scrap Run'/.test(SHELL),
-    'and the crusher\'s row says what the crusher does there');
-  ok(/action: 'openHaulBoard'/.test(SHELL.slice(SHELL.indexOf('trashcrusher: {'), SHELL.indexOf('trashcrusher: {') + 120)),
-    'the DESTINATION is unchanged — the crusher posting to the shared board is the recorded design, not the defect');
+  /* v121v117 (owner): the crusher's FIRST door is its own mini-game, the Foundry; posting a scrap
+     run to the shared board is the second door, so the design above still holds. */
+  ok(/\{ label: 'Post a Scrap Run',\s+ico: '🚛', action: 'openHaulBoard' \}/.test(SHELL.slice(SHELL.indexOf('trashcrusher: ['), SHELL.indexOf('trashcrusher: [') + 400)),
+    'and the crusher\'s scrap-run row says what the crusher does there');
+  ok(/\{ label: 'Trash Crusher',\s+ico: '🗜️', action: 'openFoundry' \}/.test(SHELL.slice(SHELL.indexOf('trashcrusher: ['), SHELL.indexOf('trashcrusher: [') + 400)),
+    'the crusher\'s own mini-game (the Foundry) is the first door; the board stays the second');
 }
 
 /* ── 4. THE HUNT STOPS HANDING BACK THE SAME CARD ────────────────────────── */

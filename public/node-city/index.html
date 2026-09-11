@@ -9,7 +9,7 @@
      believed the file was already live. Only a CONTENT change moves the hash
      and forces a re-upload, so bump this stamp whenever the city 404s, and
      probe it (grep NC_BUILD on the served page) to prove the deploy landed. -->
-<script>window.NC_BUILD = "v121v116-athena";</script>
+<script>window.NC_BUILD = "v121v117-foundry";</script>
 <!-- ════════════════════════════════════════════════════════════════════════
      NODE CITY — SimCity-style settlement layer for Mythic Spellbook.
      Three.js WebGPU (auto-falls back to WebGL2). Realistic sun/moon cycle.
@@ -3009,10 +3009,15 @@ const MythicCityBridge = (() => {
            own city with the founder's anchors. A city is rung with the nodes
            its owner licensed; a row with no owner_id (older schema) is kept. */
         let me = null; try { me = (P.cityOwnerIdentity() || {}).viewerId || null; } catch (e) {}
-        if (FR && Array.isArray(FR.nodes) && FR.nodes.length) {
-          const mine = FR.nodes.filter(n => n && (!me || !n.owner_id || String(n.owner_id) === String(me)));
-          return mine.map(anchorRow);
-        }
+        /* 🔗 …plus every node LINKED to my city (owner, 2026-09-11): a corporation
+           member whose licences the founder holds owns none by owner_id, and
+           their ring emptied under the rule above. The parent reads
+           city_node_links for the viewer and hands the rows over. */
+        const mine = (FR && Array.isArray(FR.nodes)) ? FR.nodes.filter(n => n && (!me || !n.owner_id || String(n.owner_id) === String(me))) : [];
+        let linked = []; try { if (typeof P.cityLinkedNodes === 'function') linked = (await P.cityLinkedNodes()) || []; } catch (e) {}
+        const seen = new Set(mine.map(n => String(n.id)));
+        linked.forEach(n => { if (n && n.id && !seen.has(String(n.id))) { seen.add(String(n.id)); mine.push(n); } });
+        if (mine.length) return mine.map(anchorRow);
       } catch (e) {}
       return [];
     }

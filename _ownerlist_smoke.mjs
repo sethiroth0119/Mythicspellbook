@@ -116,13 +116,16 @@ ok(/p\.node_id, p\.role, p\.available, cp\.population/.test(SQL) && !/p\.availab
 }
 
 /* ── 5. anchors are the viewer's own nodes ── */
-ok(/let me = null; try \{ me = \(P\.cityOwnerIdentity\(\) \|\| \{\}\)\.viewerId \|\| null; \} catch \(e\) \{\}\n\s*if \(FR && Array\.isArray\(FR\.nodes\) && FR\.nodes\.length\) \{\n\s*const mine = FR\.nodes\.filter\(n => n && \(!me \|\| !n\.owner_id \|\| String\(n\.owner_id\) === String\(me\)\)\);\n\s*return mine\.map\(anchorRow\);/.test(NC), 'fetchNodes (own city) keeps only nodes the viewer licensed; rows without owner_id are kept');
+ok(/const mine = \(FR && Array\.isArray\(FR\.nodes\)\) \? FR\.nodes\.filter\(n => n && \(!me \|\| !n\.owner_id \|\| String\(n\.owner_id\) === String\(me\)\)\) : \[\];/.test(NC) && /linked\.forEach\(n => \{ if \(n && n\.id && !seen\.has\(String\(n\.id\)\)\)/.test(NC), 'fetchNodes (own city) keeps the nodes the viewer licensed (rows without owner_id kept) PLUS the nodes linked to their city (v121v117 — a corp member whose licences the founder holds)');
 {
-  const body = NC.slice(NC.indexOf('  B.fetchNodes = async () => {'), NC.indexOf('  B.fetchNodes = async () => {') + 1400);
+  const body = NC.slice(NC.indexOf('  B.fetchNodes = async () => {'), NC.indexOf('  B.fetchNodes = async () => {') + 2600);   // the linked-node union (v121v117) made the function longer
   const seg = body.slice(0, body.indexOf("if (B.mode === 'message')"));
   const g = { B: { mode: 'parent' }, P: { cityOwnerIdentity: () => ({ viewerId: 'me', isOwner: true }), FoundationReserve: { nodes: [{ id: 'a', owner_id: 'me' }, { id: 'b', owner_id: 'founder' }, { id: 'c' }] } }, anchorRow: (n) => n.id };
   const fn = new Function('g', 'with (g) { ' + seg + ' }; return B.fetchNodes; }')(g);
   ok(JSON.stringify(await fn()) === '["a","c"]', 'run for real: the founder\'s node b is not rung in this member\'s city; a (mine) and c (no owner) are');
+  // v121v117: a node the viewer LINKED to their city is rung even when the founder holds its licence
+  g.P.cityLinkedNodes = async () => [{ id: 'b', owner_id: 'founder' }, { id: 'a', owner_id: 'me' }];
+  ok(JSON.stringify(await fn()) === '["a","c","b"]', '…and b IS rung once this member has a city_node_links row for it (deduped: a is not listed twice)');
 }
 
 /* ── 6. the registry ── */

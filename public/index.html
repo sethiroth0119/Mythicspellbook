@@ -39407,7 +39407,7 @@ body:has(#pack-opener-frame) #chat-overlay {
   // the console. Bump this every deploy alongside sw.js's CACHE_VERSION. If two
   // machines show different stamps, the older one is on stale code (hard-refresh);
   // if they MATCH but content still differs, it is a DATA/publish issue, not code.
-  window.BUILD_VERSION = 'v121v116';
+  window.BUILD_VERSION = 'v121v117';
   try {
     console.info('%cMythic Spellbook ' + window.BUILD_VERSION + '%c — build check: run  __mg.version',
       'font-weight:700;color:#b48cff', 'color:#7d7499');
@@ -51191,6 +51191,13 @@ async function cloudSyncProfile() {
       __princePortfolios__: (Profile.princePortfolios && typeof Profile.princePortfolios === 'object') ? Profile.princePortfolios : {},
       // ⛽ Black River Petroleum — admin photos (maps / crew / upgrades).
       blackRiver: (Forge.blackRiver && typeof Forge.blackRiver === 'object') ? Forge.blackRiver : { mapPhotos: {}, crewPhotos: {}, enabled: true },
+      // ♻️ The Foundry — ADMIN config: per-machine .glb overrides + econ tuning.
+      //    Global, unlike Profile.foundry (the player's own line).
+      foundry: (Forge.foundry && typeof Forge.foundry === 'object') ? Forge.foundry : { models: {}, econ: {} },
+      // ♻️ The Foundry — per-player line state (machines, inventory, trim,
+      //    lastTick). Everything the crush/refine chain owns; nothing here is a
+      //    ledger resource. See window.MythicFoundryBridge.
+      __foundry__: (Profile.foundry && typeof Profile.foundry === 'object') ? Profile.foundry : {},
       // ⛽ Per-player oil-co state (truck, crew, refineries, loan, futures, log).
       __blackRiver__: (Profile.blackRiver && typeof Profile.blackRiver === 'object') ? Profile.blackRiver : {},
       // ⛽ Ethos Fuel Command — admin photos + cross-player Gas Stations directory.
@@ -52817,6 +52824,8 @@ async function cloudFetchProfile() {
       if (f.__princePortfolios__ && typeof f.__princePortfolios__ === 'object') Profile.princePortfolios = _mergePrincePortfolios(f.__princePortfolios__, Profile.princePortfolios);
       // ⛽ Black River Petroleum.
       if (f.blackRiver && typeof f.blackRiver === 'object') Forge.blackRiver = f.blackRiver;
+      // ♻️ The Foundry admin config (machine .glb overrides + econ tuning).
+      if (f.foundry && typeof f.foundry === 'object') Forge.foundry = f.foundry;
       // ⛽ Black River Petroleum state — richer-wins so just-hired crew, a
       // newly-leased rig, hull repairs, oil futures etc. survive a refresh.
       if (f.__blackRiver__ && typeof f.__blackRiver__ === 'object') {
@@ -52830,6 +52839,16 @@ async function cloudFetchProfile() {
           const le = _localBR && _localBR.extraction, ce = f.__blackRiver__ && f.__blackRiver__.extraction;
           const merged = _osimMergeExtraction(le, ce); if (merged) Profile.blackRiver.extraction = merged;
         } catch (e) {}
+      }
+      /* ♻️ The Foundry. Reconciled by LATEST SAVE (lastTick), NOT richer-wins.
+         The line is ONE coherent idle snapshot: inventory, machine condition and
+         the clock only make sense together. _preferRicherObj would happily take
+         a stale cloud copy whose inventory happened to list more keys and rewind
+         a more-recent line from another device — the exact failure the Extraction
+         Field hit, which is why `extraction` gets the same treatment two blocks
+         up. A rewound lastTick would then re-run hours already banked. */
+      if (f.__foundry__ && typeof f.__foundry__ === 'object') {
+        Profile.foundry = _foundryMergeState(Profile.foundry, f.__foundry__);
       }
       // ⛽ Ethos Fuel Command — gas station chain.
       if (f.fuelCommand && typeof f.fuelCommand === 'object') Forge.fuelCommand = f.fuelCommand;
@@ -97867,6 +97886,17 @@ function _jbHandleAction(a) {
          silently no-ops is this codebase's most-repeated defect. */
     /* 🚛 The My Companies → Haulage Board door. Leaves the iframe the same way
        every other hand-off here does, then opens the board over the title. */
+    if (a.kind === 'openFoundry') {
+      // ♻️ the Trash Crusher's mini-game (owner, v121v117): the Foundry overlay
+      _jbLeaving = true;
+      try { const ff = document.getElementById('jb-frame'); if (ff) { ff.style.opacity = '0'; ff.style.transform = 'scale(.986)'; } } catch (e) {}
+      setTimeout(function () {
+        _jbLeaving = false;
+        setTimeout(_jbDropFrame, 0);
+        try { App.screen = 'title'; if (typeof render === 'function') render(); openFoundry(); } catch (e) {}
+      }, 360);
+      return;
+    }
     if (a.kind === 'openHaulBoard') {
       _jbLeaving = true;
       try { const ff = document.getElementById('jb-frame'); if (ff) { ff.style.opacity = '0'; ff.style.transform = 'scale(.986)'; } } catch (e) {}
@@ -196294,6 +196324,18 @@ const CAMP_BUILDINGS = [
     x: 14, y: 9,  w: 4, h: 3, color: '#b86bff', glyph: '🗝',
     door: { x: 16, y: 9 },
     route: () => { App.screen = 'rlcList'; render(); } },
+  /* ♻️ THE FOUNDRY — trash crushing + refining (ported from branch claude/epic-
+     heisenberg-64ym25, v121v117). Footprint x8-11, y8-10: clear of vendor
+     x3-6/y2-4, bunker x14-17/y2-4, deck x3-6/y9-11, roguelite x14-17/y9-11, tent
+     x9-10/y5-6 and the NPCs (quartermaster 8,3 · mechanic 12,4 · scout 9,12 — the
+     branch's x8-11/y10-12 sat on the scout). The door is one tile below.
+     ⚠ Unlike its neighbours this route does NOT set App.screen. The Foundry is a
+     full-screen overlay owned by /src/foundry (the same shape Black River uses),
+     so it mounts itself over whatever is showing and tears itself down on close. */
+  { id: 'foundry',   name: 'The Foundry',     icon: 'assets/artwork/gameicons/camp%20icon.png',
+    x: 8,  y: 8,  w: 4, h: 3, color: '#c2725a', glyph: '🗜️',
+    door: { x: 10, y: 11 },
+    route: () => { try { openFoundry(); } catch (e) {} } },
   { id: 'tent',      name: 'Hero Rest Tent',  icon: 'assets/artwork/gameicons/camp%20icon.png',
     x: 9,  y: 5,  w: 2, h: 2, color: '#88c4ff', glyph: '⛺',
     door: { x: 10, y: 7 },
@@ -228956,6 +228998,14 @@ function _osimEstDayKey() { try { return new Intl.DateTimeFormat('en-CA', { time
 function _osimDailyRollover() { if (!_osimState) return false; const today = _osimEstDayKey(); if (_osimState.dayKey === today) return false; const first = !_osimState.dayKey; _osimState.dayKey = today; if (first) return false; _osimSeedPRN(); _osimState.stations = _osimNormStations(_osimState.stations).map(s => ({ ...s, mul: s.base })); _osimState.priceEvent = null; if (_osimOpenFlag) { _osimToast('📅 New trading day (EST) — PRN contracts refreshed, prices reset.', 'good'); _osimRenderEventBar(); if (_osimCurrentPanel === 'network' && _O('modal').classList.contains('on')) _osimRenderNetwork(); if (_osimCurrentPanel === 'sell' && _O('modal').classList.contains('on')) _osimRenderSell(); } return true; }
 // Reconcile two Extraction snapshots (local vs cloud) — newest save wins so a
 // stale cloud copy can't rewind a field saved more recently on another device.
+/* ♻️ Foundry snapshot reconcile — newest lastTick wins. Modelled on
+   _osimMergeExtraction (below) and for the same reason: an idle line is a single
+   snapshot, so the LATER save is the true one on every field at once. */
+function _foundryMergeState(local, cloud) {
+  if (!local || typeof local !== 'object') return (cloud && typeof cloud === 'object') ? cloud : {};
+  if (!cloud || typeof cloud !== 'object') return local;
+  return ((cloud.lastTick | 0) > (local.lastTick | 0)) ? cloud : local;
+}
 function _osimMergeExtraction(a, b) { if (!a || typeof a !== 'object') return (b && typeof b === 'object') ? b : null; if (!b || typeof b !== 'object') return a; return ((b.lastTick | 0) > (a.lastTick | 0)) ? b : a; }
 
 // ── REGISTRIES (mutable: admin can add keys via Forge config) ───────────────
@@ -239814,6 +239864,26 @@ function _cityManagedOwner() {
     return (owner && owner !== me) ? owner : null;
   } catch (e) { return null; }
 }
+/* 🔗 THE NODES LINKED TO MY CITY (owner, 2026-09-11). The 2026-09-10 rule rang a
+   city only with nodes whose owner_id is the viewer — and a corporation member
+   whose licences the founder holds owns none by that column, so their ring
+   emptied. A city_node_links row is the player's deliberate "this node is
+   synced to my city"; those nodes are theirs to ring and to place. */
+const _cityLinkedCache = { me: null, rows: null, at: 0 };
+window.cityLinkedNodes = async function () {
+  try {
+    const me = (Profile.cloud && Profile.cloud.userId) || null;
+    if (!me || typeof Cloud === 'undefined' || !Cloud || !Cloud.ready || !Cloud.client) return [];
+    const C = _cityLinkedCache;
+    if (C.me === me && Array.isArray(C.rows) && Date.now() - C.at < 60000) return C.rows.slice();
+    const l = await Cloud.client.from('city_node_links').select('node_id').eq('user_id', me).limit(50);
+    const ids = (l && !l.error && Array.isArray(l.data)) ? l.data.map((x) => String(x.node_id)).filter(Boolean) : [];
+    let rows = [];
+    if (ids.length) { const r = await Cloud.client.from('economy_nodes').select('*').in('id', ids).limit(50); if (r && !r.error && Array.isArray(r.data)) rows = r.data; }
+    C.me = me; C.rows = rows; C.at = Date.now();
+    return rows.slice();
+  } catch (e) { return []; }
+};
 window.cityOwnerNodes = async function () {
   const owner = _cityManagedOwner();
   if (!owner) return null;
@@ -244416,6 +244486,110 @@ try {
     try { if (typeof render === 'function' && App && App.screen === 'title') render(); } catch (e) {}
   }, { once: true });
 } catch (e) {}
+/* ♻️ THE FOUNDRY BRIDGE — for /src/foundry/*.js (trash crushing + refining).
+   🔴 THE GLOBALS TRAP, a fourth time (CLAUDE.md). `Profile`, `getRes`, `addRes`,
+   `spendGems`, `spendResources` and `Forge` are top-level `const` / function
+   declarations in this file — global LEXICAL bindings. An ES module cannot see
+   any of them, and `window.Profile` is undefined however global `const Profile`
+   looks. Everything /src/foundry touches arrives through here and nowhere else;
+   if the Foundry needs something new, it is ADDED HERE rather than reached for.
+
+   🔴 THE FOUNDRY DOES NOT PROMOTE ANY RESOURCE. Its intermediates (shredded
+   waste, ferrous stream, pig iron, steel, heavy ends, biogas …) live entirely in
+   `Profile.foundry.inv` and are invisible to RESOURCES, the market, the vault and
+   every cost renderer — deliberately. RESOURCES_NEXT.md: a resource that can be
+   banked but not made, sold or spent is "worse than missing, because the
+   player's pile of it is real and inert", and promoting the ~15 ids this feature
+   would need is a four-site change EACH. So the Foundry pays out through TAPS
+   into ids the ledger ALREADY has — metal, fuel, supplies — and takes payment in
+   Cinder. The only ledger surface below is what those taps and contracts need.
+
+   ⚠ refundRes vs addRes is the safety story, same as the trade bridge: addRes
+   enforces the stash cap and declines into a full vault, so it can never be an
+   undo. src/city/cost.js unwinds failed builds through refundRes. */
+window.MythicFoundryBridge = {
+  // ── Readers
+  gems: () => { try { return Profile.gems | 0; } catch (e) { return 0; } },
+  getRes: (id) => { try { return getRes(id) | 0; } catch (e) { return 0; } },
+  resName: (id) => { try { return (_meta(id) || {}).name || id; } catch (e) { return id; } },
+  // ── Mutators. Truthy / units-landed = it happened.
+  spendGems: (n) => { try { return !!spendGems(n | 0); } catch (e) { return false; } },
+  addGems: (n) => { try { addGems(n | 0); return true; } catch (e) { return false; } },
+  spendRes: (id, n) => { try { return !!spendResources({ [id]: n | 0 }); } catch (e) { return false; } },
+  addRes: (id, n) => { try { addRes(id, n | 0); return true; } catch (e) { return false; } },
+  refundRes: (id, n) => { try { _refundRes(id, n | 0); return true; } catch (e) { return false; } },
+  // ── Persistence. Absent-tolerant: a save with no `foundry` key hydrates as an
+  //    empty object, never as a throw. Rides __foundry__ on the cloud whitelist.
+  foundryState: () => {
+    try {
+      if (!Profile.foundry || typeof Profile.foundry !== 'object') Profile.foundry = {};
+      return Profile.foundry;
+    } catch (e) { return {}; }
+  },
+  /* 🔴 RETURN FALSE ON FAILURE — DO NOT SWALLOW IT. The Foundry refunds a build
+     whose save did not persist, and that path is dead code if this reports
+     success regardless. MythicCityBridge carries the same note for the same
+     reason: a swallowed throw once charged a player 50,000 Cinder for a
+     building that never existed. */
+  save: () => { try { saveProfile(); return true; } catch (e) { return false; } },
+  // ⏱ The game's EXISTING idle contract, passed and never redeclared, so the
+  //    Foundry cannot become a third idle policy.
+  accrualCapH: (typeof OP_ACCRUAL_CAP_H !== 'undefined') ? OP_ACCRUAL_CAP_H : 36,
+  /* 🎛 Admin econ overrides (feed prices, tap rates, disposal). CLAUDE.md says
+     operation pricing goes through _opEcon(); production has no such path yet
+     (src/city/production.data.js carries the same caveat), so this is the single
+     seam to repoint at one when it lands. Keys look like 'feed.crudeOil',
+     'tap.steel', 'disposal.slag'. */
+  econ: (k) => {
+    try {
+      const t = Forge.foundry && Forge.foundry.econ;
+      const v = t && t[k];
+      return (typeof v === 'number' && isFinite(v)) ? v : undefined;
+    } catch (e) { return undefined; }
+  },
+  // ── Chrome
+  toast: (m, ms) => { try { showToast(m, ms || 3600); } catch (e) {} },
+  confirm: (m) => { try { return gcConfirm(m); } catch (e) { return Promise.resolve(false); } },
+
+  /* ══ 3D FLOOR ═══════════════════════════════════════════════════════════
+     🔴 EVERY ONE OF THESE IS A REUSE, NOT A NEW CAPABILITY. The walkable card
+     shop already solved lazy-loading Three, decoding compressed .glb, caching
+     and cloning model templates, ticking animation mixers, and uploading to the
+     models bucket with a size-limit error a human can act on. /src/foundry gets
+     the SAME functions rather than a second implementation — a private GLB
+     loader in the Foundry would miss the Draco/Meshopt patch and the LRU, and
+     would be discovered as "why are Foundry models blurry/slow" months later.
+
+     They are function DECLARATIONS in this file, so a module cannot see them
+     (the globals trap). Hence the wrappers. */
+  isAdmin: () => { try { return !!(typeof isAdmin === 'function' && isAdmin()); } catch (e) { return false; } },
+  /* Lazy — the r128 build is only fetched when a player actually walks in, so
+     opening the flat Blueprint view costs no 3D payload at all. */
+  loadThree: (cb) => { try { _csLoadThree(cb); } catch (e) { try { cb(false); } catch (e2) {} } },
+  loadModel: (url) => { try { return _cs3DLoadModel(url); } catch (e) { return Promise.reject(e); } },
+  autoplay: (root, clips, opts) => { try { _cs3DAutoplay(root, clips, opts); } catch (e) {} },
+  uploadModel: (file) => { try { return _csShopUploadModel(file); } catch (e) { return Promise.reject(e); } },
+  /* 🎨 Admin model assignments live on the FORGE (global admin config), not the
+     Profile — one admin swaps a machine's .glb and every player sees it, which
+     is the whole point. Rides `foundry` on the forge cloud whitelist. */
+  forgeFoundry: () => {
+    try {
+      if (!Forge.foundry || typeof Forge.foundry !== 'object') Forge.foundry = { models: {}, econ: {} };
+      if (!Forge.foundry.models || typeof Forge.foundry.models !== 'object') Forge.foundry.models = {};
+      return Forge.foundry;
+    } catch (e) { return { models: {}, econ: {} }; }
+  },
+  /* 🔴 ADMIN-GATED HERE, NOT IN THE MODULE. The editor UI is only rendered for
+     admins, but UI is not a security boundary — anyone can call the bridge from
+     a console. The check that matters is the one on the write path. */
+  saveForge: (f) => {
+    try {
+      if (!(typeof isAdmin === 'function' && isAdmin())) return false;
+      if (!f || typeof f !== 'object') return false;
+      Forge.foundry = f; saveForge(); return true;
+    } catch (e) { return false; }
+  },
+};
 window.MythicMercBridge = {
   // ── Identity / cloud. The module makes its own Supabase calls (like
   //    /src/community does) rather than routing them back through here.
@@ -247785,6 +247959,113 @@ function _ethosBindMsg() {
   });
 }
 try { window.__mg._ethosBuyOpen = _ethosBuyOpen; } catch (e) {}
+/* ═══ 📦 NODE INVENTORY (owner, v121v117) ═══════════════════════════════════
+   "Make a Node Inventory on every node owner city Node Modal that they can
+   collect the resources that the node produce. The higher the tier of the
+   node, Node power & Cinder level, and the higher the level of the city —
+   produce 1.5x more of that resource for that node."
+
+   A node's shelf fills with ITS resource (n.resource) on the wall clock at
+   NODE_INV_BASE_PER_H units an hour, times a multiplier that climbs from ×1 to
+   ×1.5 as three things climb together: the node's tier (meta.level, 1–50, the
+   level the city syncs up), its Node Power level (node_power.level, 1–10, the
+   Cinder / Ⓜ token level) and the level of its city (city_state.state.cityXp
+   through the city builder's own level curve, 1–25). Each contributes a third.
+   The server keeps the clock (node_inventory_claim stamps meta.invAt, sql/132)
+   so two devices cannot bank the same hours; the units land in the player's
+   stash through addRes(), like every other producer. */
+const NODE_INV_BASE_PER_H = 10;
+const NODE_INV_CAP_H = 48;
+const NODE_INV_CITY_LEVEL_MAX = 25;
+function _nodeInvMult(tier, powerLv, cityLv) {
+  const t = Math.max(0, Math.min(1, ((tier | 0) - 1) / 49));
+  const p = Math.max(0, Math.min(1, ((powerLv | 0) - 1) / 9));
+  const c = Math.max(0, Math.min(1, ((cityLv | 0) - 1) / (NODE_INV_CITY_LEVEL_MAX - 1)));
+  return 1 + 0.5 * ((t + p + c) / 3);
+}
+function _nodeInvYield(hours, tier, powerLv, cityLv) {
+  const h = Math.max(0, Math.min(NODE_INV_CAP_H, +hours || 0));
+  return Math.floor(h * NODE_INV_BASE_PER_H * _nodeInvMult(tier, powerLv, cityLv));
+}
+/* the city builder's level curve (node-city cityLevelXpFor), so the modal and the city agree */
+function _nodeInvCityLevelFromXp(xp) {
+  xp = Math.max(0, +xp || 0); let level = 1;
+  const need = (L) => L <= 1 ? 0 : Math.round(80 * Math.pow(L - 1, 2.4));
+  while (level < NODE_INV_CITY_LEVEL_MAX && xp >= need(level + 1)) level++;
+  return level;
+}
+function _nodeInvHoursOf(n) {
+  const at = n && n.meta && +n.meta.invAt;
+  const since = (at && isFinite(at)) ? at : Date.now() - 24 * 3600 * 1000;
+  return Math.max(0, Math.min(NODE_INV_CAP_H, (Date.now() - since) / 3600000));
+}
+async function _nodeInvCityLevelFetch(nodeId) {
+  try {
+    App._nodeCityLv = App._nodeCityLv || {};
+    if (App._nodeCityLv[nodeId] != null) return App._nodeCityLv[nodeId];
+    App._nodeCityLv[nodeId] = 1;
+    if (!Cloud || !Cloud.ready || !Cloud.client) return 1;
+    const r = await Cloud.client.from('city_state').select('state').eq('node_id', nodeId).order('updated_at', { ascending: false }).limit(1).maybeSingle();
+    const st = r && r.data && r.data.state; const lv = _nodeInvCityLevelFromXp(st && st.cityXp);
+    App._nodeCityLv[nodeId] = lv; try { render(); } catch (e) {}
+    return lv;
+  } catch (e) { return 1; }
+}
+function _nodeInventorySectionHtml(selNode) {
+  try {
+    if (!selNode || !selNode.id) return '';
+    const id = selNode.id;
+    const own = (typeof _twIsNodePlayerOwner === 'function') && _twIsNodePlayerOwner(id);
+    if (!own) return '';
+    const res = String(selNode.resource || 'supplies');
+    const m = (typeof _meta === 'function' && _meta(res)) || { name: res, icon: '📦' };
+    const tier = Math.max(1, (selNode.meta && selNode.meta.level | 0) || (selNode.level | 0) || 1);
+    App._npRows = App._npRows || {}; if (!App._npRows[id] && typeof _npFetch === 'function') _npFetch(id);
+    const powerLv = Math.max(1, (App._npRows[id] && App._npRows[id].level | 0) || 1);
+    App._nodeCityLv = App._nodeCityLv || {}; if (App._nodeCityLv[id] == null) _nodeInvCityLevelFetch(id);
+    const cityLv = Math.max(1, App._nodeCityLv[id] | 0 || 1);
+    const mult = _nodeInvMult(tier, powerLv, cityLv);
+    const hours = _nodeInvHoursOf(selNode);
+    const ready = _nodeInvYield(hours, tier, powerLv, cityLv);
+    const full = hours >= NODE_INV_CAP_H - 0.01;
+    return `
+      <div class="tw-nd-section-hdr">— 📦 NODE INVENTORY</div>
+      <div class="tw-nd-claim" data-node-inv="${escapeHtml(id)}">
+        <div class="tw-nd-claim-row" style="justify-content:space-between">
+          <span class="tw-nd-claim-badge">${m.icon || '📦'} ${escapeHtml(m.name || res)}</span>
+          <span class="tw-nd-claim-owner"><b>${ready.toLocaleString()}</b> ready · ${hours.toFixed(1)} h${full ? ' · shelf full' : ''}</span>
+        </div>
+        <div class="tw-nd-claim-hint" style="margin:6px 0">Fills at ${NODE_INV_BASE_PER_H}/h × <b>×${mult.toFixed(2)}</b> — node tier ${tier} · node power LV ${powerLv} · city LV ${cityLv}. Raise all three to reach ×1.5. Holds ${NODE_INV_CAP_H} h.</div>
+        <div class="tw-nd-claim-row">
+          <button class="btn-mini btn-primary" ${ready > 0 ? '' : 'disabled'} onclick="__mg._nodeInvCollect('${escapeHtml(id)}')">📦 Collect ${ready.toLocaleString()} ${escapeHtml(m.name || res)}</button>
+        </div>
+      </div>`;
+  } catch (e) { return ''; }
+}
+window.__mg = window.__mg || {};
+window.__mg._nodeInvCollect = async function (nodeId) {
+  try {
+    const n = ((typeof FoundationReserve !== 'undefined' && FoundationReserve.nodes) || []).find((x) => x && x.id === nodeId) || (App._twSelNode && App._twSelNode.id === nodeId ? App._twSelNode : null);
+    if (!n) { showToast('That node is not loaded — reopen it.', 2600); return; }
+    if (!(Cloud && Cloud.ready && Cloud.client)) { showToast('Sign in to collect from your node.', 2600); return; }
+    const res = String(n.resource || 'supplies');
+    const tier = Math.max(1, (n.meta && n.meta.level | 0) || (n.level | 0) || 1);
+    const powerLv = Math.max(1, (App._npRows && App._npRows[nodeId] && App._npRows[nodeId].level | 0) || 1);
+    const cityLv = Math.max(1, (App._nodeCityLv && App._nodeCityLv[nodeId]) | 0 || 1);
+    const r = await Cloud.client.rpc('node_inventory_claim', { p_node_id: nodeId, p_cap_hours: NODE_INV_CAP_H });
+    const d = r && r.data;
+    if (!d || !d.ok) { showToast(d && d.why === 'not-owner' ? 'Only the node owner collects its inventory.' : 'Could not collect — try again.', 3000); return; }
+    const qty = _nodeInvYield(+d.hours || 0, tier, powerLv, cityLv);
+    n.meta = n.meta || {}; n.meta.invAt = +d.now || Date.now();
+    if (qty <= 0) { showToast('Nothing on the shelf yet — it fills by the hour.', 2600); try { render(); } catch (e) {} return; }
+    addRes(res, qty); try { saveProfile(); } catch (e) {}
+    const m = (typeof _meta === 'function' && _meta(res)) || { name: res, icon: '📦' };
+    showToast('📦 Collected ' + qty.toLocaleString() + ' ' + (m.name || res) + ' from ' + (n.name || 'your node') + ' (×' + _nodeInvMult(tier, powerLv, cityLv).toFixed(2) + ').', 4200);
+    try { render(); } catch (e) {}
+  } catch (e) { try { showToast('Could not collect — ' + ((e && e.message) || e), 3200); } catch (e2) {} }
+};
+/* ═══ end node inventory ═══ */
+
 function _nodePowerSectionHtml(selNode) {
   try {
     const id = selNode.id;
@@ -260630,6 +260911,7 @@ function renderTerritoryWars() {
       })()}
       ${(typeof _twSaleSectionHtml === 'function') ? _twSaleSectionHtml(selNode) : ''}
       ${(typeof _nodePowerSectionHtml === 'function') ? _nodePowerSectionHtml(selNode) : ''}
+      ${(typeof _nodeInventorySectionHtml === 'function') ? _nodeInventorySectionHtml(selNode) : ''}
       ${(typeof _ownershipSectionHtml === 'function') ? _ownershipSectionHtml() : ''}
       ${(() => {
         // 📊 The reference's three-card stat row and loss pills. Every figure is
@@ -264678,6 +264960,38 @@ render();
      ⚠ Bump ?v= on every change — the service worker caches /src/* like any
        other static asset, and a missed bump ships invisibly. -->
 <script type="module" src="src/refinery/index.js?v=v121t5"></script>
+<!-- ♻️ THE FOUNDRY — trash crushing + refining (waste → scrap → steel → sheet;
+     crude → gasoline/diesel/aviation; organics → biogas → grid fuel). Registers
+     window.MythicFoundry and is INERT until something calls .open().
+     ⚠ IT PROMOTES NOTHING. Its intermediates live in Profile.foundry.inv and
+       are invisible to RESOURCES, the market and every cost renderer; it pays
+       out through TAPS into metal / fuel / supplies, which the ledger already
+       has. See window.MythicFoundryBridge for why (RESOURCES_NEXT.md: a pile
+       that is bankable but unmakeable is "worse than missing").
+     ⚠ Bump ?v= on every change — the service worker caches /src/* like any
+       other static asset, and a missed bump ships invisibly. -->
+<script type="module" src="src/foundry/index.js?v=v121v117foundry5"></script>
+<script>
+/* ♻️ FOUNDRY LAUNCH + OFFLINE CATCH-UP.
+   openFoundry() is the single entry point — wire any button/menu row to it.
+   The catch-up call is the important half: the line accrues on the WALL CLOCK,
+   so it has to bank what happened while the player was away even if they never
+   open the panel. Without it a factory only runs while you are looking at it.
+   Deferred to load + idle so it can never sit in front of first paint, and
+   fully guarded so an absent or broken module cannot stop the game booting. */
+function openFoundry() {
+  try {
+    if (window.MythicFoundry && window.MythicFoundry.open) return window.MythicFoundry.open();
+    showToast('The Foundry is still loading — try again in a moment.');
+  } catch (e) { try { showToast('The Foundry could not open.'); } catch (e2) {} }
+  return false;
+}
+try {
+  window.addEventListener('load', () => {
+    setTimeout(() => { try { if (window.MythicFoundry) window.MythicFoundry.catchUp(); } catch (e) {} }, 1200);
+  });
+} catch (e) {}
+</script>
 <!-- battle-board round 1 -->
 <!-- 🎴 BATTLE BOARD — round 1 of the Master Duel pass.
      Loaded LAST so the board plate styles win by ordinary source order; the
@@ -264818,8 +265132,8 @@ render();
        that works everywhere except the one early path nobody tested. It is
        2KB with no dependencies. -->
 <script src="src/econ/peg.js?v=v121q51"></script>
-<script src="src/battle/effects.js?v=v121v116" defer></script>
-<script src="src/phone/handset.js?v=v121v116" defer></script>
+<script src="src/battle/effects.js?v=v121v117" defer></script>
+<script src="src/phone/handset.js?v=v121v117" defer></script>
 <script src="src/battle/combat.js?v=120m4" defer></script>
 <script src="src/battle/targeting.js?v=121e3hex" defer></script>
 <link rel="stylesheet" href="src/sprites/frames.css?v=120k3">
@@ -264868,7 +265182,7 @@ render();
      Bump ?v= on every change — the service worker caches these like any asset. -->
 <link rel="stylesheet" href="src/hubui/hub-modals.css?v=121h0">
 <!-- 💬 tooltips: every title, every hub tile, every camp control, every resource icon (v121v112) -->
-<script src="src/hubui/tips.js?v=v121v116" defer></script>
+<script src="src/hubui/tips.js?v=v121v117" defer></script>
 <script src="src/sprites/frames.js?v=120k3" defer></script>
 <script src="src/sprites/idle.js?v=120k4" defer></script>
 </body>

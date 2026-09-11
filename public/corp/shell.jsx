@@ -263,7 +263,14 @@ const COMPANY_PAGES = {
      a second haulage system that hauliers could not see.
      Keyed on the OPS_ECON op id, so the row appears the moment the operation is
      founded and never before — the same gate every entry above uses. */
-  trashcrusher: { label: 'Post a Scrap Run',  ico: '♻️', action: 'openHaulBoard' },
+  /* ♻️ v121v117 (owner): the crusher's OWN mini-game is the Foundry (trash
+     crushing + refining, /src/foundry) — the first door. The Haulage Board
+     stays as the second door, because moving the bales is still the haulier's
+     half of the contract. */
+  trashcrusher: [
+    { label: 'Trash Crusher',     ico: '🗜️', action: 'openFoundry' },
+    { label: 'Post a Scrap Run',  ico: '🚛', action: 'openHaulBoard' },
+  ],
 };
 // Every door an op_type opens, as a list — [] when the op has no page.
 // Accepts both shapes of COMPANY_PAGES value so a single-door op stays a plain
