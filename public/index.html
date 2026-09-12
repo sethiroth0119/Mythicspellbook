@@ -39453,7 +39453,7 @@ body:has(#pack-opener-frame) #chat-overlay {
   // the console. Bump this every deploy alongside sw.js's CACHE_VERSION. If two
   // machines show different stamps, the older one is on stale code (hard-refresh);
   // if they MATCH but content still differs, it is a DATA/publish issue, not code.
-  window.BUILD_VERSION = 'v121v130';
+  window.BUILD_VERSION = 'v121v131';
   try {
     console.info('%cMythic Spellbook ' + window.BUILD_VERSION + '%c — build check: run  __mg.version',
       'font-weight:700;color:#b48cff', 'color:#7d7499');
@@ -47278,9 +47278,18 @@ const EXCHANGE_MUSIC_SRC = 'assets/Audio/Black%20Market%20Basement.mp3';
 const EXCHANGE_SCREENS = new Set([
   'vendorMarket', 'wagerHall', 'vendor', 'cashout', 'tutor', 'market',
 ]);
-/* Both new zones, asked the way the rest of the file asks. The city is an
-   overlay with no screen id of its own, so the DOM is the question — the same
-   probe a dozen other places use. */
+/* 🎵 THE MAIN MENU MUSIC CARRIES THE WHOLE RUIN EXCHANGE (owner, v121v131):
+   "have the main music playing on every page in Ruin Exchange but Just
+   Business". The hub view already kept the menu track; walking into a tile
+   changed it — Black Market Basement on some pages, Camp music on others
+   (vendorMarket is in CAMP_AMBIENT_SCREENS too) — so the music broke three
+   ways across one building. These are the rest of the hub's tiles, added to
+   the set the exchange branch already reads.
+   ⚠ justBusiness is deliberately absent: it has its own zone slot in the Audio
+     Manager (v121v123) and keeps it, by request. */
+EXCHANGE_SCREENS.add('crashExchange');
+EXCHANGE_SCREENS.add('territoryWars');
+EXCHANGE_SCREENS.add('rlcList');
 function isInJustBusiness() { try { return typeof App !== 'undefined' && App && App.screen === 'justBusiness'; } catch (e) { return false; } }
 function isInCityBuilder() {
   try { return !!(document.getElementById('node-city-frame') || document.querySelector('iframe[src^="node-city/"]')); } catch (e) { return false; }
@@ -48074,8 +48083,18 @@ function syncMusicForScreen() {
   // 🏕️ Camp ambient hubs (Lab, Deck Builder, Pack Opening, Inventory,
   // World Data, Book of Knowledge, Achievements, Profile, Friends,
   // Settings, Daily Challenge). Checked BEFORE the Ruin Exchange branch so
-  // Pack Opening ('vendorMarket') plays Camp music while the other exchange
-  // screens keep the Black Market theme.
+  /* 🎵 v121v131 — THE RUIN EXCHANGE IS ASKED BEFORE CAMP AMBIENT. vendorMarket
+     sits in BOTH sets, so whichever branch ran first owned it; the hub now
+     answers for its own tiles and the rest of camp is untouched. */
+  if (isInRuinExchange()) {
+    stopExchangeMusic();
+    stopCampAmbientMusic();
+    stopCampaignMusic();
+    stopBattleMusic();
+    stopRogueliteMusic();
+    playMenuMusic();
+    return;
+  }
   if (isInCampAmbient()) {
     stopMenuMusic();
     stopExchangeMusic();
@@ -48113,13 +48132,16 @@ function syncMusicForScreen() {
     return;
   }
   stopJustBusinessMusic();
+  /* 🎵 v121v131 — the main menu track, not the Black Market one. Reached only
+     if something upstream changed; the branch above answers first. Kept in
+     agreement with it so the two can never disagree about one screen. */
   if (isInRuinExchange()) {
-    stopMenuMusic();
+    stopExchangeMusic();
     stopVictoryMusic();
     stopCampaignMusic();
     stopBattleMusic();
     stopRogueliteMusic();
-    playExchangeMusic();
+    playMenuMusic();
     return;
   }
   // Title screen on any non-exchange hub → menu music.
@@ -52914,6 +52936,16 @@ async function cloudFetchProfile() {
       }
     }
     if (typeof _ensureResources === 'function') _ensureResources();
+    /* 🏰 v121v131 — AND IT HOLDS WHAT IT IS SUPPOSED TO HOLD. The ceiling used
+       to be enforced by exactly one caller, renderStash(), so a vault that went
+       over any other way stayed over on every other screen in the game — the
+       owner's screenshot was 141,598 units of "loose salvage" against a 31,250
+       absolute maximum. This is the moment a vault's contents are established
+       for the session, and the moment an inflated blob arrives from.
+       _stashEnforceCap holds itself back when the ceiling is not vouchable
+       (see its header), so calling it here cannot destroy a warehouse-backed
+       stash on a cold load; the retry below covers that case. */
+    try { if (typeof _stashEnforceCap === 'function') _stashEnforceCap(); } catch (e) {}
     // 📊 Restore CX share holdings from cloud.
     const _cloudCxH = (data.forge && typeof data.forge === 'object' && data.forge.__cxHoldings__ && typeof data.forge.__cxHoldings__ === 'object')
       ? data.forge.__cxHoldings__ : null;
@@ -92208,7 +92240,14 @@ async function corpTreasuryDeposit(amount) {
 // back into it. Hiring into ops = assigning workers (bounded by the corp's
 // labour pool = roster size). Deterministic time-accrual (same proven
 // pattern as nodes); founder-managed; degrades gracefully pre-setup.
-const OP_COLLECT_CD_MS = 6 * 3600000;          // settle/collect once per 6h
+/* 🕒 v121v131 (owner): "change the wage pay out drain from every 6 to 12
+   hours". This is the cooldown between settling an operation — the thing that
+   pays wages out of the corp treasury and banks the production. The 36-hour
+   accrual cap below is UNCHANGED, so nothing is lost by collecting less often:
+   a player who collects twice a day still banks everything the operation made.
+   It halves the rate at which a treasury can be drained, which is what the
+   bug-mtxzznni spam was doing to it. */
+const OP_COLLECT_CD_MS = 12 * 3600000;         // settle/collect once per 12h (was 6h)
 const OP_ACCRUAL_CAP_H = 36;                   // unattended accrual caps at 36h
 /* 🗺 NODES BANK LONGER THAN OPERATIONS DO, ON PURPOSE. Folding node yield into
    the 36h operations contract was a real nerf to an existing system: measured
@@ -92729,9 +92768,23 @@ function _warehouseCapacity() {
     /* Trusted: this IS the answer, up or down. Remembering it is what makes
        the next cold load correct. */
     if ((Profile.whCapLast | 0) !== cap) { Profile.whCapLast = cap; }
+    /* 🏰 v121v131 — THE CEILING JUST BECAME VOUCHABLE, SO THE RULE GETS ITS
+       RETRY. _stashEnforceCap refuses to trim while _whCapTrusted() is false,
+       which is right and is why a cold load cannot enforce anything: the
+       operations list is empty until opFetch() lands. This is the transition,
+       and it is the only place that knows it happened. Deferred a tick so the
+       trim never runs inside a getter the render path is already walking, and
+       latched so a repeated read does not re-toast. */
+    try {
+      if (!_stashCapRetried && typeof _stashEnforceCap === 'function') {
+        _stashCapRetried = true;
+        setTimeout(() => { try { _stashEnforceCap(); } catch (e2) {} }, 0);
+      }
+    } catch (e) {}
     return cap;
   } catch (e) { return Math.max(0, Profile.whCapLast | 0); }
 }
+let _stashCapRetried = false;   // 🏰 one enforcement retry per session, on the cap becoming trusted
 function getOpsEconOverrides() {
   try {
     const local = (Forge.opsEcon && typeof Forge.opsEcon === 'object') ? Forge.opsEcon : null;
@@ -103740,17 +103793,30 @@ function _fxSweepEmptySections() {
       deliberately NOT .editor-field, so _fxSweepEmptySections still counts an
       empty section as empty. */
 const FX_FIND_MIN_OPTIONS = 40;   // ONPLAY ids in one select => it is an effect picker
+/* 🔎 Pickers that get a filter box. An EFFECT picker is recognised by counting
+   ONPLAY_TYPES ids in it; the PASSIVE pickers are named outright, because a
+   passive list contains none of those ids and so could never qualify — which is
+   why they had no search (owner: "add a search bar for passive that will pull
+   up passive by the word"). Everything downstream is select-agnostic. */
+const FX_FIND_BY_ID = ['ed-passive', 'ed-passive2'];
 function _fxFindSelects(root) {
   let ids;
   try { ids = new Set((typeof ONPLAY_TYPES !== 'undefined' ? ONPLAY_TYPES : []).map(t => t && t.id)); }
-  catch (e) { return []; }
-  return Array.from(root.querySelectorAll('select')).filter(s => {
+  catch (e) { ids = new Set(); }
+  const out = Array.from(root.querySelectorAll('select')).filter(s => {
     let n = 0;
     for (let i = 0; i < s.options.length; i++) {
       if (ids.has(s.options[i].value) && ++n >= FX_FIND_MIN_OPTIONS) return true;
     }
     return false;
   });
+  FX_FIND_BY_ID.forEach((id) => {
+    const el = root.querySelector('#' + id);
+    /* Only once it is actually long enough to be worth searching — a picker
+       with four rows does not need a box above it. */
+    if (el && out.indexOf(el) < 0 && el.options && el.options.length >= 12) out.push(el);
+  });
+  return out;
 }
 // Hide what does not match. HIDE, never remove — an option that leaves the DOM
 // takes its value with it, and the value is what the save reads.
@@ -103827,8 +103893,11 @@ function _fxFindWire() {
     // ⚠ SHORT ON PURPOSE. The picker measures 276-358 px in the real editor
     // (measured, 1500 px viewport), so a placeholder carrying its own examples
     // was cut off mid-word. The examples moved to the tooltip.
-    input.placeholder = '🔎 filter ' + total + ' effects…';
-    input.title = 'Type to narrow the list — try "discard", "grave", "summon". Esc or ✕ clears it.';
+    const _isPassive = FX_FIND_BY_ID.indexOf(sel.id) >= 0;
+    input.placeholder = '🔎 filter ' + total + (_isPassive ? ' passives…' : ' effects…');
+    input.title = _isPassive
+      ? 'Type to narrow the list — try "trap", "heal", "armour". Esc or ✕ clears it.'
+      : 'Type to narrow the list — try "discard", "grave", "summon". Esc or ✕ clears it.';
     const n = document.createElement('span');
     n.className = 'fx-find-n';
     const x = document.createElement('span');
@@ -103839,6 +103908,17 @@ function _fxFindWire() {
     sel.parentNode.insertBefore(bar, sel);
     sel.parentNode.insertBefore(desc, sel.nextSibling);
     sel._fxFindDesc = desc; sel._fxFindN = n; input._fxFindSel = sel;
+    const apply = () => {
+      const r = _fxFindApply(sel, input.value);
+      n.textContent = String(input.value || '').trim() ? (r.shown + ' of ' + r.total) : '';
+    };
+    /* 🔎 v121v131 — THE BOX TYPES. It was wired for Escape and the ✕ and for
+       nothing else: typing relied on a delegated listener on the editor host,
+       which never reaches a picker rendered outside that host. Bound once per
+       box (this whole block is latched by dataset.fxFind), so this is not the
+       per-render re-binding the delegated one exists to avoid — and the two
+       call the same idempotent function, so neither disturbs the other. */
+    input.oninput = apply;
     const clear = () => { input.value = ''; _fxFindApply(sel, ''); n.textContent = ''; input.focus(); };
     /* stopPropagation: the editor root carries delegated click handling and a
        filter reset is nobody else's business. */
@@ -106750,7 +106830,17 @@ function _canUseFieldAbility(state, unit) {
   if (ctr && !ctr.ok) return { ok: false, why: ctr.why };
   if (ctr && ctr.ok && ctr.waivesEnergy) need = 0;
   if (((state.player && state.player.energy) | 0) < need) return { ok: false, why: `Needs ${need} energy · you have ${(state.player.energy) | 0}` };
-  return { ok: true, fa, cost: need, counters: ctr && ctr.ok ? ctr : null };
+  /* 🩸 v121v131 — the activation cost. Same gate a move and an on-play already
+     get; the field ability was the one activation of the three without it.
+     Named in the refusal, because a greyed button with no reason is the
+     complaint this file keeps recording. */
+  const _ac = (fa.activationCost && typeof fa.activationCost === 'object') ? fa.activationCost : null;
+  if (_ac && typeof _costIsEmpty === 'function' && !_costIsEmpty(_ac)) {
+    if (typeof _costPayable === 'function' && !_costPayable(state, 'player', unit, _ac, null)) {
+      return { ok: false, why: '🩸 Cost: ' + ((typeof _costShortLabel === 'function') ? _costShortLabel(_ac) : 'unpayable') + ' — you can\'t pay it.' };
+    }
+  }
+  return { ok: true, fa, cost: need, counters: ctr && ctr.ok ? ctr : null, activationCost: _ac };
 }
 /* 🔵 What a field ability's counter cost means for THIS unit right now.
    null when the ability has no counter cost; otherwise { ok, why, n, id, from,
@@ -106844,6 +106934,23 @@ function _activateFieldAbility(unitId) {
       try { showToast('🚫 ' + (fa.label || 'That ability') + ' can\'t be used — ' + _pf.reason + ' (no energy spent)'); } catch (e) {}
       return;
     }
+    /* 🩸 v121v131 — PAY THE ACTIVATION COST FIRST, and let the player choose
+       what they give up. _promptCostPayment is async (it opens a picker), so
+       the activation re-enters through _faPayThenFire once the cost is settled
+       rather than resolving the effect behind the modal. */
+    const _fac = gate.activationCost;
+    if (_fac && typeof _costIsEmpty === 'function' && !_costIsEmpty(_fac) && !App._faCostPaid) {
+      try {
+        _promptCostPayment(s, 'player', unit, _fac, (fa.label || 'that ability'), null).then((res) => {
+          if (!res) { try { renderBattle(); } catch (e2) {} return; }   // cancelled — nothing spent
+          App.state = { ...res.state, log: [...(res.state.log || []), ...(res.log || [])] };
+          App._faCostPaid = unitId;
+          try { _activateFieldAbility(unitId); } finally { App._faCostPaid = null; }
+        });
+      } catch (e) { try { console.warn('[fieldAbility cost]', e); } catch (_) {} }
+      return;
+    }
+    App._faCostPaid = null;
     const turnNo = (s.turnNumber | 0) || 0;
     let ns = { ...s, player: { ...s.player, energy: Math.max(0, (s.player.energy | 0) - (gate.cost | 0)) } };
     ns.units = (ns.units || []).map(u => u.id === unitId ? { ...u, _faUsedTurn: turnNo } : u);
@@ -108399,6 +108506,19 @@ const _EFFECT_VFX_CINE = {
   alienInfection: { label: '👾 Alien Infection', file: 'assets/vfx/vfx-alien-infection' },
   graveReach:     { label: '🧟 Grave Reach',     file: 'assets/vfx/vfx-grave-reach' },
 };
+/* 🔊 The sound an effect may fire alongside its VFX. Every id in the SFX table
+   is offered, because that table IS the Custom Audio Manager's slot list — an
+   uploaded clip overrides the built-in asset inside playSfx, so a card authored
+   against 'abilityCast' keeps working when the admin replaces that clip. */
+function _effectSfxOptionsHtml(sel) {
+  const pretty = (k) => k.replace(/([A-Z])/g, ' $1').replace(/^./, (c) => c.toUpperCase());
+  let h = '<option value="">— None —</option>';
+  try {
+    h += Object.keys(SFX).sort().map((k) => '<option value="' + escapeHtml(k) + '"'
+      + (sel === k ? ' selected' : '') + '>' + escapeHtml(pretty(k)) + '</option>').join('');
+  } catch (e) {}
+  return h;
+}
 // Combined effect-VFX picker options (canvas-2D bursts + the 3D cinematics). sel = current value.
 function _effectVfxOptionsHtml(sel) {
   const cap = k => k.charAt(0).toUpperCase() + k.slice(1);
@@ -111837,6 +111957,12 @@ function _applyOnPlayOneRaw(state, unit, card) {
   if (eff.vfx && eff.vfx !== 'none' && eff.type !== 'vanishReturn') {
     try { _playEffectVfx(eff.vfx, eff._vfxCenter ? _vfxBoardCentre() : _vfxAnchorFor(unit)); } catch (e) {}
   }
+  /* 🔊 v121v131 — …AND THE SOUND THE AUTHOR CHOSE FOR IT (owner: "add where I
+     can add sound effects to Effect VFX, plays when the effect fires"). Fired
+     independently of eff.vfx on purpose: a card may want a cue with no picture,
+     and playSfx already applies the admin's Custom Audio override, the master
+     SFX toggle and the volume, so nothing here has to know about any of that. */
+  if (eff.sfx) { try { if (typeof playSfx === 'function') playSfx(eff.sfx); } catch (e) {} }
   const radius = Math.max(0, Math.min(4, eff.radius || 1));
   // `log` MUST be `let`: the Verdict effect reassigns it (`log = state.log`)
   // after recursively applying the chosen sub-effect. A `const` here threw
@@ -150773,6 +150899,7 @@ function renderCardEditor() {
           + `</div>`
           + `<div class="editor-field"><label class="small-text">Summon / Kalon Card id (for 🌀 Summon / 🌌 Polycreate)</label><input id="${p}-summoncard" value="${escapeHtml(o.summonCardId || '')}" placeholder="leave blank otherwise"></div>`
           + `<div class="editor-field"><label class="small-text">🎇 Effect VFX</label><select id="${p}-vfx">${vOpts}</select></div>`
+          + `<div class="editor-field"><label class="small-text">🔊 Effect sound <span class="ink-dim" style="font-weight:400">(plays when the effect fires)</span></label><select id="${p}-sfx">${_effectSfxOptionsHtml(o.sfx || '')}</select></div>`
           + `<div class="editor-field"><label class="small-text">🔁 Use Limit</label><select id="${p}-uselimit">${_useLimitOpts(o.useLimit)}</select></div>`
           + `<div class="editor-field"><label class="small-text">🔍 Search Deck — Card Type (when effect is "Search Deck")</label><select id="${p}-searchtype">${sdOpts}</select></div>`
           + `<div class="editor-field full"><label class="small-text">🔍 Search Deck — Specific Cards (optional allow-list)</label>`
@@ -150844,6 +150971,20 @@ function renderCardEditor() {
         + `<div><label class="small-text">Energy cost is</label><select id="ed-field-ctr-mode">` + [['also', 'Also paid'], ['instead', 'Waived — counters pay']].map(([o, l]) => `<option value="${o}" ${(fc.mode || 'also') === o ? 'selected' : ''}>${l}</option>`).join('') + `</select></div>`
         + `<div><label class="small-text">When its last counter is spent</label><select id="ed-field-ctr-empty">` + [['none', 'Nothing more'], ['destroySelf', '💀 This unit is destroyed'], ['returnHand', '↩ Returns to hand']].map(([o, l]) => `<option value="${o}" ${(fc.onEmpty || 'none') === o ? 'selected' : ''}>${l}</option>`).join('') + `</select></div>`
         + `</div></div>`; })()
+        /* 🩸 ACTIVATION COST (owner, v121v131): "this needs a cost here to use
+           abilities like this — sacrifice 3 units you control, deal 100 damage
+           to all units and hero your enemy controls". Same shape the card and
+           the move editors already save, paid through the same picker. */
+        + (() => { const ac = (fa.activationCost && typeof fa.activationCost === 'object') ? fa.activationCost : {}; return `<div style="background:rgba(200,90,90,0.09);border:1px dashed rgba(230,120,120,0.5);border-radius:8px;padding:0.5rem 0.6rem;margin:0.45rem 0">`
+        + `<div class="small-text" style="color:#ffd0cf;margin-bottom:0.3rem">🩸 <strong>Activation cost</strong> — what the player GIVES UP to fire this. Leave every box at 0 for none. They choose which cards and units are spent; the AI pays its weakest.</div>`
+        + `<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:0.4rem">`
+        + `<div><label class="small-text">⚔ Sacrifice units</label><input id="ed-field-cost-tribute" type="number" min="0" max="9" value="${ac.tribute | 0}"></div>`
+        + `<div><label class="small-text">🗑 Discard cards</label><input id="ed-field-cost-discard" type="number" min="0" max="9" value="${ac.discard | 0}"></div>`
+        + `<div><label class="small-text">🩸 Pay life</label><input id="ed-field-cost-life" type="number" min="0" max="100" value="${ac.payLifeHero | 0}"></div>`
+        + `<div><label class="small-text">🌌 Banish from grave</label><input id="ed-field-cost-banish" type="number" min="0" max="9" value="${ac.banish | 0}"></div>`
+        + `</div>`
+        + `<div class="editor-field" style="margin-top:0.35rem"><label style="display:flex;align-items:center;gap:6px;cursor:pointer" class="small-text"><input type="checkbox" id="ed-field-cost-tributeself" ${ac.tributeSelf ? 'checked' : ''}> 💀 …and this unit itself (sent AFTER the effect resolves, so it still goes off)</label></div>`
+        + `</div>`; })()
         + `<div class="editor-field"><label style="display:flex;align-items:center;gap:6px;cursor:pointer" class="small-text"><input type="checkbox" id="ed-field-once" ${fa.oncePerTurn !== false ? 'checked' : ''}> 🔁 <strong>Once per turn</strong></label></div>`
         + `<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:0.4rem">`
         + `<div><label class="small-text">Amount</label><input id="ed-field-amount" type="number" min="0" max="200" value="${fEff.amount || 0}"></div>`
@@ -153772,6 +153913,10 @@ function captureEditorIntoCard(card) {
       tSide: v(p + '-tside') || 'enemy',
       summonCardId: (v(p + '-summoncard') || '').trim() || undefined,
       vfx: v(p + '-vfx') || 'none',
+      // 🔊 v121v131 — the sound this effect fires, beside the picture it fires.
+      //    Captured by the SAME prefix the whole block is built from, so every
+      //    effect slot that renders the picker also saves it.
+      sfx: (v(p + '-sfx') || '').trim() || undefined,
       useLimit: v(p + '-uselimit') || 'none',
       searchDeckType: v(p + '-searchtype') || 'any',
       searchDeckCardIds: _readMultiSelectValues(p + '-searchcards'),
@@ -153820,6 +153965,18 @@ function captureEditorIntoCard(card) {
         label: (v('ed-field-label') || '').trim() || 'Ability',
         energyCost: num('ed-field-energy', 0, 20, 1),
         oncePerTurn: (() => { const el = document.getElementById('ed-field-once'); return el ? !!el.checked : true; })(),
+        /* 🩸 activation cost — absent when nothing is charged, so an ability
+           with no cost leaves no dead block for the engine to walk. */
+        activationCost: (() => {
+          const c = {
+            discard: num('ed-field-cost-discard', 0, 9, 0),
+            payLifeHero: num('ed-field-cost-life', 0, 100, 0),
+            banish: num('ed-field-cost-banish', 0, 9, 0),
+            tribute: num('ed-field-cost-tribute', 0, 9, 0),
+            tributeSelf: (() => { const el = document.getElementById('ed-field-cost-tributeself'); return el ? !!el.checked : false; })(),
+          };
+          return (c.discard || c.payLifeHero || c.banish || c.tribute || c.tributeSelf) ? c : undefined;
+        })(),
         // 🔵 counter cost — absent when 0, so the engine sees no dead block
         counters: (() => {
           const n = num('ed-field-ctr-n', 0, 99, 0); if (!n) return undefined;
@@ -241519,6 +241676,30 @@ window.cityLinkedNodes = async function () {
     const ids = (l && !l.error && Array.isArray(l.data)) ? l.data.map((x) => String(x.node_id)).filter(Boolean) : [];
     let rows = [];
     if (ids.length) { const r = await Cloud.client.from('economy_nodes').select('*').in('id', ids).limit(50); if (r && !r.error && Array.isArray(r.data)) rows = r.data; }
+    /* 🔴 v121v131 — A BOOST IS NOT A CLAIM. Every row here was written by
+       city_push_node_boost (sql/105, the only writer): it records that THIS
+       city is pushing a boost INTO that node, with a pct, and it is written
+       automatically. Reading it as "that node belongs in my city" rang nine
+       players' cities with PRNs belonging to their corporation's founder —
+       six at a time, all in the same fifth of a second (MirageSoldier: owns
+       one node, rang six of GreyDragon's). Live, 64 of these rows point at
+       nodes the linker does not own and NOT ONE is backed by a claim.
+       So the ring keeps only what the viewer can point to: a node they own,
+       or one they are the owner's ACTIVE MAYOR of — the same test sql/105
+       itself uses to let one player act for another. */
+    if (rows.length) {
+      const foreign = rows.filter((r2) => r2 && r2.owner_id && String(r2.owner_id) !== String(me));
+      if (foreign.length) {
+        let mayorFor = new Set();
+        try {
+          const owners = Array.from(new Set(foreign.map((r2) => String(r2.owner_id))));
+          const mm = await Cloud.client.from('node_mayors').select('owner_id')
+            .eq('mayor_id', me).eq('active', true).in('owner_id', owners).limit(50);
+          if (mm && !mm.error && Array.isArray(mm.data)) mayorFor = new Set(mm.data.map((x) => String(x.owner_id)));
+        } catch (e2) {}
+        rows = rows.filter((r2) => !r2 || !r2.owner_id || String(r2.owner_id) === String(me) || mayorFor.has(String(r2.owner_id)));
+      }
+    }
     C.me = me; C.rows = rows; C.at = Date.now();
     return rows.slice();
   } catch (e) { return []; }
@@ -244302,7 +244483,7 @@ window.MythicMissionBridge = {
    /src/community. Anything the Bunkhouse needs is added HERE, never guessed
    at from inside the module.
    ⏱ collectCdMs / accrualCapH are the game's EXISTING idle contract
-   (OP_COLLECT_CD_MS = 6h, OP_ACCRUAL_CAP_H = 36h). They are passed, not
+   (OP_COLLECT_CD_MS = 12h since v121v131, OP_ACCRUAL_CAP_H = 36h). Passed, not
    redeclared, so the Bunkhouse, the city Resting House and corp operations
    can never drift into three different idle policies. */
 window.MythicHouseBridge = {
@@ -260870,6 +261051,79 @@ function _aiTradeState() {
 }
 function _aiDayIndex() { return Math.floor(Date.now() / 86400000); }
 
+/* 🤝 TWO TRADES A DAY, PER CORPORATION (owner, v121v131).
+   A spot sale and a contract delivery both count: both are the business being
+   done, and capping only one just moves the loop onto the other. Rolling 24
+   hours from each action's own stamp rather than a calendar day, so there is
+   no midnight to sit on. Per corporation rather than globally, because one
+   corp should not be able to eat the player's whole day and because the
+   relationship being modelled is per-corporation. */
+const AI_TRADE_DAY_MS = 24 * 60 * 60 * 1000;
+const AI_TRADE_BASE_CAP = 2;
+/* 🏅 …AND STANDING BUYS A BIGGER RELATIONSHIP. This is the "level of business"
+   the owner asked for: the tier does not merely nudge the price (_aiPayMul
+   already did that, ±15%) — it decides whether they will deal at all, how many
+   runs a contract is worth, how much moves per run, and how often you may
+   trade. A corporation that likes you does MORE business, not the same
+   business at a slightly better rate. */
+const AI_BUSINESS_LEVELS = {
+  allied:      { cap: 5, runs: 6, qtyMul: 1.60, label: 'full partnership' },
+  friendly:    { cap: 4, runs: 5, qtyMul: 1.35, label: 'preferred supplier' },
+  cordial:     { cap: 3, runs: 4, qtyMul: 1.15, label: 'standing order' },
+  neutral:     { cap: 2, runs: 3, qtyMul: 1.00, label: 'trial contract' },
+  strained:    { cap: 1, runs: 2, qtyMul: 0.80, label: 'a short leash' },
+  hostile:     { cap: 0, runs: 0, qtyMul: 0,    label: 'not while you stand there' },
+  blacklisted: { cap: 0, runs: 0, qtyMul: 0,    label: 'blacklisted' },
+};
+function _aiBusinessLevel(corpId) {
+  try {
+    const t = (typeof _aiCorpStanding === 'function') ? _aiCorpStanding(corpId).tier : null;
+    return AI_BUSINESS_LEVELS[(t && t.id) || 'neutral'] || AI_BUSINESS_LEVELS.neutral;
+  } catch (e) { return AI_BUSINESS_LEVELS.neutral; }
+}
+/* The timestamps of business done with this corp inside the window, pruned on
+   every read so the list cannot grow without bound on a long-lived profile. */
+function _aiRecentRuns(corpId) {
+  const t = _aiTradeState();
+  if (!t.runs || typeof t.runs !== 'object') t.runs = {};
+  const cut = Date.now() - AI_TRADE_DAY_MS;
+  const kept = (Array.isArray(t.runs[corpId]) ? t.runs[corpId] : []).filter((x) => (x | 0) > cut);
+  t.runs[corpId] = kept;
+  return kept;
+}
+function _aiTradesLeft(corpId) {
+  const lvl = _aiBusinessLevel(corpId);
+  return Math.max(0, lvl.cap - _aiRecentRuns(corpId).length);
+}
+function _aiNextTradeAt(corpId) {
+  const runs = _aiRecentRuns(corpId);
+  if (!runs.length) return 0;
+  return Math.min.apply(null, runs) + AI_TRADE_DAY_MS;
+}
+// Records one piece of business. Called by BOTH the spot sale and the delivery.
+function _aiMarkTrade(corpId) {
+  try { _aiRecentRuns(corpId).push(Date.now()); saveProfile(); } catch (e) {}
+}
+/* The one gate both trade actions ask. Returns true when the action is
+   REFUSED, with the reason already toasted — the same shape _jailBlocked uses. */
+function _aiTradeBlocked(corpId) {
+  try {
+    const c = AI_CORP_BY_ID[corpId];
+    const lvl = _aiBusinessLevel(corpId);
+    if (lvl.cap <= 0) {
+      showToast('🚫 ' + ((c && c.name) || 'They') + ' will not do business with you — ' + lvl.label + '. Raise your standing first.', 5200);
+      return true;
+    }
+    if (_aiTradesLeft(corpId) > 0) return false;
+    const ms = Math.max(0, _aiNextTradeAt(corpId) - Date.now());
+    const h = Math.floor(ms / 3600000), m = Math.floor((ms % 3600000) / 60000);
+    showToast('🤝 ' + ((c && c.name) || 'They') + ' have done their business with you today ('
+      + lvl.cap + '/' + lvl.cap + '). The next slot opens in ' + (h > 0 ? h + 'h ' + m + 'm' : m + 'm')
+      + '. Better standing buys more.', 6000);
+    return true;
+  } catch (e) { return false; }
+}
+
 // Which resource a corp actually deals in. Incumbents buy the resource they
 // control; a startup buys whatever its offer is built on, so the goods that
 // earn its goodwill are the same ones its standing already reads.
@@ -260903,13 +261157,50 @@ function _aiSpotOffer(corpId) {
   const unit = 14 + (_aiOfferHash(corpId, 'u') % 9);  // 14..22 cinder each
   return { res: res, qty: qty, pay: Math.round(qty * unit * _aiPayMul(corpId)) };
 }
+/* 🤝 What this relationship is worth, said out loud on the TRADE tab: the tier,
+   the size of business it buys, and how many slots are left in the rolling day.
+   A cap the player cannot see is a bug report rather than a rule. */
+function _aiTradeAllowanceHtml(corpId) {
+  try {
+    const lvl = _aiBusinessLevel(corpId);
+    const st = (typeof _aiCorpStanding === 'function') ? _aiCorpStanding(corpId) : null;
+    const tier = (st && st.tier) || { name: 'Neutral', col: '#8a96a3' };
+    const left = _aiTradesLeft(corpId);
+    const ms = left > 0 ? 0 : Math.max(0, _aiNextTradeAt(corpId) - Date.now());
+    const when = ms > 0 ? (Math.floor(ms / 3600000) + 'h ' + Math.floor((ms % 3600000) / 60000) + 'm') : '';
+    return '<div class="tw-nd-section-hdr">THE RELATIONSHIP</div>'
+      + '<div style="padding:0 1.1rem 0.9rem">'
+      +   '<div class="tw-nd-cinder-box" style="padding:0.75rem 0.9rem">'
+      +     '<div style="display:flex;justify-content:space-between;align-items:baseline">'
+      +       '<b style="color:' + tier.col + '">' + escapeHtml(tier.name) + '</b>'
+      +       '<span style="color:#c2b184;font-size:0.8rem">' + escapeHtml(lvl.label) + '</span></div>'
+      +     (lvl.cap > 0
+            ? '<div style="font-size:0.8rem;color:#c2b184;margin-top:0.4rem;line-height:1.55">'
+              + 'They will do <b style="color:#f5c453">' + lvl.cap + '</b> piece'
+              + (lvl.cap === 1 ? '' : 's') + ' of business with you a day, '
+              + '<b style="color:#f5c453">' + lvl.runs + '</b>-run contracts. '
+              + (left > 0
+                 ? '<b style="color:#7fd8a0">' + left + ' left today.</b>'
+                 : '<b style="color:#e8705c">None left — ' + when + ' until the next.</b>')
+              + '<br>Standing buys bigger business: deliver on time, keep their goods moving.'
+              + '</div>'
+            : '<div style="font-size:0.8rem;color:#e8705c;margin-top:0.4rem">They will not trade with you at all. Raise your standing.</div>')
+      +   '</div></div>';
+  } catch (e) { return ''; }
+}
 function _aiContractTerms(corpId) {
   const res = _aiCorpWants(corpId);
   const h = _aiOfferHash(corpId, 'deal');
-  const qty = 10 + (h % 11);                     // 10..20 per delivery
   const unit = 19 + (h % 8);                     // better per-unit than spot
-  return { res: res, qty: qty, runs: AI_TRADE_RUNS,
-           pay: Math.round(qty * unit * _aiPayMul(corpId)) };
+  /* 🏅 v121v131 — THE SIZE OF THE DEAL IS THE RELATIONSHIP. Every player used
+     to get the same 3 runs of the same quantity no matter how the corporation
+     felt about them; standing only nudged the price ±15%. Now the tier sets
+     how many runs a contract is worth and how much moves per run, so doing
+     business properly visibly buys BIGGER business. */
+  const lvl = _aiBusinessLevel(corpId);
+  const qty = Math.max(1, Math.round((10 + (h % 11)) * (lvl.qtyMul || 1)));
+  return { res: res, qty: qty, runs: Math.max(1, lvl.runs || AI_TRADE_RUNS),
+           pay: Math.round(qty * unit * _aiPayMul(corpId)), level: lvl };
 }
 
 // ⏰ Expire overdue contracts. Called on render, so a missed window is felt
@@ -260943,6 +261234,7 @@ function _aiTradeTick() {
 function _aiSpotTrade(corpId) {
   try {
     const c = AI_CORP_BY_ID[corpId]; if (!c) return;
+    if (_aiTradeBlocked(corpId)) return;          // 🤝 two a day, per corp (v121v131)
     const t = _aiTradeState();
     const day = _aiDayIndex();
     if (t.spot[corpId] === day) { showToast('Already traded with ' + c.name + ' today.', 3200); return; }
@@ -260957,6 +261249,7 @@ function _aiSpotTrade(corpId) {
     const cost = {}; cost[o.res] = o.qty;
     if (!spendResources(cost)) { showToast('Trade failed — resources moved.', 3200); return; }
     if (typeof addGems === 'function') addGems(o.pay, 'Node trade sold');
+    _aiMarkTrade(corpId);                         // 🤝 counts against the daily two
     t.spot[corpId] = day;
     t.rep[corpId] = Math.min(AI_REP_CLAMP, (t.rep[corpId] || 0) + 2);
     try { saveProfile(); } catch (e) {}
@@ -260970,6 +261263,11 @@ function _aiEnterBusiness(corpId) {
     const c = AI_CORP_BY_ID[corpId]; if (!c) return;
     const t = _aiTradeState();
     if (t.deal[corpId]) { showToast('You already have a contract with ' + c.name + '.', 3200); return; }
+    /* 🤝 v121v131 — signing is free, but it is pointless if they will not deal
+       with you, and a contract signed while the day's business is spent used to
+       be the whole re-sign loop: sign, deliver 3, sign again, forever. The gate
+       is asked HERE too so the refusal lands on the button that starts it. */
+    if (_aiTradeBlocked(corpId)) return;
     const terms = _aiContractTerms(corpId);
     // Gate on the FIRST delivery, not the whole run — you are signing up to
     // deliver now and keep delivering, not to have it all up front.
@@ -261005,6 +261303,7 @@ function _aiDeliver(corpId) {
     const d = t.deal[corpId];
     if (!d) { showToast('No contract with ' + c.name + '.', 3000); return; }
     if (_aiDeliverBusy[corpId]) { showToast('📦 Still loading that delivery…', 2000); return; }
+    if (_aiTradeBlocked(corpId)) return;           // 🤝 two a day, per corp (v121v131)
     {
       const _since = Date.now() - ((d.lastRun | 0) || 0);
       if (_since < AI_DELIVER_COOLDOWN_MS) {
@@ -261025,6 +261324,7 @@ function _aiDeliver(corpId) {
     if (!spendResources(cost)) { showToast('Delivery failed — resources moved.', 3200); return; }
     if (typeof addGems === 'function') addGems(d.pay, 'Delivery paid');
     d.lastRun = Date.now();          // 📦 the cooldown stamp — see the header
+    _aiMarkTrade(corpId);            // 🤝 …and it counts against the daily two
     d.left -= 1;
     t.done[corpId] = (t.done[corpId] || 0) + 1;
     t.rep[corpId] = Math.min(AI_REP_CLAMP, (t.rep[corpId] || 0) + 5);
@@ -261356,8 +261656,8 @@ function _aiCorpOpen(corpId, tab) {
       if (deal) {
         const doneRuns = deal.runs - deal.left;
         const canDeliver = have(deal.res) >= deal.qty;
-        dealHtml +=
-          '<div class="tw-nd-section-hdr">ACTIVE CONTRACT</div>'
+        dealHtml += _aiTradeAllowanceHtml(corpId)
+          + '<div class="tw-nd-section-hdr">ACTIVE CONTRACT</div>'
           + '<div style="padding:0 1.1rem 1rem">'
           +   '<div class="tw-nd-cinder-box" style="padding:0.8rem 0.9rem">'
           +     '<div style="display:flex;justify-content:space-between;align-items:baseline">'
@@ -261373,8 +261673,8 @@ function _aiCorpOpen(corpId, tab) {
           +   '</div></div>';
       } else {
         const signOk = have(terms.res) >= terms.qty;
-        dealHtml +=
-          '<div class="tw-nd-section-hdr">ENTER BUSINESS</div>'
+        dealHtml += _aiTradeAllowanceHtml(corpId)
+          + '<div class="tw-nd-section-hdr">ENTER BUSINESS</div>'
           + '<div style="padding:0 1.1rem 1rem">'
           +   '<div class="tw-nd-cinder-box" style="padding:0.8rem 0.9rem">'
           +     '<div style="color:#fff4d2;font-weight:700;margin-bottom:0.4rem">'
@@ -266850,8 +267150,8 @@ try {
        that works everywhere except the one early path nobody tested. It is
        2KB with no dependencies. -->
 <script src="src/econ/peg.js?v=v121q51"></script>
-<script src="src/battle/effects.js?v=v121v130" defer></script>
-<script src="src/phone/handset.js?v=v121v130" defer></script>
+<script src="src/battle/effects.js?v=v121v131" defer></script>
+<script src="src/phone/handset.js?v=v121v131" defer></script>
 <script src="src/battle/combat.js?v=120m4" defer></script>
 <script src="src/battle/targeting.js?v=121e3hex" defer></script>
 <link rel="stylesheet" href="src/sprites/frames.css?v=120k3">

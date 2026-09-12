@@ -899,3 +899,58 @@ payout.
 render, and `html, body` joined the cursor selector — `*` matches ELEMENTS, so
 over a full-bleed background with no child under the pointer it fell through to
 the system arrow, which is why it was missing on the main menu.
+
+## v121v131 — the AI trade cap, standing that buys bigger business, and the editor
+
+**THE FAUCET.** The AI-corporation TRADE tab was the loop: `_aiEnterBusiness`
+had no cooldown and no cost, each `_aiDeliver` spent the quantity CLIENT-side
+and credited the pay SERVER-side while raising rep by 5 (which feeds
+`_aiPayMul`, so a spammed contract inflated its own price), and completing the
+third run DELETED the contract so the next signature was free. With ~12 corps it
+ran in parallel against all of them. Measured on one account: 12,523 deliveries
+at a 0.21 s median gap, 97.9% under one second, across 13-hour sittings.
+v121v130 throttled `_aiDeliver` alone — 1,440 runs an hour, signature wide open.
+Now: **two pieces of business per corporation per rolling 24 hours**, a spot
+sale and a delivery both counting, asked at all THREE doors.
+
+**STANDING BUYS THE SIZE OF THE BUSINESS.** It moved the price ±15% and nothing
+else — every player got the same 3-run contract whether a corp loved them or
+would not spit on them. The tier now sets whether they deal at all (hostile and
+blacklisted do not), the contract's runs, the quantity per run, and the daily
+slots. Allied: 5 slots, 6-run contracts, 1.6× quantity.
+
+**EVERY VAULT HOLDS WHAT IT SHOULD.** `_stashEnforceCap()` is correct and
+complete — and had exactly ONE caller, `renderStash()`. So the ceiling was only
+enforced when a player opened that panel, throttled to once per 30 s, and a
+vault that went over any other way (the v130 ratchet, `_refundRes`, an admin
+grant, an old save) stayed over on every other screen. One account showed
+141,598 units against a 31,250 absolute maximum. Enforcement now runs when the
+cloud copy lands and again the moment the ceiling becomes vouchable (it refuses
+to trim against an unread one, which is why a cold load needs the retry).
+
+**THE WAGE DRAIN** is 12 h instead of 6; `OP_ACCRUAL_CAP_H` stays 36, so
+collecting half as often loses nothing and halves how fast a treasury drains.
+
+**PRN NODES IN A CITY THAT OWNS NONE** (MirageSoldier). `city_node_links` has
+one writer, sql/105's `city_push_node_boost`, and it records *my city BOOSTS
+that node* — a contribution with a pct. The 2026-09-11 change read it as *that
+node belongs in my city*. Live: 64 rows across nine-plus players pointed at
+nodes they do not own, and NOT ONE was backed by a claim. A city now rings a
+node it owns or is the owner's ACTIVE MAYOR of.
+
+**THE EDITOR.** A field ability could charge only energy and counters, so
+"sacrifice 3 units, deal 100 damage to everything they control" was unauthorable
+— `activationCost` (discard / payLifeHero / banish / tribute / tributeSelf) had
+gated moves and on-play effects since it was written and was never wired to the
+third activation. The effect filter never typed: it was bound for Escape and ✕
+only, with typing left to a delegated listener that cannot reach a picker
+outside its host. Passives got their own search (they could never qualify — the
+picker test counts ONPLAY_TYPES ids and a passive list has none). Effect VFX can
+carry a SOUND, fired independently of the picture through `playSfx` so the admin
+override and volume still apply.
+
+**THE RUIN EXCHANGE** plays the main menu music on every page but Just Business,
+which keeps its own zone. The hub view already did; walking into a tile changed
+it — Black Market Basement on five, Camp music on `vendorMarket` (which sits in
+both sets) — so one building had three tracks. ⚠ The 💰 Black Market music slot
+is now unrouted.

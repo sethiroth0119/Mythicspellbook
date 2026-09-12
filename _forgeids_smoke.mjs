@@ -2,7 +2,7 @@
 
    captureEditorIntoCard() is the only way a card definition gets written. It
    reads the editor DOM by id — `v('ed-name')`, `num('ed-ig-chance', 1, 100, 100)`
-   — and 140 of those reads end in a LITERAL fallback. A literal fallback is
+   — and 144 of those reads end in a LITERAL fallback. A literal fallback is
    not a default; it is what the card BECOMES when the field is not on screen:
 
        num('ed-ig-chance', 1, 100, 100)   field gone → the card's chance becomes 100
@@ -15,7 +15,7 @@
    that drops one field from the markup — which is exactly what a remodel does —
    is therefore silent, permanent data loss on the next Save.
 
-   ⚠ THE NUMBER 140 IN THE PARAGRAPH ABOVE IS ASSERTED, NOT WRITTEN DOWN.
+   ⚠ THE NUMBER 144 IN THE PARAGRAPH ABOVE IS ASSERTED, NOT WRITTEN DOWN.
    The header of the previous revision claimed 83 literal-fallback num() reads
    while the code derived and printed 80, and nothing noticed for two months —
    a comment that drifts from its code is a lie with a long half-life. So the
@@ -32,7 +32,7 @@
 
        🔴 The id derivation does NOT know a fixed set of read forms. The three
        the editor's convention names — v( , num( , getElementById( — accounted
-       for 380 of the 460 ids; the other 80 arrive through helpers the save path
+       for 385 of the 465 ids; the other 80 arrive through helpers the save path
        defines for itself (_wc, _pc, _pv, _n, _v, _ck, _rc, _rv, _zcOn, _zcName,
        numOrNull, _readCardFilterFrom, _readMultiSelectValues, _readSearchPickRule
        and the selector-composing _readPolyMatSources). A revision of this file
