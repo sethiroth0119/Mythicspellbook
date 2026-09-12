@@ -57,7 +57,7 @@
    "name": "missionResume",
    "kind": "data",
    "file": "public/index.html",
-   "line": 241319,
+   "line": 241663,
    "params": [],
    "async": false,
    "reads": [],
@@ -141,7 +141,7 @@
    "name": "missions",
    "kind": "function",
    "file": "public/index.html",
-   "line": 241306,
+   "line": 241650,
    "params": [],
    "async": false,
    "reads": [],
@@ -155,7 +155,7 @@
    "name": "missionRun",
    "kind": "pure",
    "file": "public/index.html",
-   "line": 241314,
+   "line": 241658,
    "params": [],
    "async": false,
    "reads": [
@@ -171,7 +171,7 @@
    "name": "missionStart",
    "kind": "function",
    "file": "public/index.html",
-   "line": 241318,
+   "line": 241662,
    "params": [
     "id"
    ],

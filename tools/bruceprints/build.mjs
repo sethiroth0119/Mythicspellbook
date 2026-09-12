@@ -111,10 +111,16 @@ const nameCount = new Map();    // duplicate names across files
 function lineOf(code, pos, offset) { let n = 1; for (let i = 0; i < pos && i < code.length; i++) if (code.charCodeAt(i) === 10) n++; return n + offset - 1; }
 
 function parseSource(s) {
-  let ast;
-  try {
-    ast = acorn.parse(s.code, { ecmaVersion: 2023, sourceType: s.type === 'module' ? 'module' : 'script', allowReturnOutsideFunction: true, allowAwaitOutsideFunction: true, allowHashBang: true });
-  } catch (e) { console.log('  ! parse failed ' + s.file + ' — ' + e.message.slice(0, 90)); return; }
+  /* An inline <script type="module"> parses only as a module, and a classic
+     script only as a script — node-city's 40k-line inline script is a module,
+     which is why the first pass over it found nothing. Try both. */
+  const opts = { ecmaVersion: 2023, allowReturnOutsideFunction: true, allowAwaitOutsideFunction: true, allowHashBang: true };
+  const order = s.type === 'module' ? ['module', 'script'] : ['script', 'module'];
+  let ast = null, lastErr = null;
+  for (const sourceType of order) {
+    try { ast = acorn.parse(s.code, { ...opts, sourceType }); break; } catch (e) { lastErr = e; }
+  }
+  if (!ast) { console.log('  ! parse failed ' + s.file + ' — ' + lastErr.message.slice(0, 90)); return; }
 
   const stack = [];
   const push = (name, node) => {

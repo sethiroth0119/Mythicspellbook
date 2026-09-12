@@ -9,7 +9,7 @@
    "name": "renderCrashExchange",
    "kind": "event",
    "file": "public/index.html",
-   "line": 236971,
+   "line": 237278,
    "params": [],
    "async": false,
    "reads": [
@@ -25,7 +25,7 @@
    "writes": [
     "App._cxFocusId"
    ],
-   "calls": 26,
+   "calls": 25,
    "x": 80,
    "y": 80
   },
@@ -34,7 +34,7 @@
    "name": "_cxExecuteBuy",
    "kind": "event",
    "file": "public/index.html",
-   "line": 221154,
+   "line": 221234,
    "params": [
     "id",
     "qty",
@@ -49,7 +49,7 @@
     "Profile.gems",
     "Profile.cxHoldings"
    ],
-   "calls": 10,
+   "calls": 7,
    "x": 80,
    "y": 212
   },
@@ -58,7 +58,7 @@
    "name": "_cxExecuteSell",
    "kind": "event",
    "file": "public/index.html",
-   "line": 221240,
+   "line": 221314,
    "params": [
     "id",
     "qty",
@@ -71,7 +71,7 @@
    "writes": [
     "Profile.cxHoldings"
    ],
-   "calls": 10,
+   "calls": 7,
    "x": 80,
    "y": 344
   },
@@ -80,7 +80,7 @@
    "name": "cxProduce",
    "kind": "function",
    "file": "public/index.html",
-   "line": 220506,
+   "line": 220586,
    "params": [
     "map",
     "source"
@@ -93,49 +93,11 @@
    "y": 476
   },
   {
-   "id": "cxSupplyReport",
-   "name": "cxSupplyReport",
-   "kind": "function",
-   "file": "public/index.html",
-   "line": 220583,
-   "params": [
-    "id"
-   ],
-   "async": false,
-   "reads": [],
-   "writes": [],
-   "calls": 6,
-   "x": 80,
-   "y": 608
-  },
-  {
-   "id": "_cxConvertCinderToAza",
-   "name": "_cxConvertCinderToAza",
-   "kind": "data",
-   "file": "public/index.html",
-   "line": 221299,
-   "params": [
-    "amountCR"
-   ],
-   "async": false,
-   "reads": [
-    "Profile.gems",
-    "BankEthos.aza"
-   ],
-   "writes": [
-    "Profile.gems",
-    "BankEthos.aza"
-   ],
-   "calls": 4,
-   "x": 80,
-   "y": 740
-  },
-  {
    "id": "bumpMarketPriceUp",
    "name": "bumpMarketPriceUp",
    "kind": "function",
    "file": "public/index.html",
-   "line": 220389,
+   "line": 220467,
    "params": [
     "id",
     "qty",
@@ -153,7 +115,7 @@
    "name": "dropMarketPriceDown",
    "kind": "function",
    "file": "public/index.html",
-   "line": 220406,
+   "line": 220485,
    "params": [
     "id",
     "qty",
@@ -167,11 +129,49 @@
    "y": 212
   },
   {
+   "id": "cxSupplyReport",
+   "name": "cxSupplyReport",
+   "kind": "function",
+   "file": "public/index.html",
+   "line": 220663,
+   "params": [
+    "id"
+   ],
+   "async": false,
+   "reads": [],
+   "writes": [],
+   "calls": 6,
+   "x": 80,
+   "y": 608
+  },
+  {
+   "id": "_cxConvertCinderToAza",
+   "name": "_cxConvertCinderToAza",
+   "kind": "data",
+   "file": "public/index.html",
+   "line": 221369,
+   "params": [
+    "amountCR"
+   ],
+   "async": false,
+   "reads": [
+    "Profile.gems",
+    "BankEthos.aza"
+   ],
+   "writes": [
+    "Profile.gems",
+    "BankEthos.aza"
+   ],
+   "calls": 3,
+   "x": 80,
+   "y": 740
+  },
+  {
    "id": "_cxGetHistory",
    "name": "_cxGetHistory",
    "kind": "function",
    "file": "public/index.html",
-   "line": 220628,
+   "line": 220708,
    "params": [
     "id",
     "range",
@@ -182,7 +182,7 @@
     "CXHist.series"
    ],
    "writes": [],
-   "calls": 5,
+   "calls": 4,
    "x": 420,
    "y": 344
   },
@@ -191,7 +191,7 @@
    "name": "_cxConvertAzaToCinder",
    "kind": "data",
    "file": "public/index.html",
-   "line": 221317,
+   "line": 221387,
    "params": [
     "amountAZA"
    ],
@@ -202,7 +202,7 @@
    "writes": [
     "BankEthos.aza"
    ],
-   "calls": 4,
+   "calls": 3,
    "x": 80,
    "y": 872
   },
@@ -211,7 +211,7 @@
    "name": "_cxRenderPortfolio",
    "kind": "function",
    "file": "public/index.html",
-   "line": 236458,
+   "line": 236528,
    "params": [
     "holdings",
     "totalValue",
@@ -223,7 +223,7 @@
    "async": false,
    "reads": [],
    "writes": [],
-   "calls": 5,
+   "calls": 4,
    "x": 420,
    "y": 476
   },
@@ -232,7 +232,7 @@
    "name": "_cxFetchStatsAll",
    "kind": "data",
    "file": "public/index.html",
-   "line": 220003,
+   "line": 220008,
    "params": [],
    "async": false,
    "reads": [
@@ -254,7 +254,7 @@
    "name": "_cxChartHtml",
    "kind": "function",
    "file": "public/index.html",
-   "line": 220811,
+   "line": 220891,
    "params": [
     "id",
     "range",
@@ -263,16 +263,30 @@
    "async": false,
    "reads": [],
    "writes": [],
-   "calls": 4,
+   "calls": 3,
    "x": 420,
    "y": 740
+  },
+  {
+   "id": "_cxHeraldStories",
+   "name": "_cxHeraldStories",
+   "kind": "function",
+   "file": "public/index.html",
+   "line": 237201,
+   "params": [],
+   "async": false,
+   "reads": [],
+   "writes": [],
+   "calls": 3,
+   "x": 760,
+   "y": 80
   },
   {
    "id": "_cxFetchHistory",
    "name": "_cxFetchHistory",
    "kind": "function",
    "file": "public/index.html",
-   "line": 219978,
+   "line": 219983,
    "params": [
     "id",
     "range"
@@ -286,14 +300,14 @@
    "writes": [],
    "calls": 3,
    "x": 760,
-   "y": 80
+   "y": 212
   },
   {
    "id": "cxCloudQueuePush",
    "name": "cxCloudQueuePush",
    "kind": "function",
    "file": "public/index.html",
-   "line": 220050,
+   "line": 220055,
    "params": [
     "id",
     "reason",
@@ -304,14 +318,14 @@
    "writes": [],
    "calls": 3,
    "x": 760,
-   "y": 212
+   "y": 344
   },
   {
    "id": "_cxMarketCatalog",
    "name": "_cxMarketCatalog",
    "kind": "function",
    "file": "public/index.html",
-   "line": 220910,
+   "line": 220990,
    "params": [],
    "async": false,
    "reads": [
@@ -327,7 +341,7 @@
    "name": "_cxIdleDriftFocus",
    "kind": "function",
    "file": "public/index.html",
-   "line": 221352,
+   "line": 221422,
    "params": [
     "id"
    ],
@@ -343,7 +357,7 @@
    "name": "_cxFetchStats",
    "kind": "function",
    "file": "public/index.html",
-   "line": 219991,
+   "line": 219996,
    "params": [
     "id"
    ],
@@ -363,7 +377,7 @@
    "name": "_cxCloudMergeRow",
    "kind": "function",
    "file": "public/index.html",
-   "line": 220028,
+   "line": 220033,
    "params": [
     "row"
    ],
@@ -372,14 +386,14 @@
    "writes": [],
    "calls": 2,
    "x": 760,
-   "y": 344
+   "y": 476
   },
   {
    "id": "cxCloudPullAll",
    "name": "cxCloudPullAll",
    "kind": "function",
    "file": "public/index.html",
-   "line": 220085,
+   "line": 220090,
    "params": [
     "force"
    ],
@@ -398,7 +412,7 @@
    "name": "cxCloudSubscribe",
    "kind": "function",
    "file": "public/index.html",
-   "line": 220108,
+   "line": 220113,
    "params": [],
    "async": false,
    "reads": [
@@ -416,23 +430,41 @@
    "name": "_cxGetReserve",
    "kind": "function",
    "file": "public/index.html",
-   "line": 220183,
+   "line": 220188,
    "params": [
     "resourceId"
    ],
    "async": false,
    "reads": [],
    "writes": [],
+   "calls": 1,
+   "x": 420,
+   "y": 1532
+  },
+  {
+   "id": "_cxQuoteOrder",
+   "name": "_cxQuoteOrder",
+   "kind": "function",
+   "file": "public/index.html",
+   "line": 220233,
+   "params": [
+    "id",
+    "qty",
+    "dir"
+   ],
+   "async": false,
+   "reads": [],
+   "writes": [],
    "calls": 2,
-   "x": 760,
-   "y": 476
+   "x": 420,
+   "y": 1664
   },
   {
    "id": "getMarketPrice",
    "name": "getMarketPrice",
    "kind": "pure",
    "file": "public/index.html",
-   "line": 220258,
+   "line": 220285,
    "params": [
     "id"
    ],
@@ -448,7 +480,7 @@
    "name": "recordMarketTxn",
    "kind": "function",
    "file": "public/index.html",
-   "line": 220421,
+   "line": 220501,
    "params": [
     "id",
     "qty",
@@ -467,7 +499,7 @@
    "name": "cxSupplyRatio",
    "kind": "pure",
    "file": "public/index.html",
-   "line": 220494,
+   "line": 220574,
    "params": [
     "id"
    ],
@@ -483,7 +515,7 @@
    "name": "_cxRecordHistory",
    "kind": "function",
    "file": "public/index.html",
-   "line": 220619,
+   "line": 220699,
    "params": [
     "id"
    ],
@@ -499,7 +531,7 @@
    "name": "_cxHistoryPts",
    "kind": "function",
    "file": "public/index.html",
-   "line": 220737,
+   "line": 220817,
    "params": [
     "id",
     "range"
@@ -518,7 +550,7 @@
    "name": "getCrashExchange",
    "kind": "data",
    "file": "public/index.html",
-   "line": 219942,
+   "line": 219947,
    "params": [],
    "async": false,
    "reads": [
@@ -536,7 +568,7 @@
    "name": "_cxDelta24",
    "kind": "pure",
    "file": "public/index.html",
-   "line": 220018,
+   "line": 220023,
    "params": [
     "id",
     "p"
@@ -553,7 +585,7 @@
    "name": "_cxCloudFlush",
    "kind": "function",
    "file": "public/index.html",
-   "line": 220066,
+   "line": 220071,
    "params": [],
    "async": true,
    "reads": [
@@ -570,7 +602,7 @@
    "name": "_cxEnsureReserveModel",
    "kind": "data",
    "file": "public/index.html",
-   "line": 220175,
+   "line": 220180,
    "params": [],
    "async": false,
    "reads": [
@@ -580,15 +612,33 @@
     "Forge.cxReserve"
    ],
    "calls": 0,
-   "x": 1100,
-   "y": 344
+   "x": 760,
+   "y": 1136
+  },
+  {
+   "id": "_cxFillPrice",
+   "name": "_cxFillPrice",
+   "kind": "pure",
+   "file": "public/index.html",
+   "line": 220226,
+   "params": [
+    "row",
+    "qty",
+    "dir"
+   ],
+   "async": false,
+   "reads": [],
+   "writes": [],
+   "calls": 0,
+   "x": 760,
+   "y": 1268
   },
   {
    "id": "_cxQuoteBuy",
    "name": "_cxQuoteBuy",
    "kind": "pure",
    "file": "public/index.html",
-   "line": 220216,
+   "line": 220243,
    "params": [
     "resourceId",
     "qty",
@@ -598,15 +648,15 @@
    "reads": [],
    "writes": [],
    "calls": 1,
-   "x": 420,
-   "y": 1532
+   "x": 80,
+   "y": 1004
   },
   {
    "id": "_cxQuoteSell",
    "name": "_cxQuoteSell",
    "kind": "pure",
    "file": "public/index.html",
-   "line": 220229,
+   "line": 220256,
    "params": [
     "resourceId",
     "qty",
@@ -616,15 +666,15 @@
    "reads": [],
    "writes": [],
    "calls": 1,
-   "x": 420,
-   "y": 1664
+   "x": 80,
+   "y": 1136
   },
   {
    "id": "_cxReserveOnBuy",
    "name": "_cxReserveOnBuy",
    "kind": "function",
    "file": "public/index.html",
-   "line": 220242,
+   "line": 220269,
    "params": [
     "resourceId",
     "qty",
@@ -634,15 +684,15 @@
    "reads": [],
    "writes": [],
    "calls": 1,
-   "x": 420,
-   "y": 1796
+   "x": 80,
+   "y": 1268
   },
   {
    "id": "_cxReserveOnSell",
    "name": "_cxReserveOnSell",
    "kind": "function",
    "file": "public/index.html",
-   "line": 220250,
+   "line": 220277,
    "params": [
     "resourceId",
     "qty",
@@ -652,31 +702,83 @@
    "reads": [],
    "writes": [],
    "calls": 1,
-   "x": 420,
-   "y": 1928
+   "x": 80,
+   "y": 1400
   },
   {
    "id": "tickMarketDecay",
    "name": "tickMarketDecay",
    "kind": "event",
    "file": "public/index.html",
-   "line": 220289,
+   "line": 220316,
    "params": [],
    "async": false,
    "reads": [],
    "writes": [],
    "calls": 1,
    "x": 760,
-   "y": 1136
+   "y": 1400
   },
   {
-   "id": "_cxRarityTier",
-   "name": "_cxRarityTier",
+   "id": "_cxTape",
+   "name": "_cxTape",
    "kind": "pure",
    "file": "public/index.html",
-   "line": 220462,
+   "line": 220410,
+   "params": [],
+   "async": false,
+   "reads": [],
+   "writes": [],
+   "calls": 1,
+   "x": 1440,
+   "y": 212
+  },
+  {
+   "id": "_cxTapePush",
+   "name": "_cxTapePush",
+   "kind": "function",
+   "file": "public/index.html",
+   "line": 220415,
    "params": [
-    "id"
+    "id",
+    "dir",
+    "qty",
+    "px",
+    "src"
+   ],
+   "async": false,
+   "reads": [],
+   "writes": [],
+   "calls": 1,
+   "x": 760,
+   "y": 1532
+  },
+  {
+   "id": "_cxFlow",
+   "name": "_cxFlow",
+   "kind": "pure",
+   "file": "public/index.html",
+   "line": 220424,
+   "params": [
+    "id",
+    "ms"
+   ],
+   "async": false,
+   "reads": [],
+   "writes": [],
+   "calls": 1,
+   "x": 1100,
+   "y": 344
+  },
+  {
+   "id": "_cxMovers",
+   "name": "_cxMovers",
+   "kind": "function",
+   "file": "public/index.html",
+   "line": 220439,
+   "params": [
+    "ms",
+    "limit"
    ],
    "async": false,
    "reads": [],
@@ -686,11 +788,11 @@
    "y": 476
   },
   {
-   "id": "_cxSupply",
-   "name": "_cxSupply",
-   "kind": "function",
+   "id": "_cxRarityTier",
+   "name": "_cxRarityTier",
+   "kind": "pure",
    "file": "public/index.html",
-   "line": 220474,
+   "line": 220542,
    "params": [
     "id"
    ],
@@ -702,11 +804,61 @@
    "y": 608
   },
   {
+   "id": "_cxSupply",
+   "name": "_cxSupply",
+   "kind": "function",
+   "file": "public/index.html",
+   "line": 220554,
+   "params": [
+    "id"
+   ],
+   "async": false,
+   "reads": [],
+   "writes": [],
+   "calls": 1,
+   "x": 1100,
+   "y": 740
+  },
+  {
    "id": "cxIsGlutted",
    "name": "cxIsGlutted",
    "kind": "pure",
    "file": "public/index.html",
-   "line": 220500,
+   "line": 220580,
+   "params": [
+    "id"
+   ],
+   "async": false,
+   "reads": [],
+   "writes": [],
+   "calls": 1,
+   "x": 420,
+   "y": 1796
+  },
+  {
+   "id": "_cxLogMarketEvent",
+   "name": "_cxLogMarketEvent",
+   "kind": "function",
+   "file": "public/index.html",
+   "line": 220622,
+   "params": [
+    "kind",
+    "id",
+    "source"
+   ],
+   "async": false,
+   "reads": [],
+   "writes": [],
+   "calls": 1,
+   "x": 420,
+   "y": 1928
+  },
+  {
+   "id": "cxMarketMul",
+   "name": "cxMarketMul",
+   "kind": "pure",
+   "file": "public/index.html",
+   "line": 220641,
    "params": [
     "id"
    ],
@@ -718,45 +870,11 @@
    "y": 2060
   },
   {
-   "id": "_cxLogMarketEvent",
-   "name": "_cxLogMarketEvent",
-   "kind": "function",
-   "file": "public/index.html",
-   "line": 220542,
-   "params": [
-    "kind",
-    "id",
-    "source"
-   ],
-   "async": false,
-   "reads": [],
-   "writes": [],
-   "calls": 1,
-   "x": 420,
-   "y": 2192
-  },
-  {
-   "id": "cxMarketMul",
-   "name": "cxMarketMul",
-   "kind": "pure",
-   "file": "public/index.html",
-   "line": 220561,
-   "params": [
-    "id"
-   ],
-   "async": false,
-   "reads": [],
-   "writes": [],
-   "calls": 1,
-   "x": 420,
-   "y": 2324
-  },
-  {
    "id": "cxYieldMul",
    "name": "cxYieldMul",
    "kind": "function",
    "file": "public/index.html",
-   "line": 220571,
+   "line": 220651,
    "params": [
     "map"
    ],
@@ -765,28 +883,28 @@
    "writes": [],
    "calls": 1,
    "x": 80,
-   "y": 1004
+   "y": 1532
   },
   {
    "id": "_cxEnsureHistory",
    "name": "_cxEnsureHistory",
    "kind": "pure",
    "file": "public/index.html",
-   "line": 220608,
+   "line": 220688,
    "params": [],
    "async": false,
    "reads": [],
    "writes": [],
    "calls": 1,
    "x": 1440,
-   "y": 212
+   "y": 344
   },
   {
    "id": "_cxChartSVG",
    "name": "_cxChartSVG",
    "kind": "function",
    "file": "public/index.html",
-   "line": 220695,
+   "line": 220775,
    "params": [
     "data",
     "w",
@@ -795,16 +913,16 @@
    "async": false,
    "reads": [],
    "writes": [],
-   "calls": 1,
+   "calls": 0,
    "x": 760,
-   "y": 1268
+   "y": 1664
   },
   {
    "id": "_cxCandleSVG",
    "name": "_cxCandleSVG",
    "kind": "function",
    "file": "public/index.html",
-   "line": 220775,
+   "line": 220855,
    "params": [
     "candles",
     "w",
@@ -813,94 +931,94 @@
    "async": false,
    "reads": [],
    "writes": [],
-   "calls": 1,
+   "calls": 0,
    "x": 760,
-   "y": 1400
+   "y": 1796
   },
   {
    "id": "_cxCandleTipHtml",
    "name": "_cxCandleTipHtml",
    "kind": "pure",
    "file": "public/index.html",
-   "line": 220818,
+   "line": 220898,
    "params": [
     "c"
    ],
    "async": false,
    "reads": [],
    "writes": [],
-   "calls": 1,
+   "calls": 0,
    "x": 760,
-   "y": 1532
+   "y": 1928
   },
   {
    "id": "_cxBindCandleTip",
    "name": "_cxBindCandleTip",
    "kind": "function",
    "file": "public/index.html",
-   "line": 220825,
+   "line": 220905,
    "params": [],
    "async": false,
    "reads": [],
    "writes": [],
    "calls": 1,
    "x": 420,
-   "y": 2456
+   "y": 2192
   },
   {
    "id": "_cxFmtCR",
    "name": "_cxFmtCR",
    "kind": "pure",
    "file": "public/index.html",
-   "line": 220848,
+   "line": 220928,
    "params": [
     "n"
    ],
    "async": false,
    "reads": [],
    "writes": [],
-   "calls": 1,
+   "calls": 0,
    "x": 420,
-   "y": 2588
+   "y": 2324
   },
   {
    "id": "_cxUsd",
    "name": "_cxUsd",
    "kind": "pure",
    "file": "public/index.html",
-   "line": 220877,
+   "line": 220957,
    "params": [
     "cinder"
    ],
    "async": false,
    "reads": [],
    "writes": [],
-   "calls": 1,
+   "calls": 0,
    "x": 1100,
-   "y": 740
+   "y": 872
   },
   {
    "id": "_cxUsdAza",
    "name": "_cxUsdAza",
    "kind": "pure",
    "file": "public/index.html",
-   "line": 220878,
+   "line": 220958,
    "params": [
     "aza"
    ],
    "async": false,
    "reads": [],
    "writes": [],
-   "calls": 1,
+   "calls": 0,
    "x": 760,
-   "y": 1664
+   "y": 2060
   },
   {
    "id": "_cxUsdMix",
    "name": "_cxUsdMix",
    "kind": "pure",
    "file": "public/index.html",
-   "line": 220879,
+   "line": 220959,
    "params": [
     "cinder",
     "aza"
@@ -908,16 +1026,16 @@
    "async": false,
    "reads": [],
    "writes": [],
-   "calls": 1,
+   "calls": 0,
    "x": 760,
-   "y": 1796
+   "y": 2192
   },
   {
    "id": "_cxUsdLine",
    "name": "_cxUsdLine",
    "kind": "pure",
    "file": "public/index.html",
-   "line": 220882,
+   "line": 220962,
    "params": [
     "cinder",
     "cls"
@@ -927,14 +1045,44 @@
    "writes": [],
    "calls": 1,
    "x": 760,
-   "y": 1928
+   "y": 2324
   },
   {
    "id": "_cxEventList",
    "name": "_cxEventList",
    "kind": "function",
    "file": "public/index.html",
-   "line": 221056,
+   "line": 221136,
+   "params": [],
+   "async": false,
+   "reads": [],
+   "writes": [],
+   "calls": 1,
+   "x": 420,
+   "y": 2456
+  },
+  {
+   "id": "_cxPushEvent",
+   "name": "_cxPushEvent",
+   "kind": "function",
+   "file": "public/index.html",
+   "line": 221158,
+   "params": [
+    "ev"
+   ],
+   "async": false,
+   "reads": [],
+   "writes": [],
+   "calls": 1,
+   "x": 420,
+   "y": 2588
+  },
+  {
+   "id": "_cxAzaRate",
+   "name": "_cxAzaRate",
+   "kind": "function",
+   "file": "public/index.html",
+   "line": 221185,
    "params": [],
    "async": false,
    "reads": [],
@@ -944,14 +1092,12 @@
    "y": 2720
   },
   {
-   "id": "_cxPushEvent",
-   "name": "_cxPushEvent",
-   "kind": "function",
+   "id": "_cxMarketSummary",
+   "name": "_cxMarketSummary",
+   "kind": "pure",
    "file": "public/index.html",
-   "line": 221078,
-   "params": [
-    "ev"
-   ],
+   "line": 221404,
+   "params": [],
    "async": false,
    "reads": [],
    "writes": [],
@@ -960,25 +1106,25 @@
    "y": 2852
   },
   {
-   "id": "_cxAzaRate",
-   "name": "_cxAzaRate",
+   "id": "_cxRenderOpsDesk",
+   "name": "_cxRenderOpsDesk",
    "kind": "function",
    "file": "public/index.html",
-   "line": 221105,
+   "line": 237155,
    "params": [],
    "async": false,
    "reads": [],
    "writes": [],
-   "calls": 1,
+   "calls": 0,
    "x": 420,
    "y": 2984
   },
   {
-   "id": "_cxMarketSummary",
-   "name": "_cxMarketSummary",
-   "kind": "pure",
+   "id": "_cxRenderHerald",
+   "name": "_cxRenderHerald",
+   "kind": "function",
    "file": "public/index.html",
-   "line": 221334,
+   "line": 237245,
    "params": [],
    "async": false,
    "reads": [],
@@ -992,7 +1138,7 @@
    "name": "_cxBasePrice",
    "kind": "function",
    "file": "public/index.html",
-   "line": 219900,
+   "line": 219905,
    "params": [
     "id"
    ],
@@ -1008,7 +1154,7 @@
    "name": "_cxRangeSeconds",
    "kind": "pure",
    "file": "public/index.html",
-   "line": 219976,
+   "line": 219981,
    "params": [
     "range"
    ],
@@ -1017,14 +1163,14 @@
    "writes": [],
    "calls": 0,
    "x": 1100,
-   "y": 872
+   "y": 1004
   },
   {
    "id": "_cxHistRepaint",
    "name": "_cxHistRepaint",
    "kind": "function",
    "file": "public/index.html",
-   "line": 219977,
+   "line": 219982,
    "params": [],
    "async": false,
    "reads": [
@@ -1033,14 +1179,14 @@
    "writes": [],
    "calls": 0,
    "x": 1100,
-   "y": 1004
+   "y": 1136
   },
   {
    "id": "_cxStatsOf",
    "name": "_cxStatsOf",
    "kind": "pure",
    "file": "public/index.html",
-   "line": 220016,
+   "line": 220021,
    "params": [
     "id"
    ],
@@ -1052,14 +1198,14 @@
    "writes": [],
    "calls": 0,
    "x": 1100,
-   "y": 1136
+   "y": 1268
   },
   {
    "id": "_cxCloudReady",
    "name": "_cxCloudReady",
    "kind": "pure",
    "file": "public/index.html",
-   "line": 220020,
+   "line": 220025,
    "params": [],
    "async": false,
    "reads": [
@@ -1070,157 +1216,7 @@
    "writes": [],
    "calls": 0,
    "x": 1440,
-   "y": 344
-  },
-  {
-   "id": "cxCloudUnsubscribe",
-   "name": "cxCloudUnsubscribe",
-   "kind": "function",
-   "file": "public/index.html",
-   "line": 220127,
-   "params": [],
-   "async": false,
-   "reads": [],
-   "writes": [],
-   "calls": 0,
-   "x": 80,
-   "y": 1136
-  },
-  {
-   "id": "_cxInitialReserve",
-   "name": "_cxInitialReserve",
-   "kind": "pure",
-   "file": "public/index.html",
-   "line": 220162,
-   "params": [
-    "resourceId"
-   ],
-   "async": false,
-   "reads": [],
-   "writes": [],
-   "calls": 0,
-   "x": 1100,
-   "y": 1268
-  },
-  {
-   "id": "cxImpactedPrice",
-   "name": "cxImpactedPrice",
-   "kind": "pure",
-   "file": "public/index.html",
-   "line": 220376,
-   "params": [
-    "p",
-    "qty",
-    "dir",
-    "reason"
-   ],
-   "async": false,
-   "reads": [],
-   "writes": [],
-   "calls": 0,
-   "x": 760,
-   "y": 2060
-  },
-  {
-   "id": "_cxGenSyntheticSeries",
-   "name": "_cxGenSyntheticSeries",
-   "kind": "function",
-   "file": "public/index.html",
-   "line": 220658,
-   "params": [
-    "seed",
-    "len",
-    "basePx",
-    "finalPx"
-   ],
-   "async": false,
-   "reads": [],
-   "writes": [],
-   "calls": 0,
-   "x": 760,
-   "y": 2192
-  },
-  {
-   "id": "_cxSparkSVG",
-   "name": "_cxSparkSVG",
-   "kind": "function",
-   "file": "public/index.html",
-   "line": 220678,
-   "params": [
-    "data",
-    "color"
-   ],
-   "async": false,
-   "reads": [],
-   "writes": [],
-   "calls": 0,
-   "x": 420,
-   "y": 3248
-  },
-  {
-   "id": "_cxCandles",
-   "name": "_cxCandles",
-   "kind": "function",
-   "file": "public/index.html",
-   "line": 220753,
-   "params": [
-    "pts",
-    "n"
-   ],
-   "async": false,
-   "reads": [],
-   "writes": [],
-   "calls": 0,
-   "x": 760,
-   "y": 2324
-  },
-  {
-   "id": "_cxFmt",
-   "name": "_cxFmt",
-   "kind": "pure",
-   "file": "public/index.html",
-   "line": 220841,
-   "params": [
-    "n"
-   ],
-   "async": false,
-   "reads": [],
-   "writes": [],
-   "calls": 0,
-   "x": 1100,
-   "y": 1400
-  },
-  {
-   "id": "_cxPeg",
-   "name": "_cxPeg",
-   "kind": "pure",
-   "file": "public/index.html",
-   "line": 220872,
-   "params": [],
-   "async": false,
-   "reads": [],
-   "writes": [],
-   "calls": 0,
-   "x": 1440,
    "y": 476
-  },
-  {
-   "id": "_cxOrderBookSynth",
-   "name": "_cxOrderBookSynth",
-   "kind": "function",
-   "file": "public/index.html",
-   "line": 220887,
-   "params": [
-    "midPx",
-    "volume24h",
-    "seed"
-   ],
-   "async": false,
-   "reads": [],
-   "writes": [],
-   "calls": 0,
-   "x": 420,
-   "y": 3380
   }
  ],
  "edges": [
@@ -1278,14 +1274,6 @@
   },
   {
    "from": "renderCrashExchange",
-   "to": "_cxFmt"
-  },
-  {
-   "from": "renderCrashExchange",
-   "to": "_cxPeg"
-  },
-  {
-   "from": "renderCrashExchange",
    "to": "_cxGetHistory"
   },
   {
@@ -1298,7 +1286,7 @@
   },
   {
    "from": "renderCrashExchange",
-   "to": "_cxGetReserve"
+   "to": "_cxFlow"
   },
   {
    "from": "renderCrashExchange",
@@ -1306,11 +1294,7 @@
   },
   {
    "from": "renderCrashExchange",
-   "to": "_cxOrderBookSynth"
-  },
-  {
-   "from": "renderCrashExchange",
-   "to": "_cxSparkSVG"
+   "to": "_cxQuoteOrder"
   },
   {
    "from": "renderCrashExchange",
@@ -1322,7 +1306,15 @@
   },
   {
    "from": "renderCrashExchange",
+   "to": "_cxRenderHerald"
+  },
+  {
+   "from": "renderCrashExchange",
    "to": "_cxRenderPortfolio"
+  },
+  {
+   "from": "renderCrashExchange",
+   "to": "_cxRenderOpsDesk"
   },
   {
    "from": "renderCrashExchange",
@@ -1334,19 +1326,7 @@
   },
   {
    "from": "_cxExecuteBuy",
-   "to": "getMarketPrice"
-  },
-  {
-   "from": "_cxExecuteBuy",
-   "to": "cxImpactedPrice"
-  },
-  {
-   "from": "_cxExecuteBuy",
-   "to": "_cxBasePrice"
-  },
-  {
-   "from": "_cxExecuteBuy",
-   "to": "_cxQuoteBuy"
+   "to": "_cxQuoteOrder"
   },
   {
    "from": "_cxExecuteBuy",
@@ -1354,7 +1334,7 @@
   },
   {
    "from": "_cxExecuteBuy",
-   "to": "_cxReserveOnBuy"
+   "to": "_cxTapePush"
   },
   {
    "from": "_cxExecuteBuy",
@@ -1374,23 +1354,11 @@
   },
   {
    "from": "_cxExecuteSell",
-   "to": "getMarketPrice"
+   "to": "_cxQuoteOrder"
   },
   {
    "from": "_cxExecuteSell",
-   "to": "cxImpactedPrice"
-  },
-  {
-   "from": "_cxExecuteSell",
-   "to": "_cxBasePrice"
-  },
-  {
-   "from": "_cxExecuteSell",
-   "to": "_cxQuoteSell"
-  },
-  {
-   "from": "_cxExecuteSell",
-   "to": "_cxReserveOnSell"
+   "to": "_cxTapePush"
   },
   {
    "from": "_cxExecuteSell",
@@ -1437,6 +1405,46 @@
    "to": "cxCloudQueuePush"
   },
   {
+   "from": "bumpMarketPriceUp",
+   "to": "getMarketPrice"
+  },
+  {
+   "from": "bumpMarketPriceUp",
+   "to": "_cxTapePush"
+  },
+  {
+   "from": "bumpMarketPriceUp",
+   "to": "tickMarketDecay"
+  },
+  {
+   "from": "bumpMarketPriceUp",
+   "to": "recordMarketTxn"
+  },
+  {
+   "from": "bumpMarketPriceUp",
+   "to": "cxCloudQueuePush"
+  },
+  {
+   "from": "dropMarketPriceDown",
+   "to": "getMarketPrice"
+  },
+  {
+   "from": "dropMarketPriceDown",
+   "to": "_cxTapePush"
+  },
+  {
+   "from": "dropMarketPriceDown",
+   "to": "tickMarketDecay"
+  },
+  {
+   "from": "dropMarketPriceDown",
+   "to": "recordMarketTxn"
+  },
+  {
+   "from": "dropMarketPriceDown",
+   "to": "cxCloudQueuePush"
+  },
+  {
    "from": "cxSupplyReport",
    "to": "_cxRarityTier"
   },
@@ -1473,50 +1481,6 @@
    "to": "_cxFmtCR"
   },
   {
-   "from": "_cxConvertCinderToAza",
-   "to": "_cxFmt"
-  },
-  {
-   "from": "bumpMarketPriceUp",
-   "to": "tickMarketDecay"
-  },
-  {
-   "from": "bumpMarketPriceUp",
-   "to": "getMarketPrice"
-  },
-  {
-   "from": "bumpMarketPriceUp",
-   "to": "cxImpactedPrice"
-  },
-  {
-   "from": "bumpMarketPriceUp",
-   "to": "recordMarketTxn"
-  },
-  {
-   "from": "bumpMarketPriceUp",
-   "to": "cxCloudQueuePush"
-  },
-  {
-   "from": "dropMarketPriceDown",
-   "to": "tickMarketDecay"
-  },
-  {
-   "from": "dropMarketPriceDown",
-   "to": "getMarketPrice"
-  },
-  {
-   "from": "dropMarketPriceDown",
-   "to": "cxImpactedPrice"
-  },
-  {
-   "from": "dropMarketPriceDown",
-   "to": "recordMarketTxn"
-  },
-  {
-   "from": "dropMarketPriceDown",
-   "to": "cxCloudQueuePush"
-  },
-  {
    "from": "_cxGetHistory",
    "to": "_cxFetchHistory"
   },
@@ -1533,10 +1497,6 @@
    "to": "_cxBasePrice"
   },
   {
-   "from": "_cxGetHistory",
-   "to": "_cxGenSyntheticSeries"
-  },
-  {
    "from": "_cxConvertAzaToCinder",
    "to": "_cxAzaRate"
   },
@@ -1549,16 +1509,8 @@
    "to": "_cxFmtCR"
   },
   {
-   "from": "_cxConvertAzaToCinder",
-   "to": "_cxFmt"
-  },
-  {
    "from": "_cxRenderPortfolio",
    "to": "_cxUsdMix"
-  },
-  {
-   "from": "_cxRenderPortfolio",
-   "to": "_cxFmt"
   },
   {
    "from": "_cxRenderPortfolio",
@@ -1582,10 +1534,6 @@
   },
   {
    "from": "_cxChartHtml",
-   "to": "_cxCandles"
-  },
-  {
-   "from": "_cxChartHtml",
    "to": "_cxHistoryPts"
   },
   {
@@ -1595,6 +1543,18 @@
   {
    "from": "_cxChartHtml",
    "to": "_cxChartSVG"
+  },
+  {
+   "from": "_cxHeraldStories",
+   "to": "_cxMovers"
+  },
+  {
+   "from": "_cxHeraldStories",
+   "to": "_cxFlow"
+  },
+  {
+   "from": "_cxHeraldStories",
+   "to": "getCrashExchange"
   },
   {
    "from": "_cxFetchHistory",
@@ -1681,8 +1641,12 @@
    "to": "_cxEnsureReserveModel"
   },
   {
-   "from": "_cxGetReserve",
-   "to": "_cxInitialReserve"
+   "from": "_cxQuoteOrder",
+   "to": "getMarketPrice"
+  },
+  {
+   "from": "_cxQuoteOrder",
+   "to": "_cxFillPrice"
   },
   {
    "from": "getMarketPrice",
@@ -1753,6 +1717,22 @@
    "to": "getCrashExchange"
   },
   {
+   "from": "_cxTape",
+   "to": "getCrashExchange"
+  },
+  {
+   "from": "_cxTapePush",
+   "to": "_cxTape"
+  },
+  {
+   "from": "_cxFlow",
+   "to": "_cxTape"
+  },
+  {
+   "from": "_cxMovers",
+   "to": "_cxTape"
+  },
+  {
    "from": "_cxRarityTier",
    "to": "_cxBasePrice"
   },
@@ -1781,36 +1761,8 @@
    "to": "getCrashExchange"
   },
   {
-   "from": "_cxChartSVG",
-   "to": "_cxFmt"
-  },
-  {
-   "from": "_cxCandleSVG",
-   "to": "_cxFmt"
-  },
-  {
-   "from": "_cxCandleTipHtml",
-   "to": "_cxFmt"
-  },
-  {
    "from": "_cxBindCandleTip",
    "to": "_cxCandleTipHtml"
-  },
-  {
-   "from": "_cxFmtCR",
-   "to": "_cxFmt"
-  },
-  {
-   "from": "_cxUsd",
-   "to": "_cxPeg"
-  },
-  {
-   "from": "_cxUsdAza",
-   "to": "_cxPeg"
-  },
-  {
-   "from": "_cxUsdMix",
-   "to": "_cxPeg"
   },
   {
    "from": "_cxUsdLine",
@@ -1831,6 +1783,10 @@
   {
    "from": "_cxMarketSummary",
    "to": "_cxEnsureHistory"
+  },
+  {
+   "from": "_cxRenderHerald",
+   "to": "_cxHeraldStories"
   }
  ]
 }

@@ -43,7 +43,7 @@
    "name": "farmState",
    "kind": "pure",
    "file": "public/index.html",
-   "line": 241906,
+   "line": 242250,
    "params": [],
    "async": false,
    "reads": [
@@ -59,7 +59,7 @@
    "name": "farmers",
    "kind": "pure",
    "file": "public/index.html",
-   "line": 241926,
+   "line": 242270,
    "params": [],
    "async": false,
    "reads": [],

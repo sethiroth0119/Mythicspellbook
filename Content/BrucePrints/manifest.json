@@ -1,22 +1,22 @@
 {
- "generated": "2026-09-11T23:31:14.231Z",
- "functions": 12455,
+ "generated": "2026-09-12T00:07:22.195Z",
+ "functions": 13744,
  "sources": 395,
  "systems": [
   {
    "id": "Economy",
    "label": "Economy & Crash Exchange",
    "icon": "📈",
-   "functions": 75,
+   "functions": 84,
    "prints": [
     {
      "name": "Overview",
      "nodes": 70,
-     "edges": 152
+     "edges": 142
     },
     {
      "name": "Detail_2",
-     "nodes": 5,
+     "nodes": 14,
      "edges": 0
     }
    ]
@@ -25,12 +25,12 @@
    "id": "Corporations",
    "label": "Corporations & Treasury",
    "icon": "🏢",
-   "functions": 57,
+   "functions": 62,
    "prints": [
     {
      "name": "Overview",
-     "nodes": 57,
-     "edges": 45
+     "nodes": 62,
+     "edges": 47
     }
    ]
   },
@@ -69,7 +69,7 @@
    "id": "City",
    "label": "City & Nodes",
    "icon": "🏙",
-   "functions": 323,
+   "functions": 344,
    "prints": [
     {
      "name": "Overview",
@@ -79,12 +79,12 @@
     {
      "name": "Detail_2",
      "nodes": 70,
-     "edges": 10
+     "edges": 9
     },
     {
      "name": "Detail_3",
      "nodes": 70,
-     "edges": 12
+     "edges": 15
     },
     {
      "name": "Detail_4",
@@ -93,7 +93,7 @@
     },
     {
      "name": "Detail_5",
-     "nodes": 43,
+     "nodes": 64,
      "edges": 0
     }
    ]
@@ -102,12 +102,12 @@
    "id": "Cards",
    "label": "Cards, Moves & Battle",
    "icon": "🃏",
-   "functions": 156,
+   "functions": 160,
    "prints": [
     {
      "name": "Overview",
      "nodes": 70,
-     "edges": 24
+     "edges": 25
     },
     {
      "name": "Detail_2",
@@ -116,7 +116,7 @@
     },
     {
      "name": "Detail_3",
-     "nodes": 16,
+     "nodes": 20,
      "edges": 0
     }
    ]

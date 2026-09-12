@@ -436,6 +436,28 @@
    "y": 608
   },
   {
+   "id": "_corpShareTrade",
+   "name": "_corpShareTrade",
+   "kind": "data",
+   "file": "public/index.html",
+   "line": 237119,
+   "params": [
+    "corpId",
+    "qty"
+   ],
+   "async": true,
+   "reads": [
+    "Profile.gems",
+    "Cloud.client"
+   ],
+   "writes": [
+    "Profile.gems"
+   ],
+   "calls": 1,
+   "x": 80,
+   "y": 1136
+  },
+  {
    "id": "_opCreateLocal",
    "name": "_opCreateLocal",
    "kind": "function",
@@ -454,7 +476,7 @@
    "writes": [],
    "calls": 1,
    "x": 80,
-   "y": 1136
+   "y": 1268
   },
   {
    "id": "_opStaffCount",
@@ -527,7 +549,7 @@
    "writes": [],
    "calls": 1,
    "x": 80,
-   "y": 1268
+   "y": 1400
   },
   {
    "id": "corpLawMemberCap",
@@ -541,7 +563,7 @@
    "writes": [],
    "calls": 1,
    "x": 80,
-   "y": 1400
+   "y": 1532
   },
   {
    "id": "corpLawRaidMult",
@@ -606,7 +628,7 @@
    "writes": [],
    "calls": 1,
    "x": 80,
-   "y": 1532
+   "y": 1664
   },
   {
    "id": "_corpAnnounceIncoming",
@@ -628,25 +650,41 @@
    "y": 740
   },
   {
+   "id": "_corpSharePx",
+   "name": "_corpSharePx",
+   "kind": "function",
+   "file": "public/index.html",
+   "line": 237065,
+   "params": [
+    "r"
+   ],
+   "async": false,
+   "reads": [],
+   "writes": [],
+   "calls": 1,
+   "x": 420,
+   "y": 740
+  },
+  {
    "id": "corpDesk",
    "name": "corpDesk",
    "kind": "pure",
    "file": "public/index.html",
-   "line": 241457,
+   "line": 241801,
    "params": [],
    "async": false,
    "reads": [],
    "writes": [],
    "calls": 1,
    "x": 80,
-   "y": 1664
+   "y": 1796
   },
   {
    "id": "corpTreasuryRefresh",
    "name": "corpTreasuryRefresh",
    "kind": "pure",
    "file": "public/index.html",
-   "line": 241885,
+   "line": 242229,
    "params": [],
    "async": true,
    "reads": [
@@ -655,14 +693,14 @@
    "writes": [],
    "calls": 1,
    "x": 80,
-   "y": 1796
+   "y": 1928
   },
   {
    "id": "corp",
    "name": "corp",
    "kind": "pure",
    "file": "public/index.html",
-   "line": 241934,
+   "line": 242278,
    "params": [],
    "async": false,
    "reads": [
@@ -671,32 +709,16 @@
    "writes": [],
    "calls": 1,
    "x": 80,
-   "y": 1928
+   "y": 2060
   },
   {
    "id": "_opRowCounts",
    "name": "_opRowCounts",
    "kind": "pure",
    "file": "public/index.html",
-   "line": 246059,
+   "line": 246403,
    "params": [
     "o"
-   ],
-   "async": false,
-   "reads": [],
-   "writes": [],
-   "calls": 1,
-   "x": 80,
-   "y": 2060
-  },
-  {
-   "id": "_opInterior",
-   "name": "_opInterior",
-   "kind": "pure",
-   "file": "public/index.html",
-   "line": 246103,
-   "params": [
-    "type"
    ],
    "async": false,
    "reads": [],
@@ -706,11 +728,27 @@
    "y": 2192
   },
   {
+   "id": "_opInterior",
+   "name": "_opInterior",
+   "kind": "pure",
+   "file": "public/index.html",
+   "line": 246447,
+   "params": [
+    "type"
+   ],
+   "async": false,
+   "reads": [],
+   "writes": [],
+   "calls": 1,
+   "x": 80,
+   "y": 2324
+  },
+  {
    "id": "_opSiteEff",
    "name": "_opSiteEff",
    "kind": "function",
    "file": "public/index.html",
-   "line": 246121,
+   "line": 246465,
    "params": [
     "o"
    ],
@@ -735,7 +773,7 @@
    "writes": [],
    "calls": 0,
    "x": 80,
-   "y": 2324
+   "y": 2456
   },
   {
    "id": "_opEcon",
@@ -785,7 +823,7 @@
    "writes": [],
    "calls": 0,
    "x": 80,
-   "y": 2456
+   "y": 2588
   },
   {
    "id": "_opLaborUsed",
@@ -801,7 +839,7 @@
    "writes": [],
    "calls": 0,
    "x": 80,
-   "y": 2588
+   "y": 2720
   },
   {
    "id": "corpLawsGet",
@@ -865,7 +903,7 @@
    "writes": [],
    "calls": 0,
    "x": 80,
-   "y": 2720
+   "y": 2852
   },
   {
    "id": "_corpOnlyOneModal",
@@ -881,14 +919,68 @@
    "writes": [],
    "calls": 0,
    "x": 80,
-   "y": 2852
+   "y": 2984
+  },
+  {
+   "id": "_corpBook",
+   "name": "_corpBook",
+   "kind": "pure",
+   "file": "public/index.html",
+   "line": 237061,
+   "params": [
+    "r"
+   ],
+   "async": false,
+   "reads": [],
+   "writes": [],
+   "calls": 0,
+   "x": 760,
+   "y": 740
+  },
+  {
+   "id": "_corpWeekly",
+   "name": "_corpWeekly",
+   "kind": "pure",
+   "file": "public/index.html",
+   "line": 237073,
+   "params": [
+    "r"
+   ],
+   "async": false,
+   "reads": [],
+   "writes": [],
+   "calls": 0,
+   "x": 80,
+   "y": 3116
+  },
+  {
+   "id": "corpMktFetch",
+   "name": "corpMktFetch",
+   "kind": "function",
+   "file": "public/index.html",
+   "line": 237091,
+   "params": [
+    "force"
+   ],
+   "async": true,
+   "reads": [
+    "Cloud.client",
+    "Cloud.user",
+    "App.screen",
+    "App._cxNode",
+    "App._cxTab"
+   ],
+   "writes": [],
+   "calls": 0,
+   "x": 80,
+   "y": 3248
   },
   {
    "id": "corpRegionControl",
    "name": "corpRegionControl",
    "kind": "pure",
    "file": "public/index.html",
-   "line": 241328,
+   "line": 241672,
    "params": [
     "corpId"
    ],
@@ -899,14 +991,14 @@
    "writes": [],
    "calls": 0,
    "x": 80,
-   "y": 2984
+   "y": 3380
   },
   {
    "id": "corpTreasury",
    "name": "corpTreasury",
    "kind": "pure",
    "file": "public/index.html",
-   "line": 241338,
+   "line": 241682,
    "params": [
     "corpId"
    ],
@@ -918,14 +1010,14 @@
    "writes": [],
    "calls": 0,
    "x": 80,
-   "y": 3116
+   "y": 3512
   },
   {
    "id": "corpRoster",
    "name": "corpRoster",
    "kind": "pure",
    "file": "public/index.html",
-   "line": 241882,
+   "line": 242226,
    "params": [],
    "async": false,
    "reads": [
@@ -934,49 +1026,16 @@
    "writes": [],
    "calls": 0,
    "x": 80,
-   "y": 3248
+   "y": 3644
   },
   {
    "id": "_opStatusTerminal",
    "name": "_opStatusTerminal",
    "kind": "pure",
    "file": "public/index.html",
-   "line": 246053,
+   "line": 246397,
    "params": [
     "s"
-   ],
-   "async": false,
-   "reads": [],
-   "writes": [],
-   "calls": 0,
-   "x": 420,
-   "y": 740
-  },
-  {
-   "id": "_opIsType",
-   "name": "_opIsType",
-   "kind": "pure",
-   "file": "public/index.html",
-   "line": 246065,
-   "params": [
-    "o",
-    "type"
-   ],
-   "async": false,
-   "reads": [],
-   "writes": [],
-   "calls": 0,
-   "x": 80,
-   "y": 3380
-  },
-  {
-   "id": "_opInteriorRoute",
-   "name": "_opInteriorRoute",
-   "kind": "pure",
-   "file": "public/index.html",
-   "line": 246095,
-   "params": [
-    "type"
    ],
    "async": false,
    "reads": [],
@@ -986,11 +1045,44 @@
    "y": 872
   },
   {
+   "id": "_opIsType",
+   "name": "_opIsType",
+   "kind": "pure",
+   "file": "public/index.html",
+   "line": 246409,
+   "params": [
+    "o",
+    "type"
+   ],
+   "async": false,
+   "reads": [],
+   "writes": [],
+   "calls": 0,
+   "x": 80,
+   "y": 3776
+  },
+  {
+   "id": "_opInteriorRoute",
+   "name": "_opInteriorRoute",
+   "kind": "pure",
+   "file": "public/index.html",
+   "line": 246439,
+   "params": [
+    "type"
+   ],
+   "async": false,
+   "reads": [],
+   "writes": [],
+   "calls": 0,
+   "x": 420,
+   "y": 1004
+  },
+  {
    "id": "_opRowById",
    "name": "_opRowById",
    "kind": "pure",
    "file": "public/index.html",
-   "line": 246104,
+   "line": 246448,
    "params": [
     "id"
    ],
@@ -999,14 +1091,14 @@
    "writes": [],
    "calls": 0,
    "x": 80,
-   "y": 3512
+   "y": 3908
   },
   {
    "id": "_opSite",
    "name": "_opSite",
    "kind": "function",
    "file": "public/index.html",
-   "line": 246107,
+   "line": 246451,
    "params": [
     "o"
    ],
@@ -1022,7 +1114,7 @@
    "name": "_opWriteMeta",
    "kind": "function",
    "file": "public/index.html",
-   "line": 246132,
+   "line": 246476,
    "params": [
     "o",
     "patch",
@@ -1036,7 +1128,7 @@
    "writes": [],
    "calls": 0,
    "x": 80,
-   "y": 3644
+   "y": 4040
   },
   {
    "id": "corpsByIds",
@@ -1052,7 +1144,7 @@
    "writes": [],
    "calls": 0,
    "x": 80,
-   "y": 3776
+   "y": 4172
   },
   {
    "id": "corpsHtml",
@@ -1066,7 +1158,7 @@
    "writes": [],
    "calls": 0,
    "x": 80,
-   "y": 3908
+   "y": 4304
   }
  ],
  "edges": [
@@ -1203,6 +1295,10 @@
    "to": "_corpLawCitizens"
   },
   {
+   "from": "_corpShareTrade",
+   "to": "_corpSharePx"
+  },
+  {
    "from": "_opCreateLocal",
    "to": "_opAfterFound"
   },
@@ -1233,6 +1329,10 @@
   {
    "from": "corpLawMoodStart",
    "to": "corpLawApplyMood"
+  },
+  {
+   "from": "_corpSharePx",
+   "to": "_corpBook"
   },
   {
    "from": "corpTreasuryRefresh",

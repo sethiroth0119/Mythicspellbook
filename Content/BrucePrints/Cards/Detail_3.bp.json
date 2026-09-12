@@ -5,6 +5,87 @@
  "print": "Detail_3",
  "nodes": [
   {
+   "id": "moveCard",
+   "name": "moveCard",
+   "kind": "pure",
+   "file": "public/index.html",
+   "line": 251339,
+   "params": [
+    "m"
+   ],
+   "async": false,
+   "reads": [],
+   "writes": [],
+   "calls": 0,
+   "x": 80,
+   "y": 80
+  },
+  {
+   "id": "moveRefusal",
+   "name": "moveRefusal",
+   "kind": "pure",
+   "file": "public/node-city/index.html",
+   "line": 36230,
+   "params": [
+    "t",
+    "k"
+   ],
+   "async": false,
+   "reads": [],
+   "writes": [],
+   "calls": 0,
+   "x": 80,
+   "y": 212
+  },
+  {
+   "id": "moveCheck",
+   "name": "moveCheck",
+   "kind": "function",
+   "file": "public/node-city/index.html",
+   "line": 36246,
+   "params": [
+    "t",
+    "x",
+    "z"
+   ],
+   "async": false,
+   "reads": [],
+   "writes": [],
+   "calls": 0,
+   "x": 80,
+   "y": 344
+  },
+  {
+   "id": "deckPower",
+   "name": "deckPower",
+   "kind": "function",
+   "file": "public/node-city/index.html",
+   "line": 39521,
+   "params": [],
+   "async": false,
+   "reads": [],
+   "writes": [],
+   "calls": 0,
+   "x": 80,
+   "y": 476
+  },
+  {
+   "id": "cardBackSrc",
+   "name": "cardBackSrc",
+   "kind": "pure",
+   "file": "public/src/battle/draw.js",
+   "line": 637,
+   "params": [
+    "side"
+   ],
+   "async": false,
+   "reads": [],
+   "writes": [],
+   "calls": 0,
+   "x": 80,
+   "y": 608
+  },
+  {
    "id": "cardKey",
    "name": "cardKey",
    "kind": "pure",
@@ -18,7 +99,7 @@
    "writes": [],
    "calls": 0,
    "x": 80,
-   "y": 80
+   "y": 740
   },
   {
    "id": "_cards",
@@ -32,7 +113,7 @@
    "writes": [],
    "calls": 0,
    "x": 80,
-   "y": 212
+   "y": 872
   },
   {
    "id": "cardOutput",
@@ -46,7 +127,7 @@
    "writes": [],
    "calls": 0,
    "x": 80,
-   "y": 344
+   "y": 1004
   },
   {
    "id": "cardSeam",
@@ -60,7 +141,7 @@
    "writes": [],
    "calls": 0,
    "x": 80,
-   "y": 476
+   "y": 1136
   },
   {
    "id": "cardsHtml",
@@ -76,7 +157,7 @@
    "writes": [],
    "calls": 0,
    "x": 80,
-   "y": 608
+   "y": 1268
   },
   {
    "id": "moveToStash",
@@ -97,7 +178,7 @@
    "writes": [],
    "calls": 0,
    "x": 80,
-   "y": 740
+   "y": 1400
   },
   {
    "id": "moveToBag",
@@ -116,7 +197,7 @@
    "writes": [],
    "calls": 0,
    "x": 80,
-   "y": 872
+   "y": 1532
   },
   {
    "id": "moveGhost",
@@ -130,7 +211,7 @@
    "writes": [],
    "calls": 0,
    "x": 80,
-   "y": 1004
+   "y": 1664
   },
   {
    "id": "cardOf",
@@ -146,23 +227,7 @@
    "writes": [],
    "calls": 0,
    "x": 80,
-   "y": 1136
-  },
-  {
-   "id": "moveCheck",
-   "name": "moveCheck",
-   "kind": "pure",
-   "file": "public/src/missions/train.js",
-   "line": 112,
-   "params": [
-    "siteId"
-   ],
-   "async": false,
-   "reads": [],
-   "writes": [],
-   "calls": 0,
-   "x": 80,
-   "y": 1268
+   "y": 1796
   },
   {
    "id": "moveToFolder",
@@ -179,7 +244,7 @@
    "writes": [],
    "calls": 0,
    "x": 80,
-   "y": 1400
+   "y": 1928
   },
   {
    "id": "moveFolder",
@@ -196,7 +261,7 @@
    "writes": [],
    "calls": 0,
    "x": 80,
-   "y": 1532
+   "y": 2060
   },
   {
    "id": "cardHtml",
@@ -213,7 +278,7 @@
    "writes": [],
    "calls": 0,
    "x": 80,
-   "y": 1664
+   "y": 2192
   },
   {
    "id": "moveTo",
@@ -230,7 +295,7 @@
    "writes": [],
    "calls": 0,
    "x": 80,
-   "y": 1796
+   "y": 2324
   },
   {
    "id": "cardOptions",
@@ -246,7 +311,7 @@
    "writes": [],
    "calls": 0,
    "x": 80,
-   "y": 1928
+   "y": 2456
   },
   {
    "id": "moveNode",
@@ -263,7 +328,7 @@
    "writes": [],
    "calls": 0,
    "x": 80,
-   "y": 2060
+   "y": 2588
   }
  ],
  "edges": []

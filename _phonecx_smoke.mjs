@@ -23,7 +23,7 @@ const MOD = readFileSync('./public/src/phone/handset.js', 'utf8');
   const i = SRC.indexOf('window.MythicExchange = {'); const j = SRC.indexOf('window.MythicBank = {', i);
   const seam = SRC.slice(i, j);
   ok(i > 0 && j > i, 'window.MythicExchange sits beside MythicBank');
-  ok(/_cxMarketCatalog\(\)/.test(seam) && /getMarketPrice\(id\)/.test(seam) && /_cxGetHistory\(id, '24H'\)/.test(seam) && /_cxQuoteBuy\(id, 1, p\.current\)/.test(seam), 'list and quote use the screen\'s catalog, price, history and reserve quote');
+  ok(/_cxMarketCatalog\(\)/.test(seam) && /getMarketPrice\(id\)/.test(seam) && /_cxGetHistory\(id, '24H'\)/.test(seam) && /_cxQuoteOrder\(id, 1, \+1\)/.test(seam), 'list and quote use the screen\'s catalog, price, history and order quote (v121v121: the reserve quote is gone)');
   ok(/_cxExecuteBuy\(id, Math\.max\(1, qty \| 0\)\)/.test(seam) && /_cxExecuteSell\(id, Math\.max\(1, qty \| 0\)\)/.test(seam), 'buy and sell are the screen\'s own executors');
   ok(/App\.screen = 'crashExchange'; render\(\);/.test(seam) && /App\._cxFocusId = id/.test(seam), 'open() lands on the full screen focused on the asset');
   ok(/m\.resources && m\.resources\.items/.test(seam), 'only the resources channel is offered (cards / corps are read-only on the screen too)');

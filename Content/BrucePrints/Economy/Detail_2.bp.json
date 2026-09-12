@@ -5,11 +5,11 @@
  "print": "Detail_2",
  "nodes": [
   {
-   "id": "_cxIntel",
-   "name": "_cxIntel",
+   "id": "cxCloudUnsubscribe",
+   "name": "cxCloudUnsubscribe",
    "kind": "function",
    "file": "public/index.html",
-   "line": 221094,
+   "line": 220132,
    "params": [],
    "async": false,
    "reads": [],
@@ -17,6 +17,156 @@
    "calls": 0,
    "x": 80,
    "y": 80
+  },
+  {
+   "id": "_cxInitialReserve",
+   "name": "_cxInitialReserve",
+   "kind": "pure",
+   "file": "public/index.html",
+   "line": 220167,
+   "params": [
+    "resourceId"
+   ],
+   "async": false,
+   "reads": [],
+   "writes": [],
+   "calls": 0,
+   "x": 80,
+   "y": 212
+  },
+  {
+   "id": "cxImpactedPrice",
+   "name": "cxImpactedPrice",
+   "kind": "pure",
+   "file": "public/index.html",
+   "line": 220454,
+   "params": [
+    "p",
+    "qty",
+    "dir",
+    "reason"
+   ],
+   "async": false,
+   "reads": [],
+   "writes": [],
+   "calls": 0,
+   "x": 80,
+   "y": 344
+  },
+  {
+   "id": "_cxGenSyntheticSeries",
+   "name": "_cxGenSyntheticSeries",
+   "kind": "function",
+   "file": "public/index.html",
+   "line": 220738,
+   "params": [
+    "seed",
+    "len",
+    "basePx",
+    "finalPx"
+   ],
+   "async": false,
+   "reads": [],
+   "writes": [],
+   "calls": 0,
+   "x": 80,
+   "y": 476
+  },
+  {
+   "id": "_cxSparkSVG",
+   "name": "_cxSparkSVG",
+   "kind": "function",
+   "file": "public/index.html",
+   "line": 220758,
+   "params": [
+    "data",
+    "color"
+   ],
+   "async": false,
+   "reads": [],
+   "writes": [],
+   "calls": 0,
+   "x": 80,
+   "y": 608
+  },
+  {
+   "id": "_cxCandles",
+   "name": "_cxCandles",
+   "kind": "function",
+   "file": "public/index.html",
+   "line": 220833,
+   "params": [
+    "pts",
+    "n"
+   ],
+   "async": false,
+   "reads": [],
+   "writes": [],
+   "calls": 0,
+   "x": 80,
+   "y": 740
+  },
+  {
+   "id": "_cxFmt",
+   "name": "_cxFmt",
+   "kind": "pure",
+   "file": "public/index.html",
+   "line": 220921,
+   "params": [
+    "n"
+   ],
+   "async": false,
+   "reads": [],
+   "writes": [],
+   "calls": 0,
+   "x": 80,
+   "y": 872
+  },
+  {
+   "id": "_cxPeg",
+   "name": "_cxPeg",
+   "kind": "pure",
+   "file": "public/index.html",
+   "line": 220952,
+   "params": [],
+   "async": false,
+   "reads": [],
+   "writes": [],
+   "calls": 0,
+   "x": 80,
+   "y": 1004
+  },
+  {
+   "id": "_cxOrderBookSynth",
+   "name": "_cxOrderBookSynth",
+   "kind": "function",
+   "file": "public/index.html",
+   "line": 220967,
+   "params": [
+    "midPx",
+    "volume24h",
+    "seed"
+   ],
+   "async": false,
+   "reads": [],
+   "writes": [],
+   "calls": 0,
+   "x": 80,
+   "y": 1136
+  },
+  {
+   "id": "_cxIntel",
+   "name": "_cxIntel",
+   "kind": "function",
+   "file": "public/index.html",
+   "line": 221174,
+   "params": [],
+   "async": false,
+   "reads": [],
+   "writes": [],
+   "calls": 0,
+   "x": 80,
+   "y": 1268
   },
   {
    "id": "cx",
@@ -32,7 +182,7 @@
    "writes": [],
    "calls": 0,
    "x": 80,
-   "y": 212
+   "y": 1400
   },
   {
    "id": "cxSeam",
@@ -46,7 +196,7 @@
    "writes": [],
    "calls": 0,
    "x": 80,
-   "y": 344
+   "y": 1532
   },
   {
    "id": "cxSpark",
@@ -65,7 +215,7 @@
    "writes": [],
    "calls": 0,
    "x": 80,
-   "y": 476
+   "y": 1664
   },
   {
    "id": "cxDelta",
@@ -81,7 +231,7 @@
    "writes": [],
    "calls": 0,
    "x": 80,
-   "y": 608
+   "y": 1796
   }
  ],
  "edges": []

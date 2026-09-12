@@ -29,7 +29,7 @@
    "name": "_twAttackFlow",
    "kind": "data",
    "file": "public/index.html",
-   "line": 262077,
+   "line": 262421,
    "params": [
     "nodeId"
    ],
@@ -51,7 +51,7 @@
    "name": "cityStateLoad",
    "kind": "data",
    "file": "public/index.html",
-   "line": 240381,
+   "line": 240725,
    "params": [],
    "async": true,
    "reads": [
@@ -77,7 +77,7 @@
    "name": "_twResolveAttackOutcome",
    "kind": "data",
    "file": "public/index.html",
-   "line": 262245,
+   "line": 262589,
    "params": [],
    "async": false,
    "reads": [
@@ -99,7 +99,7 @@
    "name": "_nodeInventorySectionHtml",
    "kind": "data",
    "file": "public/index.html",
-   "line": 248040,
+   "line": 248384,
    "params": [
     "selNode"
    ],
@@ -121,7 +121,7 @@
    "name": "_cityOpenWhenResolved",
    "kind": "data",
    "file": "public/index.html",
-   "line": 238836,
+   "line": 239180,
    "params": [
     "nodeId"
    ],
@@ -143,7 +143,7 @@
    "name": "_twSaleSectionHtml",
    "kind": "function",
    "file": "public/index.html",
-   "line": 256174,
+   "line": 256518,
    "params": [
     "selNode"
    ],
@@ -161,7 +161,7 @@
    "name": "_twBuyNode",
    "kind": "data",
    "file": "public/index.html",
-   "line": 256291,
+   "line": 256635,
    "params": [
     "nodeId"
    ],
@@ -245,7 +245,7 @@
    "name": "cityPrnList",
    "kind": "function",
    "file": "public/index.html",
-   "line": 246579,
+   "line": 246923,
    "params": [],
    "async": false,
    "reads": [
@@ -262,7 +262,7 @@
    "name": "_twReconcileAndPublish",
    "kind": "data",
    "file": "public/index.html",
-   "line": 255923,
+   "line": 256267,
    "params": [
     "sent",
     "have"
@@ -286,7 +286,7 @@
    "name": "_twSellNode",
    "kind": "function",
    "file": "public/index.html",
-   "line": 256225,
+   "line": 256569,
    "params": [
     "nodeId"
    ],
@@ -304,7 +304,7 @@
    "name": "_twNodeClaimSharedMilestones",
    "kind": "data",
    "file": "public/index.html",
-   "line": 258150,
+   "line": 258494,
    "params": [
     "node"
    ],
@@ -324,7 +324,7 @@
    "name": "_twNodeDailyCinder",
    "kind": "function",
    "file": "public/index.html",
-   "line": 258326,
+   "line": 258670,
    "params": [
     "node"
    ],
@@ -340,7 +340,7 @@
    "name": "_twBuyNodeUpgrade",
    "kind": "function",
    "file": "public/index.html",
-   "line": 258688,
+   "line": 259032,
    "params": [
     "nodeId",
     "kind"
@@ -360,7 +360,7 @@
    "name": "_cityTierPill",
    "kind": "data",
    "file": "public/index.html",
-   "line": 239620,
+   "line": 239964,
    "params": [],
    "async": false,
    "reads": [],
@@ -376,7 +376,7 @@
    "name": "_cityTierAssign",
    "kind": "function",
    "file": "public/index.html",
-   "line": 239748,
+   "line": 240092,
    "params": [
     "node",
     "tierId"
@@ -396,7 +396,7 @@
    "name": "citySpendRes",
    "kind": "function",
    "file": "public/index.html",
-   "line": 241773,
+   "line": 242117,
    "params": [
     "cost"
    ],
@@ -412,7 +412,7 @@
    "name": "citySpendCost",
    "kind": "function",
    "file": "public/index.html",
-   "line": 241789,
+   "line": 242133,
    "params": [
     "cost"
    ],
@@ -428,7 +428,7 @@
    "name": "cityReport",
    "kind": "data",
    "file": "public/index.html",
-   "line": 242311,
+   "line": 242655,
    "params": [
     "r"
    ],
@@ -453,7 +453,7 @@
    "name": "_twAddNodeContribution",
    "kind": "function",
    "file": "public/index.html",
-   "line": 254488,
+   "line": 254832,
    "params": [
     "nodeId",
     "buildings",
@@ -472,7 +472,7 @@
    "name": "_twNodeCheckMilestones",
    "kind": "data",
    "file": "public/index.html",
-   "line": 258178,
+   "line": 258522,
    "params": [
     "node"
    ],
@@ -493,7 +493,7 @@
    "name": "_twNodeHoverCardHtml",
    "kind": "function",
    "file": "public/index.html",
-   "line": 258370,
+   "line": 258714,
    "params": [
     "node"
    ],
@@ -596,7 +596,7 @@
    "name": "_cityOwnerBadgeSync",
    "kind": "function",
    "file": "public/index.html",
-   "line": 238894,
+   "line": 239238,
    "params": [],
    "async": false,
    "reads": [
@@ -612,7 +612,7 @@
    "name": "_cityWarmThenOpen",
    "kind": "data",
    "file": "public/index.html",
-   "line": 239009,
+   "line": 239353,
    "params": [
     "nodeId"
    ],
@@ -632,7 +632,7 @@
    "name": "cityNodeBoost",
    "kind": "data",
    "file": "public/index.html",
-   "line": 239948,
+   "line": 240292,
    "params": [
     "nodeId",
     "pct"
@@ -656,7 +656,7 @@
    "name": "_cityRowRead",
    "kind": "data",
    "file": "public/index.html",
-   "line": 240203,
+   "line": 240547,
    "params": [
     "target",
     "nodeKey"
@@ -679,7 +679,7 @@
    "name": "cityStateSave",
    "kind": "function",
    "file": "public/index.html",
-   "line": 240235,
+   "line": 240579,
    "params": [
     "json"
    ],
@@ -695,7 +695,7 @@
    "name": "_cityStateSaveNow",
    "kind": "data",
    "file": "public/index.html",
-   "line": 240254,
+   "line": 240598,
    "params": [
     "json",
     "ident"
@@ -723,7 +723,7 @@
    "name": "twNodes",
    "kind": "function",
    "file": "public/index.html",
-   "line": 241384,
+   "line": 241728,
    "params": [],
    "async": false,
    "reads": [
@@ -739,7 +739,7 @@
    "name": "citySpendCinders",
    "kind": "function",
    "file": "public/index.html",
-   "line": 242222,
+   "line": 242566,
    "params": [
     "n"
    ],
@@ -755,7 +755,7 @@
    "name": "cityOpenMarket",
    "kind": "data",
    "file": "public/index.html",
-   "line": 245617,
+   "line": 245961,
    "params": [],
    "async": false,
    "reads": [],
@@ -773,7 +773,7 @@
    "name": "_twAvatarEngineCapture",
    "kind": "function",
    "file": "public/index.html",
-   "line": 253997,
+   "line": 254341,
    "params": [
     "event"
    ],
@@ -789,7 +789,7 @@
    "name": "_twCancelDarkEvent",
    "kind": "function",
    "file": "public/index.html",
-   "line": 254025,
+   "line": 254369,
    "params": [
     "darkEventId",
     "sabotageNodeId"
@@ -806,7 +806,7 @@
    "name": "_twForge",
    "kind": "data",
    "file": "public/index.html",
-   "line": 254156,
+   "line": 254500,
    "params": [],
    "async": false,
    "reads": [
@@ -827,7 +827,7 @@
    "name": "_twMapCacheApply",
    "kind": "data",
    "file": "public/index.html",
-   "line": 255724,
+   "line": 256068,
    "params": [],
    "async": false,
    "reads": [
@@ -846,7 +846,7 @@
    "name": "_twPaintConnections",
    "kind": "function",
    "file": "public/index.html",
-   "line": 257454,
+   "line": 257798,
    "params": [],
    "async": false,
    "reads": [],
@@ -860,7 +860,7 @@
    "name": "_twDispenseLoot",
    "kind": "data",
    "file": "public/index.html",
-   "line": 257541,
+   "line": 257885,
    "params": [
     "key",
     "amount"
@@ -887,7 +887,7 @@
    "name": "_twNodeTradeStability",
    "kind": "function",
    "file": "public/index.html",
-   "line": 258264,
+   "line": 258608,
    "params": [
     "node"
    ],
@@ -903,7 +903,7 @@
    "name": "_twNodeSimTick",
    "kind": "function",
    "file": "public/index.html",
-   "line": 258476,
+   "line": 258820,
    "params": [
     "node",
     "now",
@@ -921,7 +921,7 @@
    "name": "_twNodeAccrueYield",
    "kind": "function",
    "file": "public/index.html",
-   "line": 258531,
+   "line": 258875,
    "params": [
     "node",
     "now",
@@ -942,7 +942,7 @@
    "name": "_twWorldTick",
    "kind": "function",
    "file": "public/index.html",
-   "line": 258573,
+   "line": 258917,
    "params": [
     "forceDays"
    ],
@@ -958,7 +958,7 @@
    "name": "_twYieldAmbientTick",
    "kind": "function",
    "file": "public/index.html",
-   "line": 258647,
+   "line": 258991,
    "params": [],
    "async": false,
    "reads": [
@@ -974,7 +974,7 @@
    "name": "_twNodeClass",
    "kind": "function",
    "file": "public/index.html",
-   "line": 260214,
+   "line": 260558,
    "params": [
     "n",
     "own"
@@ -991,7 +991,7 @@
    "name": "_twHireFlow",
    "kind": "function",
    "file": "public/index.html",
-   "line": 262395,
+   "line": 262739,
    "params": [
     "nodeId"
    ],
@@ -1007,7 +1007,7 @@
    "name": "_twShopFlow",
    "kind": "function",
    "file": "public/index.html",
-   "line": 262435,
+   "line": 262779,
    "params": [
     "nodeId"
    ],
@@ -1095,7 +1095,7 @@
    "name": "_cityCutReport",
    "kind": "function",
    "file": "public/index.html",
-   "line": 238510,
+   "line": 238854,
    "params": [
     "cut",
     "pct"
@@ -1112,7 +1112,7 @@
    "name": "_cityMgrSend",
    "kind": "function",
    "file": "public/index.html",
-   "line": 238608,
+   "line": 238952,
    "params": [
     "node",
     "dC",
@@ -1133,7 +1133,7 @@
    "name": "_cityMgrEnd",
    "kind": "function",
    "file": "public/index.html",
-   "line": 238733,
+   "line": 239077,
    "params": [],
    "async": false,
    "reads": [],
@@ -1147,7 +1147,7 @@
    "name": "_cityTierResolve",
    "kind": "function",
    "file": "public/index.html",
-   "line": 239574,
+   "line": 239918,
    "params": [],
    "async": false,
    "reads": [
@@ -1165,7 +1165,7 @@
    "name": "_cityTierPillSync",
    "kind": "function",
    "file": "public/index.html",
-   "line": 239675,
+   "line": 240019,
    "params": [],
    "async": false,
    "reads": [
@@ -1177,11 +1177,27 @@
    "y": 872
   },
   {
+   "id": "cityGroundId",
+   "name": "cityGroundId",
+   "kind": "function",
+   "file": "public/index.html",
+   "line": 240358,
+   "params": [],
+   "async": false,
+   "reads": [
+    "App._cityGroundId"
+   ],
+   "writes": [],
+   "calls": 0,
+   "x": 80,
+   "y": 5228
+  },
+  {
    "id": "cityAddRes",
    "name": "cityAddRes",
    "kind": "function",
    "file": "public/index.html",
-   "line": 241751,
+   "line": 242095,
    "params": [
     "id",
     "n"
@@ -1191,14 +1207,14 @@
    "writes": [],
    "calls": 0,
    "x": 80,
-   "y": 5228
+   "y": 5360
   },
   {
    "id": "cityAddCinders",
    "name": "cityAddCinders",
    "kind": "function",
    "file": "public/index.html",
-   "line": 241945,
+   "line": 242289,
    "params": [
     "n",
     "why"
@@ -1208,14 +1224,14 @@
    "writes": [],
    "calls": 0,
    "x": 80,
-   "y": 5360
+   "y": 5492
   },
   {
    "id": "cityTradePublish",
    "name": "cityTradePublish",
    "kind": "function",
    "file": "public/index.html",
-   "line": 242051,
+   "line": 242395,
    "params": [
     "payload"
    ],
@@ -1228,14 +1244,14 @@
    "writes": [],
    "calls": 0,
    "x": 80,
-   "y": 5492
+   "y": 5624
   },
   {
    "id": "cityCardCollection",
    "name": "cityCardCollection",
    "kind": "function",
    "file": "public/index.html",
-   "line": 242440,
+   "line": 242784,
    "params": [],
    "async": true,
    "reads": [
@@ -1245,28 +1261,28 @@
    "writes": [],
    "calls": 0,
    "x": 80,
-   "y": 5624
+   "y": 5756
   },
   {
    "id": "nodeTier",
    "name": "nodeTier",
    "kind": "function",
    "file": "public/index.html",
-   "line": 243693,
+   "line": 244037,
    "params": [],
    "async": false,
    "reads": [],
    "writes": [],
    "calls": 1,
    "x": 80,
-   "y": 5756
+   "y": 5888
   },
   {
    "id": "cityMayorGet",
    "name": "cityMayorGet",
    "kind": "function",
    "file": "public/index.html",
-   "line": 245874,
+   "line": 246218,
    "params": [],
    "async": true,
    "reads": [
@@ -1280,14 +1296,14 @@
    "writes": [],
    "calls": 0,
    "x": 80,
-   "y": 5888
+   "y": 6020
   },
   {
    "id": "_nodeInvCityLevelFetch",
    "name": "_nodeInvCityLevelFetch",
    "kind": "data",
    "file": "public/index.html",
-   "line": 248028,
+   "line": 248372,
    "params": [
     "nodeId"
    ],
@@ -1303,28 +1319,6 @@
    "calls": 0,
    "x": 420,
    "y": 1004
-  },
-  {
-   "id": "_nodeInvCollect",
-   "name": "_nodeInvCollect",
-   "kind": "function",
-   "file": "public/index.html",
-   "line": 248072,
-   "params": [
-    "nodeId"
-   ],
-   "async": true,
-   "reads": [
-    "App._twSelNode",
-    "Cloud.ready",
-    "Cloud.client",
-    "App._npRows",
-    "App._nodeCityLv"
-   ],
-   "writes": [],
-   "calls": 0,
-   "x": 80,
-   "y": 6020
   }
  ],
  "edges": [

@@ -5,11 +5,206 @@
  "print": "Detail_5",
  "nodes": [
   {
+   "id": "_nodePrimeRole",
+   "name": "_nodePrimeRole",
+   "kind": "pure",
+   "file": "public/index.html",
+   "line": 255046,
+   "params": [
+    "node"
+   ],
+   "async": false,
+   "reads": [],
+   "writes": [],
+   "calls": 0,
+   "x": 80,
+   "y": 80
+  },
+  {
+   "id": "_twNodeReconCloudRow",
+   "name": "_twNodeReconCloudRow",
+   "kind": "pure",
+   "file": "public/index.html",
+   "line": 255881,
+   "params": [
+    "nodeId"
+   ],
+   "async": false,
+   "reads": [
+    "App._twNodeReconCloud"
+   ],
+   "writes": [],
+   "calls": 0,
+   "x": 80,
+   "y": 212
+  },
+  {
+   "id": "_twMapCacheSave",
+   "name": "_twMapCacheSave",
+   "kind": "function",
+   "file": "public/index.html",
+   "line": 256051,
+   "params": [
+    "doc",
+    "version"
+   ],
+   "async": false,
+   "reads": [],
+   "writes": [],
+   "calls": 0,
+   "x": 80,
+   "y": 344
+  },
+  {
+   "id": "_twMapCacheLoad",
+   "name": "_twMapCacheLoad",
+   "kind": "pure",
+   "file": "public/index.html",
+   "line": 256057,
+   "params": [],
+   "async": false,
+   "reads": [],
+   "writes": [],
+   "calls": 0,
+   "x": 80,
+   "y": 476
+  },
+  {
+   "id": "_twLiveMapRow",
+   "name": "_twLiveMapRow",
+   "kind": "function",
+   "file": "public/index.html",
+   "line": 256239,
+   "params": [],
+   "async": true,
+   "reads": [
+    "Cloud.ready",
+    "Cloud.client"
+   ],
+   "writes": [],
+   "calls": 0,
+   "x": 80,
+   "y": 608
+  },
+  {
+   "id": "_twMergeNodeLists",
+   "name": "_twMergeNodeLists",
+   "kind": "function",
+   "file": "public/index.html",
+   "line": 256252,
+   "params": [
+    "live",
+    "mine"
+   ],
+   "async": false,
+   "reads": [],
+   "writes": [],
+   "calls": 0,
+   "x": 80,
+   "y": 740
+  },
+  {
+   "id": "_twOwnersReady",
+   "name": "_twOwnersReady",
+   "kind": "pure",
+   "file": "public/index.html",
+   "line": 256448,
+   "params": [],
+   "async": false,
+   "reads": [
+    "App._twNodeOwners"
+   ],
+   "writes": [],
+   "calls": 0,
+   "x": 80,
+   "y": 872
+  },
+  {
+   "id": "_twNodeSale",
+   "name": "_twNodeSale",
+   "kind": "pure",
+   "file": "public/index.html",
+   "line": 256493,
+   "params": [
+    "nodeId"
+   ],
+   "async": false,
+   "reads": [],
+   "writes": [],
+   "calls": 0,
+   "x": 80,
+   "y": 1004
+  },
+  {
+   "id": "_twSaleUsd",
+   "name": "_twSaleUsd",
+   "kind": "pure",
+   "file": "public/index.html",
+   "line": 256494,
+   "params": [
+    "cinder"
+   ],
+   "async": false,
+   "reads": [],
+   "writes": [],
+   "calls": 0,
+   "x": 80,
+   "y": 1136
+  },
+  {
+   "id": "_twSaleIncludesHtml",
+   "name": "_twSaleIncludesHtml",
+   "kind": "function",
+   "file": "public/index.html",
+   "line": 256495,
+   "params": [
+    "inc"
+   ],
+   "async": false,
+   "reads": [],
+   "writes": [],
+   "calls": 0,
+   "x": 80,
+   "y": 1268
+  },
+  {
+   "id": "_twSaleEnsureCss",
+   "name": "_twSaleEnsureCss",
+   "kind": "function",
+   "file": "public/index.html",
+   "line": 256500,
+   "params": [],
+   "async": false,
+   "reads": [],
+   "writes": [],
+   "calls": 0,
+   "x": 80,
+   "y": 1400
+  },
+  {
+   "id": "_twCancelSale",
+   "name": "_twCancelSale",
+   "kind": "function",
+   "file": "public/index.html",
+   "line": 256626,
+   "params": [
+    "nodeId"
+   ],
+   "async": true,
+   "reads": [
+    "Cloud.client"
+   ],
+   "writes": [],
+   "calls": 0,
+   "x": 80,
+   "y": 1532
+  },
+  {
    "id": "_twNodeOwnerUser",
    "name": "_twNodeOwnerUser",
    "kind": "pure",
    "file": "public/index.html",
-   "line": 256393,
+   "line": 256737,
    "params": [
     "nodeId"
    ],
@@ -20,14 +215,14 @@
    "writes": [],
    "calls": 0,
    "x": 80,
-   "y": 80
+   "y": 1664
   },
   {
    "id": "_twClearsRequired",
    "name": "_twClearsRequired",
    "kind": "function",
    "file": "public/index.html",
-   "line": 257336,
+   "line": 257680,
    "params": [
     "node",
     "own"
@@ -37,28 +232,28 @@
    "writes": [],
    "calls": 0,
    "x": 80,
-   "y": 212
+   "y": 1796
   },
   {
    "id": "_twNodeReconDefaults",
    "name": "_twNodeReconDefaults",
    "kind": "pure",
    "file": "public/index.html",
-   "line": 258034,
+   "line": 258378,
    "params": [],
    "async": false,
    "reads": [],
    "writes": [],
    "calls": 0,
    "x": 80,
-   "y": 344
+   "y": 1928
   },
   {
    "id": "_twCityVitalsFor",
    "name": "_twCityVitalsFor",
    "kind": "pure",
    "file": "public/index.html",
-   "line": 258253,
+   "line": 258597,
    "params": [
     "node"
    ],
@@ -67,14 +262,14 @@
    "writes": [],
    "calls": 0,
    "x": 80,
-   "y": 476
+   "y": 2060
   },
   {
    "id": "_twNodeRegisteredCount",
    "name": "_twNodeRegisteredCount",
    "kind": "pure",
    "file": "public/index.html",
-   "line": 258310,
+   "line": 258654,
    "params": [
     "nodeId"
    ],
@@ -87,14 +282,14 @@
    "writes": [],
    "calls": 0,
    "x": 80,
-   "y": 608
+   "y": 2192
   },
   {
    "id": "_twNodeContributorCount",
    "name": "_twNodeContributorCount",
    "kind": "pure",
    "file": "public/index.html",
-   "line": 258320,
+   "line": 258664,
    "params": [
     "nodeId"
    ],
@@ -105,14 +300,14 @@
    "writes": [],
    "calls": 0,
    "x": 80,
-   "y": 740
+   "y": 2324
   },
   {
    "id": "_twFmtSpan",
    "name": "_twFmtSpan",
    "kind": "pure",
    "file": "public/index.html",
-   "line": 258591,
+   "line": 258935,
    "params": [
     "ms"
    ],
@@ -121,14 +316,14 @@
    "writes": [],
    "calls": 0,
    "x": 80,
-   "y": 872
+   "y": 2456
   },
   {
    "id": "_twNodeResId",
    "name": "_twNodeResId",
    "kind": "pure",
    "file": "public/index.html",
-   "line": 258682,
+   "line": 259026,
    "params": [
     "node"
    ],
@@ -137,14 +332,14 @@
    "writes": [],
    "calls": 0,
    "x": 80,
-   "y": 1004
+   "y": 2588
   },
   {
    "id": "_twCollectNodeBank",
    "name": "_twCollectNodeBank",
    "kind": "function",
    "file": "public/index.html",
-   "line": 258718,
+   "line": 259062,
    "params": [
     "nodeId"
    ],
@@ -156,42 +351,42 @@
    "writes": [],
    "calls": 0,
    "x": 80,
-   "y": 1136
+   "y": 2720
   },
   {
    "id": "_twCloseNodeListModal",
    "name": "_twCloseNodeListModal",
    "kind": "function",
    "file": "public/index.html",
-   "line": 258805,
+   "line": 259149,
    "params": [],
    "async": false,
    "reads": [],
    "writes": [],
    "calls": 0,
    "x": 80,
-   "y": 1268
+   "y": 2852
   },
   {
    "id": "_twBindNodeListModal",
    "name": "_twBindNodeListModal",
    "kind": "function",
    "file": "public/index.html",
-   "line": 258806,
+   "line": 259150,
    "params": [],
    "async": false,
    "reads": [],
    "writes": [],
    "calls": 0,
    "x": 80,
-   "y": 1400
+   "y": 2984
   },
   {
    "id": "nodePaint",
    "name": "nodePaint",
    "kind": "function",
    "file": "public/index.html",
-   "line": 259942,
+   "line": 260286,
    "params": [
     "n"
    ],
@@ -200,14 +395,14 @@
    "writes": [],
    "calls": 0,
    "x": 80,
-   "y": 1532
+   "y": 3116
   },
   {
    "id": "_twYieldTotal",
    "name": "_twYieldTotal",
    "kind": "pure",
    "file": "public/index.html",
-   "line": 260206,
+   "line": 260550,
    "params": [
     "n"
    ],
@@ -216,14 +411,14 @@
    "writes": [],
    "calls": 0,
    "x": 80,
-   "y": 1664
+   "y": 3248
   },
   {
    "id": "_twIcoSvg",
    "name": "_twIcoSvg",
    "kind": "pure",
    "file": "public/index.html",
-   "line": 260242,
+   "line": 260586,
    "params": [
     "kind",
     "col"
@@ -233,14 +428,14 @@
    "writes": [],
    "calls": 0,
    "x": 80,
-   "y": 1796
+   "y": 3380
   },
   {
    "id": "_twNodeResBadge",
    "name": "_twNodeResBadge",
    "kind": "function",
    "file": "public/index.html",
-   "line": 260263,
+   "line": 260607,
    "params": [
     "n"
    ],
@@ -249,14 +444,14 @@
    "writes": [],
    "calls": 0,
    "x": 80,
-   "y": 1928
+   "y": 3512
   },
   {
    "id": "_twAdminGate",
    "name": "_twAdminGate",
    "kind": "pure",
    "file": "public/index.html",
-   "line": 261771,
+   "line": 262115,
    "params": [
     "what"
    ],
@@ -265,14 +460,14 @@
    "writes": [],
    "calls": 0,
    "x": 80,
-   "y": 2060
+   "y": 3644
   },
   {
    "id": "_twRenderNodeEditor",
    "name": "_twRenderNodeEditor",
    "kind": "function",
    "file": "public/index.html",
-   "line": 263039,
+   "line": 263383,
    "params": [
     "node",
     "t"
@@ -284,14 +479,14 @@
    "writes": [],
    "calls": 0,
    "x": 80,
-   "y": 2192
+   "y": 3776
   },
   {
    "id": "_twBindNodeEditor",
    "name": "_twBindNodeEditor",
    "kind": "function",
    "file": "public/index.html",
-   "line": 263122,
+   "line": 263466,
    "params": [
     "t"
    ],
@@ -302,7 +497,170 @@
    "writes": [],
    "calls": 0,
    "x": 80,
-   "y": 2324
+   "y": 3908
+  },
+  {
+   "id": "cityOwnerId",
+   "name": "cityOwnerId",
+   "kind": "pure",
+   "file": "public/node-city/index.html",
+   "line": 3566,
+   "params": [],
+   "async": false,
+   "reads": [],
+   "writes": [],
+   "calls": 0,
+   "x": 80,
+   "y": 4040
+  },
+  {
+   "id": "cityDemandScale",
+   "name": "cityDemandScale",
+   "kind": "function",
+   "file": "public/node-city/index.html",
+   "line": 6480,
+   "params": [],
+   "async": false,
+   "reads": [],
+   "writes": [],
+   "calls": 0,
+   "x": 80,
+   "y": 4172
+  },
+  {
+   "id": "cityFoundedAt",
+   "name": "cityFoundedAt",
+   "kind": "pure",
+   "file": "public/node-city/index.html",
+   "line": 7003,
+   "params": [],
+   "async": false,
+   "reads": [],
+   "writes": [],
+   "calls": 0,
+   "x": 80,
+   "y": 4304
+  },
+  {
+   "id": "citySync",
+   "name": "citySync",
+   "kind": "pure",
+   "file": "public/node-city/index.html",
+   "line": 28166,
+   "params": [],
+   "async": false,
+   "reads": [],
+   "writes": [],
+   "calls": 0,
+   "x": 80,
+   "y": 4436
+  },
+  {
+   "id": "cityLevelXpFor",
+   "name": "cityLevelXpFor",
+   "kind": "function",
+   "file": "public/node-city/index.html",
+   "line": 38323,
+   "params": [
+    "L"
+   ],
+   "async": false,
+   "reads": [],
+   "writes": [],
+   "calls": 0,
+   "x": 80,
+   "y": 4568
+  },
+  {
+   "id": "nodeXpTick",
+   "name": "nodeXpTick",
+   "kind": "function",
+   "file": "public/node-city/index.html",
+   "line": 39743,
+   "params": [
+    "dtSec"
+   ],
+   "async": false,
+   "reads": [],
+   "writes": [],
+   "calls": 0,
+   "x": 80,
+   "y": 4700
+  },
+  {
+   "id": "_cityObjectCount",
+   "name": "_cityObjectCount",
+   "kind": "pure",
+   "file": "public/node-city/index.html",
+   "line": 42867,
+   "params": [],
+   "async": false,
+   "reads": [],
+   "writes": [],
+   "calls": 0,
+   "x": 80,
+   "y": 4832
+  },
+  {
+   "id": "cityEcoVerdict",
+   "name": "cityEcoVerdict",
+   "kind": "pure",
+   "file": "public/node-city/index.html",
+   "line": 43502,
+   "params": [
+    "j",
+    "unsafe"
+   ],
+   "async": false,
+   "reads": [],
+   "writes": [],
+   "calls": 0,
+   "x": 80,
+   "y": 4964
+  },
+  {
+   "id": "cityLabourByRole",
+   "name": "cityLabourByRole",
+   "kind": "pure",
+   "file": "public/node-city/index.html",
+   "line": 48195,
+   "params": [],
+   "async": false,
+   "reads": [],
+   "writes": [],
+   "calls": 0,
+   "x": 80,
+   "y": 5096
+  },
+  {
+   "id": "cityHall",
+   "name": "cityHall",
+   "kind": "pure",
+   "file": "public/node-city/index.html",
+   "line": 50645,
+   "params": [
+    "t"
+   ],
+   "async": false,
+   "reads": [],
+   "writes": [],
+   "calls": 0,
+   "x": 80,
+   "y": 5228
+  },
+  {
+   "id": "nodeCo",
+   "name": "nodeCo",
+   "kind": "function",
+   "file": "public/node-city/index.html",
+   "line": 54339,
+   "params": [],
+   "async": false,
+   "reads": [],
+   "writes": [],
+   "calls": 0,
+   "x": 80,
+   "y": 5360
   },
   {
    "id": "nodeResidents",
@@ -319,7 +677,7 @@
    "writes": [],
    "calls": 0,
    "x": 80,
-   "y": 2456
+   "y": 5492
   },
   {
    "id": "nodeStockView",
@@ -335,7 +693,7 @@
    "writes": [],
    "calls": 0,
    "x": 80,
-   "y": 2588
+   "y": 5624
   },
   {
    "id": "nodeSnapshot",
@@ -349,7 +707,7 @@
    "writes": [],
    "calls": 0,
    "x": 80,
-   "y": 2720
+   "y": 5756
   },
   {
    "id": "cityVirusForWorldEvent",
@@ -365,7 +723,7 @@
    "writes": [],
    "calls": 0,
    "x": 80,
-   "y": 2852
+   "y": 5888
   },
   {
    "id": "cityAgeMin",
@@ -379,7 +737,7 @@
    "writes": [],
    "calls": 0,
    "x": 80,
-   "y": 2984
+   "y": 6020
   },
   {
    "id": "cityProdDef",
@@ -395,21 +753,7 @@
    "writes": [],
    "calls": 0,
    "x": 80,
-   "y": 3116
-  },
-  {
-   "id": "cityPop",
-   "name": "cityPop",
-   "kind": "function",
-   "file": "public/src/broadcast/index.js",
-   "line": 265,
-   "params": [],
-   "async": false,
-   "reads": [],
-   "writes": [],
-   "calls": 0,
-   "x": 80,
-   "y": 3248
+   "y": 6152
   },
   {
    "id": "cityBase",
@@ -423,7 +767,7 @@
    "writes": [],
    "calls": 0,
    "x": 80,
-   "y": 3380
+   "y": 6284
   },
   {
    "id": "cityRoads",
@@ -439,7 +783,7 @@
    "writes": [],
    "calls": 0,
    "x": 80,
-   "y": 3512
+   "y": 6416
   },
   {
    "id": "cityTileCount",
@@ -455,7 +799,7 @@
    "writes": [],
    "calls": 0,
    "x": 80,
-   "y": 3644
+   "y": 6548
   },
   {
    "id": "nodeById",
@@ -471,7 +815,7 @@
    "writes": [],
    "calls": 0,
    "x": 80,
-   "y": 3776
+   "y": 6680
   },
   {
    "id": "nodeForSpec",
@@ -487,7 +831,7 @@
    "writes": [],
    "calls": 0,
    "x": 80,
-   "y": 3908
+   "y": 6812
   },
   {
    "id": "nodeForZone",
@@ -503,7 +847,7 @@
    "writes": [],
    "calls": 0,
    "x": 80,
-   "y": 4040
+   "y": 6944
   },
   {
    "id": "nodeForBuilding",
@@ -519,7 +863,7 @@
    "writes": [],
    "calls": 0,
    "x": 80,
-   "y": 4172
+   "y": 7076
   },
   {
    "id": "cityNow",
@@ -533,7 +877,7 @@
    "writes": [],
    "calls": 0,
    "x": 80,
-   "y": 4304
+   "y": 7208
   },
   {
    "id": "cityWeights",
@@ -547,21 +891,7 @@
    "writes": [],
    "calls": 0,
    "x": 80,
-   "y": 4436
-  },
-  {
-   "id": "cityId",
-   "name": "cityId",
-   "kind": "function",
-   "file": "public/src/resmap/index.js",
-   "line": 503,
-   "params": [],
-   "async": false,
-   "reads": [],
-   "writes": [],
-   "calls": 0,
-   "x": 80,
-   "y": 4568
+   "y": 7340
   },
   {
    "id": "cityLive",
@@ -577,7 +907,7 @@
    "writes": [],
    "calls": 0,
    "x": 80,
-   "y": 4700
+   "y": 7472
   },
   {
    "id": "cityHost",
@@ -591,7 +921,7 @@
    "writes": [],
    "calls": 0,
    "x": 80,
-   "y": 4832
+   "y": 7604
   },
   {
    "id": "cityTick",
@@ -608,7 +938,7 @@
    "writes": [],
    "calls": 0,
    "x": 80,
-   "y": 4964
+   "y": 7736
   },
   {
    "id": "cityName",
@@ -624,7 +954,7 @@
    "writes": [],
    "calls": 0,
    "x": 80,
-   "y": 5096
+   "y": 7868
   },
   {
    "id": "citySelect",
@@ -642,7 +972,7 @@
    "writes": [],
    "calls": 0,
    "x": 80,
-   "y": 5228
+   "y": 8000
   },
   {
    "id": "cityWeatherAt",
@@ -658,7 +988,7 @@
    "writes": [],
    "calls": 0,
    "x": 80,
-   "y": 5360
+   "y": 8132
   },
   {
    "id": "cityHourNow",
@@ -672,7 +1002,7 @@
    "writes": [],
    "calls": 0,
    "x": 80,
-   "y": 5492
+   "y": 8264
   },
   {
    "id": "nodeByName",
@@ -689,7 +1019,7 @@
    "writes": [],
    "calls": 0,
    "x": 80,
-   "y": 5624
+   "y": 8396
   }
  ],
  "edges": []

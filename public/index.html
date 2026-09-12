@@ -39411,7 +39411,7 @@ body:has(#pack-opener-frame) #chat-overlay {
   // the console. Bump this every deploy alongside sw.js's CACHE_VERSION. If two
   // machines show different stamps, the older one is on stale code (hard-refresh);
   // if they MATCH but content still differs, it is a DATA/publish issue, not code.
-  window.BUILD_VERSION = 'v121v120';
+  window.BUILD_VERSION = 'v121v121';
   try {
     console.info('%cMythic Spellbook ' + window.BUILD_VERSION + '%c — build check: run  __mg.version',
       'font-weight:700;color:#b48cff', 'color:#7d7499');
@@ -136004,7 +136004,7 @@ try {
         let series = [];
         try { series = _cxGetHistory(id, '24H').map((v) => +v || 0); } catch (e) {}
         let buyPx = p.current;
-        try { const q = _cxQuoteBuy(id, 1, p.current); if (q && !q.drained && q.px) buyPx = q.px; } catch (e) {}
+        try { const q = _cxQuoteOrder(id, 1, +1); if (q && q.px) buyPx = q.px; } catch (e) {}
         return { id, name: meta.name || id, icon: meta.icon || '◇', price: +p.current || 0, base: +p.base || 0, delta: +p.delta24h || 0, vol: p.volume24h | 0,
                  buyPx: +buyPx || 0, series, qty: pos ? (pos.qty | 0) : 0, avgCost: pos ? (+pos.avgCost || 0) : 0 };
       } catch (e) { return null; }
@@ -219866,6 +219866,11 @@ function adminRemoveCraftingRecipe(recipeId) {
 // must move the mark by exactly reciprocal factors or the spread is not the
 // only thing standing between a round trip and a faucet.
 const CX_PRICE_TICK_TRADE  = 0.012;   // ±1.2% per unit traded, both directions
+/* The desk's whole take, and the only thing between the quote and the charge
+   (v121v121). It used to be these PLUS a 4 % reserve spread and an unbounded
+   slippage term that the order box never showed. */
+const CX_TRADE_FEE = 0.004;           // paid on a buy
+const CX_SELL_FEE  = 0.006;           // paid on a sell (0.4 % trade + 0.2 % listing)
 // Crafting is one-directional supply pressure with no matching sell leg, so it
 // is allowed to differ — but only DOWNWARD. A craft bump smaller than the sell
 // drop means selling into your own craft-pump loses, which is the safe side. A
@@ -220210,6 +220215,28 @@ function _cxGetReserve(resourceId) {
   return slot;
 }
 
+/* 🎯 What one order actually fills at (v121v121). Returns { px, pre, post }:
+   `pre` is the price on the tile, `post` is where this order leaves the
+   market, and `px` — their geometric mean, i.e. the average price the order
+   walks through — is what is charged per unit. Buying 10 units of a 100 CR
+   staple fills at ~106 and leaves the price at ~113; selling those 10 straight
+   back fills at ~106 again and puts the price back at 100, so a round trip is
+   worth its fees and never a profit. That symmetry is what the 4 % reserve
+   spread used to buy, at four times the price and without saying so. */
+function _cxFillPrice(row, qty, dir) {
+  const pre = Math.max(0.01, +(row && row.current) || 0.01);
+  let post = pre;
+  try { post = Math.max(0.01, cxImpactedPrice(row, qty, dir > 0 ? 1 : -1, dir > 0 ? 'buy' : 'sell')); } catch (e) { post = pre; }
+  return { px: Math.max(0.01, Math.sqrt(pre * post)), pre, post };
+}
+/* The quote the trade box prints — and, to the cinder, what the order costs. */
+function _cxQuoteOrder(id, qty, dir) {
+  const row = getMarketPrice(id);
+  const fill = _cxFillPrice(row, Math.max(0, +qty || 0), dir);
+  const gross = fill.px * Math.max(0, +qty || 0);
+  const fee = gross * (dir > 0 ? CX_TRADE_FEE : CX_SELL_FEE);
+  return { px: fill.px, pre: fill.pre, post: fill.post, gross, fee, total: dir > 0 ? Math.ceil(gross + fee) : Math.floor(gross - fee) };
+}
 // Quote a BUY price (what the player pays per unit). Adds slippage based on
 // the size of the order relative to the pool, plus the spread markup. Returns
 // { px, totalImpactPct }. Caller computes total = qty * px and applies fees.
@@ -220373,6 +220400,57 @@ function tickMarketDecay() {
 // ⚠ REJECTED — keeping the linear form and special-casing fuel. That is a
 //   fourth patch on the same wound: it leaves every other asset split-dependent
 //   and leaves the next instrument that reads a mark to rediscover this.
+/* 🧾 THE TAPE — one record of every print in the game (v121v121).
+   { t, id, dir: +1 bought / -1 sold, qty, px, src } oldest first, capped at
+   CX_TAPE_CAP. Written by the two price writers below and by production, so a
+   shop sale, a craft, a node yield, a haul delivery and an exchange order all
+   land in the same record — which is the point: the market moves on what the
+   world actually did, and the newsroom can say so. */
+const CX_TAPE_CAP = 400;
+function _cxTape() {
+  const cx = getCrashExchange();
+  if (!Array.isArray(cx.tape)) cx.tape = [];
+  return cx.tape;
+}
+function _cxTapePush(id, dir, qty, px, src) {
+  try {
+    const tape = _cxTape();
+    tape.push({ t: Date.now(), id: String(id), dir: dir > 0 ? 1 : -1, qty: Math.max(0, Math.round(+qty || 0)), px: +(+px || 0).toFixed(4), src: String(src || 'trade') });
+    if (tape.length > CX_TAPE_CAP) tape.splice(0, tape.length - CX_TAPE_CAP);
+  } catch (e) {}
+}
+/* The flow behind one asset over a window: bought, sold, and by which part of
+   the game (biggest first). Pass no id for the whole market. */
+function _cxFlow(id, ms) {
+  const since = Date.now() - (ms || 86400000);
+  const out = { buys: 0, sells: 0, prints: 0, bySrc: {}, net: 0 };
+  try {
+    for (const r of _cxTape()) {
+      if (r.t < since || (id && r.id !== id)) continue;
+      out.prints++;
+      if (r.dir > 0) out.buys += r.qty; else out.sells += r.qty;
+      out.bySrc[r.src] = (out.bySrc[r.src] || 0) + r.qty;
+    }
+  } catch (e) {}
+  out.net = out.buys - out.sells;
+  return out;
+}
+/* What the tape carried furthest over a window. */
+function _cxMovers(ms, limit) {
+  const since = Date.now() - (ms || 86400000), first = {}, last = {}, vol = {};
+  try {
+    for (const r of _cxTape()) {
+      if (r.t < since || !(r.px > 0)) continue;
+      if (first[r.id] === undefined) first[r.id] = r.px;
+      last[r.id] = r.px; vol[r.id] = (vol[r.id] || 0) + r.qty;
+    }
+  } catch (e) {}
+  return Object.keys(last)
+    .map((id) => ({ id, from: first[id], to: last[id], qty: vol[id], pct: first[id] > 0 ? ((last[id] - first[id]) / first[id]) * 100 : 0 }))
+    .filter((m) => isFinite(m.pct) && Math.abs(m.pct) >= 0.01)
+    .sort((a, b) => Math.abs(b.pct) - Math.abs(a.pct))
+    .slice(0, limit || 6);
+}
 function cxImpactedPrice(p, qty, dir, reason) {
   // The scale rides on the row (see getMarketPrice) so that quantity means the
   // same thing to every venue: one barrel and one CX share are one unit of the
@@ -220387,6 +220465,7 @@ function cxImpactedPrice(p, qty, dir, reason) {
 // Move a price up. `qty` is the # of units traded (drives the bump
 // magnitude). Returns the new current price for the caller to log.
 function bumpMarketPriceUp(id, qty, reason) {
+  try { const _tp = getMarketPrice(id); _cxTapePush(id, +1, qty, _tp && _tp.current, reason || 'buy'); } catch (e) {}
   if (!id) return null;
   tickMarketDecay();
   const p = getMarketPrice(id);
@@ -220404,6 +220483,7 @@ function bumpMarketPriceUp(id, qty, reason) {
 
 // Move a price down (selling / depositing).
 function dropMarketPriceDown(id, qty, reason) {
+  try { const _tp = getMarketPrice(id); _cxTapePush(id, -1, qty, _tp && _tp.current, reason || 'sell'); } catch (e) {}
   if (!id) return null;
   tickMarketDecay();
   const p = getMarketPrice(id);
@@ -221177,25 +221257,20 @@ function _cxExecuteBuy(id, qty, _pxOverride) {
   // tickMarketDecay first so this quote and the write below agree, the same
   // reason fcNpcMark does it.
   try { tickMarketDecay(); } catch (e) {}
-  const _pRow = getMarketPrice(id);
-  let _mark = cxImpactedPrice(_pRow, qty, +1, 'buy');
-  if (!isFinite(_mark) || _mark <= 0) _mark = _cxBasePrice(id);
-  const px = (typeof _pxOverride === 'number' && isFinite(_pxOverride)) ? Math.max(_pxOverride, _mark) : _mark;
-  const gross = px * qty;
-  const fee   = gross * 0.004;
-  // 🏛 Foundation Reserve quote — replaces the raw market price with one
-  // that includes slippage (based on order size vs pool) AND a 4% spread.
-  // The spread is what makes wash trading EXPENSIVE: every buy-then-sell
-  // cycle bleeds ~8% per round-trip into the reserve, so a malicious player
-  // can't pump the price for free.
-  const quote = _cxQuoteBuy(id, qty, px);
-  if (quote.drained) return { ok: false, msg: 'Foundation Reserve drained for ' + (meta.name || id) + ' — wait for it to refill.' };
+  /* 🎯 v121v121 — the fill is the average price this order walks through, and
+     it is the SAME figure the PRICE and TOTAL boxes printed before the button
+     was pressed. What used to happen here: the price came from the mark AFTER
+     this order's own impact, was multiplied by slippage against a reserve pool
+     and again by a 4 % spread, while the box beside it quoted the tile price
+     plus 0.4 % — so ten units could cost ~17 % more than the screen said. The
+     typed price could not lower it either (Math.max against the post-impact
+     mark), which is why typing the number on the tile changed nothing. */
+  const quote = _cxQuoteOrder(id, qty, +1);
   const buyPx = quote.px;
-  const grossReal = buyPx * qty;
-  const feeReal   = grossReal * 0.004;
-  const total = Math.ceil(grossReal + feeReal);
+  const feeReal = quote.fee;
+  const total = quote.total;
   const have  = Profile.gems | 0;
-  if (have < total) return { ok: false, msg: 'Insufficient CR. Need ' + _cxFmtCR(total) + ', have ' + _cxFmtCR(have) + ' (incl. ' + Math.round(quote.slip * 100) + '% slippage + 4% spread).' };
+  if (have < total) return { ok: false, msg: 'Insufficient CR. Need ' + _cxFmtCR(total) + ', have ' + _cxFmtCR(have) + ' (' + _cxFmt(buyPx) + ' per share + ' + (CX_TRADE_FEE * 100).toFixed(1) + '% fee).' };
   // Local mutation — instant UI. Background server mirror keeps user_progress
   // in sync so the canonical Cinder figure restored on next sign-in matches.
   Profile.gems = have - total;
@@ -221213,8 +221288,7 @@ function _cxExecuteBuy(id, qty, _pxOverride) {
   // 💾 DEDICATED SAVE — write cxHoldings to its own localStorage key immediately
   // after every trade so it can NEVER be lost inside the Profile blob pipeline.
   try { _saveCxHoldings(); } catch (e) {}
-  // 🏛 Reserve update — pool GAINS the Cinder; unit depth tracked for slippage.
-  try { _cxReserveOnBuy(id, qty, total); } catch (e) {}
+  try { _cxTapePush(id, +1, qty, buyPx, 'desk'); } catch (e) {}
   try { bumpMarketPriceUp(id, qty, 'buy'); } catch (e) {}
   // 🏷 Tag the most recent txn as player-initiated and stamp px + total so
   //    the Portfolio tab can render P&L without recomputing later.
@@ -221222,9 +221296,9 @@ function _cxExecuteBuy(id, qty, _pxOverride) {
     const cxx = getCrashExchange();
     if (cxx.txnLog && cxx.txnLog[0]) {
       cxx.txnLog[0].byPlayer = true;
-      cxx.txnLog[0].px = +px;
+      cxx.txnLog[0].px = +buyPx;
       cxx.txnLog[0].total = total;
-      cxx.txnLog[0].fee = +fee.toFixed(2);
+      cxx.txnLog[0].fee = +feeReal.toFixed(2);
     }
   } catch (e) {}
   try { saveProfile && saveProfile(); } catch (e) {} try { saveForge && saveForge(); } catch (e) {}
@@ -221232,7 +221306,7 @@ function _cxExecuteBuy(id, qty, _pxOverride) {
   // refresh inside that window loses the bought resources. Pushes the row
   // immediately so refresh always restores from the latest snapshot.
   try { if (typeof _persistProgressNow === 'function') _persistProgressNow(); } catch (e) {}
-  _cxPushEvent({ cat: 'BUY', cls: 'bull', msg: 'Operator executed buy: ' + qty + ' × ' + (meta.name || id) + ' @ ' + _cxFmtCR(buyPx) + (quote.slip > 0.001 ? ' (slip +' + (quote.slip * 100).toFixed(1) + '%)' : ''), impact: 'TXN ' + _cxFmtCR(total) + ' (4% spread + 0.4% fee)' });
+  _cxPushEvent({ cat: 'BUY', cls: 'bull', msg: 'Operator executed buy: ' + qty + ' × ' + (meta.name || id) + ' @ ' + _cxFmtCR(buyPx), impact: 'TXN ' + _cxFmtCR(total) + ' (' + (CX_TRADE_FEE * 100).toFixed(1) + '% fee) · mark ' + _cxFmt(quote.post) });
   return { ok: true, msg: 'Bought ' + qty + ' × ' + (meta.name || id) + ' for ' + _cxFmtCR(total) + '.', total, fee: feeReal };
 }
 
@@ -221256,17 +221330,14 @@ function _cxExecuteSell(id, qty, _pxOverride) {
   // it back. Both legs must be priced from their own post-impact mark or the
   // pair is a faucet no spread can cover.
   try { tickMarketDecay(); } catch (e) {}
-  const _pRowS = getMarketPrice(id);
-  let _markS = cxImpactedPrice(_pRowS, qty, -1, 'sell');
-  if (!isFinite(_markS) || _markS <= 0) _markS = _cxBasePrice(id);
-  const marketPx = (typeof _pxOverride === 'number' && isFinite(_pxOverride)) ? Math.min(_pxOverride, _markS) : _markS;
-  // 🏛 Foundation Reserve sell quote — symmetric 4% markdown + slippage so
-  // big dumps eat themselves. Wash trading round-trip pays the 8% spread.
-  const quote = _cxQuoteSell(id, qty, marketPx);
-  const sellPx = quote.px;
-  const gross = sellPx * qty;
-  const fee   = gross * 0.006;  // 0.4% trade + 0.2% listing
-  const net   = Math.floor(gross - fee);
+  /* Symmetric with the buy: the average price this order walks the market down
+     through, and no reserve markdown. An instant round trip is worth its fees,
+     which is what the old 4 % spread was there to guarantee. */
+  const quoteS = _cxQuoteOrder(id, qty, -1);
+  const sellPx = quoteS.px;
+  const gross  = quoteS.gross;
+  const fee    = quoteS.fee;
+  const net    = quoteS.total;
   // Deduct sold shares from position (never touches Profile.salvage).
   _cxSellPos.qty = Math.max(0, have - qty);
   if (_cxSellPos.qty === 0) delete Profile.cxHoldings[id];
@@ -221274,8 +221345,7 @@ function _cxExecuteSell(id, qty, _pxOverride) {
   addGems(net, 'Exchange: sold ' + id);
   // 💾 DEDICATED SAVE — same immediate dedicated key as buy path.
   try { _saveCxHoldings(); } catch (e) {}
-  // 🏛 Reserve update — pool BUYS our units (gains them, loses the Cinder).
-  try { _cxReserveOnSell(id, qty, net); } catch (e) {}
+  try { _cxTapePush(id, -1, qty, sellPx, 'desk'); } catch (e) {}
   try { dropMarketPriceDown(id, qty, 'sell'); } catch (e) {}
   // 🏷 Tag the most recent txn as player-initiated for the Portfolio tab.
   try {
@@ -221291,7 +221361,7 @@ function _cxExecuteSell(id, qty, _pxOverride) {
   // 💾 Force-flush — CX share deduction must reach the cloud immediately so
   // a refresh always restores the correct holding count.
   try { if (typeof _persistProgressNow === 'function') _persistProgressNow(); } catch (e) {}
-  _cxPushEvent({ cat: 'SELL', cls: 'crit', msg: 'Operator executed sell: ' + qty + ' × ' + (meta.name || id) + ' @ ' + _cxFmtCR(sellPx) + (quote.slip > 0.001 ? ' (slip -' + (quote.slip * 100).toFixed(1) + '%)' : ''), impact: 'NET ' + _cxFmtCR(net) + ' (4% spread + 0.6% fees)' });
+  _cxPushEvent({ cat: 'SELL', cls: 'crit', msg: 'Operator executed sell: ' + qty + ' × ' + (meta.name || id) + ' @ ' + _cxFmtCR(sellPx), impact: 'NET ' + _cxFmtCR(net) + ' (' + (CX_SELL_FEE * 100).toFixed(1) + '% fees) · mark ' + _cxFmt(quoteS.post) });
   return { ok: true, msg: 'Sold ' + qty + ' × ' + (meta.name || id) + ' for ' + _cxFmtCR(net) + ' net.', net, fee };
 }
 
@@ -236968,6 +237038,243 @@ function renderTraderHub() {
   _bindTraderModal();
 }
 
+/* ═══ 🏢 THE OPERATIONS DESK — player corporations, priced (v121v121) ═══════
+   The owner asked for every player corporation on the exchange, with a weekly
+   treasury report and a call on whether to buy or sell. The figures come from
+   sql/133's corp_market_list(), which is SECURITY DEFINER and returns ONLY
+   aggregates: a balance, last week's balance, the week's inflow and outflow, a
+   unit count, a member count, live operations. corp_treasury and corp_vault
+   stay members-only (sql/046) — a rival reads the published figures, never the
+   books. That is the same bargain a real listed company makes.
+
+   A share is priced off what the corporation IS, not off drift:
+
+       book  = cinder + resource units × 12 + members × 1500 + operations × 2500
+       price = book / 10,000 shares × (1 + float premium, capped at +75 %)
+
+   so a treasury that grows makes a stake worth more, and a corporation
+   everybody already owns costs more to join. The float is server-side
+   (corp_shares), so what everyone else holds is what makes a stake dear, and
+   the database refuses a sale of shares you do not hold. */
+const CORP_SHARES_OUT = 10000;
+const CorpMkt = { rows: [], mine: {}, at: 0, inflight: false, err: '', loaded: false };
+function _corpBook(r) {
+  return Math.max(0, (+r.treasury || 0)) + Math.max(0, (+r.vault_units || 0)) * 12
+       + Math.max(0, (+r.members || 0)) * 1500 + Math.max(0, (+r.ops_active || 0)) * 2500;
+}
+function _corpSharePx(r) {
+  const book = _corpBook(r) / CORP_SHARES_OUT;
+  const demand = 1 + Math.min(0.75, Math.max(0, (+r.float_held || 0)) / CORP_SHARES_OUT);
+  return Math.max(1, Math.round(book * demand * 100) / 100);
+}
+/* The week, and what to do about it. A rating is a READING OF THE LEDGER, not
+   a tip: it says which way the treasury moved and whether the corporation is
+   earning or spending, and the card prints the reason beside the word. */
+function _corpWeekly(r) {
+  const now = +r.treasury || 0, then = +r.treasury_7d || 0, delta = now - then;
+  const inflow = +r.inflow_7d || 0, outflow = +r.outflow_7d || 0;
+  const base = Math.max(5000, Math.abs(then));
+  const pct = (delta / base) * 100;
+  const earning = inflow > outflow;
+  let rating, why;
+  if (pct >= 25) { rating = 'STRONG BUY'; why = 'treasury up ' + Math.round(pct) + '% on the week'; }
+  else if (pct >= 6) { rating = 'BUY'; why = 'treasury growing, ' + (earning ? 'earning more than it spends' : 'spending hard but ahead'); }
+  else if (pct > -6) { rating = 'HOLD'; why = inflow + outflow < 1 ? 'no treasury movement this week' : 'flat week, ' + (earning ? 'slightly ahead' : 'slightly behind'); }
+  else if (pct > -25) { rating = 'SELL'; why = 'treasury down ' + Math.abs(Math.round(pct)) + '%, paying out more than it takes'; }
+  else { rating = 'STRONG SELL'; why = 'treasury down ' + Math.abs(Math.round(pct)) + '% on the week'; }
+  if ((+r.members || 0) <= 1 && (+r.ops_active || 0) === 0) { rating = 'SPECULATIVE'; why = 'one member, nothing running'; }
+  return { now, then, delta, pct, inflow, outflow, rating, why, earning };
+}
+const CORP_RATING_COLOR = { 'STRONG BUY': '#6ee7a0', 'BUY': '#a8e06a', 'HOLD': '#ffd166', 'SELL': '#ff9a6b', 'STRONG SELL': '#ff7070', 'SPECULATIVE': '#9aa4b8' };
+/* One read of the desk, throttled. Silence (no Supabase, not signed in) leaves
+   the panel saying so rather than showing an empty market. */
+async function corpMktFetch(force) {
+  if (CorpMkt.inflight) return CorpMkt.rows;
+  if (!force && CorpMkt.loaded && Date.now() - CorpMkt.at < 60000) return CorpMkt.rows;
+  if (!(typeof Cloud !== 'undefined' && Cloud.client)) { CorpMkt.err = 'Sign in to see the corporation desk.'; CorpMkt.loaded = true; return []; }
+  CorpMkt.inflight = true;
+  try {
+    const { data, error } = await Cloud.client.rpc('corp_market_list');
+    if (error) throw error;
+    CorpMkt.rows = Array.isArray(data) ? data : [];
+    const mine = {};
+    try {
+      const me = Cloud.user && Cloud.user.id;
+      if (me) {
+        const { data: hs } = await Cloud.client.from('corp_shares').select('corp_id,qty,avg_cost').eq('holder_id', me);
+        for (const h of (hs || [])) mine[h.corp_id] = { qty: h.qty | 0, avg: +h.avg_cost || 0 };
+      }
+    } catch (e) {}
+    CorpMkt.mine = mine; CorpMkt.err = '';
+  } catch (e) {
+    CorpMkt.err = (e && e.message) ? e.message : 'The corporation desk is unavailable.';
+  }
+  CorpMkt.inflight = false; CorpMkt.loaded = true; CorpMkt.at = Date.now();
+  try { if (App.screen === 'crashExchange' && (App._cxNode === 'ops' || App._cxTab === 'news')) render(); } catch (e) {}
+  return CorpMkt.rows;
+}
+/* A stake changes hands. The SHARE leg is the database's (it refuses a sale of
+   shares you do not hold); the CINDER leg is the client wallet's, exactly as it
+   is for every other Crash Exchange trade. */
+async function _corpShareTrade(corpId, qty) {
+  const row = CorpMkt.rows.find((r) => r.corp_id === corpId);
+  if (!row) return { ok: false, msg: 'That corporation is no longer listed.' };
+  qty = Math.round(+qty || 0);
+  if (!qty) return { ok: false, msg: 'Enter how many shares.' };
+  const px = _corpSharePx(row);
+  const gross = px * Math.abs(qty);
+  const cost = Math.ceil(gross * (1 + CX_TRADE_FEE));
+  const net  = Math.floor(gross * (1 - CX_SELL_FEE));
+  const held = (CorpMkt.mine[corpId] || {}).qty | 0;
+  if (qty > 0 && (Profile.gems | 0) < cost) return { ok: false, msg: 'Insufficient CR. ' + qty + ' × ' + _cxFmt(px) + ' costs ' + _cxFmtCR(cost) + '.' };
+  if (qty < 0 && held < -qty) return { ok: false, msg: 'You hold ' + held + ' share' + (held === 1 ? '' : 's') + ' of ' + (row.name || 'that corporation') + '.' };
+  if (!(typeof Cloud !== 'undefined' && Cloud.client)) return { ok: false, msg: 'Sign in to trade corporation shares.' };
+  try {
+    const { data, error } = await Cloud.client.rpc('corp_share_trade', { p_corp_id: corpId, p_qty: qty, p_px: px });
+    if (error) throw error;
+    const outRow = Array.isArray(data) ? data[0] : data;
+    CorpMkt.mine[corpId] = { qty: (outRow && outRow.qty) | 0, avg: +(outRow && outRow.avg_cost) || px };
+    if (outRow && typeof outRow.float_held === 'number') row.float_held = outRow.float_held;
+    if (qty > 0) {
+      Profile.gems = (Profile.gems | 0) - cost;
+      try { _serverMirrorCharge(cost, 'CX: ' + qty + ' × ' + (row.tag || row.name) + ' shares'); } catch (e) {}
+    } else {
+      addGems(net, 'CX: sold ' + (-qty) + ' × ' + (row.tag || row.name) + ' shares');
+    }
+    try { saveProfile && saveProfile(); } catch (e) {}
+    try { if (typeof _persistProgressNow === 'function') _persistProgressNow(); } catch (e) {}
+    _cxPushEvent({ cat: qty > 0 ? 'BUY' : 'SELL', cls: qty > 0 ? 'bull' : 'crit',
+      msg: 'Operator ' + (qty > 0 ? 'bought' : 'sold') + ' ' + Math.abs(qty) + ' × ' + (row.tag || row.name) + ' @ ' + _cxFmtCR(px),
+      impact: (qty > 0 ? 'TXN ' + _cxFmtCR(cost) : 'NET ' + _cxFmtCR(net)) + ' · float ' + (row.float_held | 0) });
+    return { ok: true, msg: (qty > 0 ? 'Bought ' : 'Sold ') + Math.abs(qty) + ' × ' + (row.tag || row.name) + (qty > 0 ? ' for ' + _cxFmtCR(cost) : ' for ' + _cxFmtCR(net) + ' net') + '.' };
+  } catch (e) {
+    return { ok: false, msg: (e && e.message) ? e.message : 'The trade did not go through.' };
+  }
+}
+/* The desk itself. */
+function _cxRenderOpsDesk() {
+  try { corpMktFetch(); } catch (e) {}
+  if (!CorpMkt.loaded) return '<div class="cx-panel-h"><h2>PLAYER<span class="acc">.</span>CORPORATIONS</h2><span class="cx-tag live">LOADING</span></div><div style="padding:1rem;color:#a89878">Reading the register…</div>';
+  if (CorpMkt.err) return '<div class="cx-panel-h"><h2>PLAYER<span class="acc">.</span>CORPORATIONS</h2></div><div style="padding:1rem;color:#ff9a6b">' + escapeHtml(CorpMkt.err) + '</div>';
+  const rows = CorpMkt.rows.slice().sort((a, b) => _corpSharePx(b) - _corpSharePx(a));
+  const cards = rows.map((r) => {
+    const px = _corpSharePx(r), w = _corpWeekly(r), mine = CorpMkt.mine[r.corp_id] || { qty: 0, avg: 0 };
+    const col = CORP_RATING_COLOR[w.rating] || '#ffd166';
+    const pl = mine.qty > 0 ? ((px - mine.avg) * mine.qty) : 0;
+    return '<div class="cx-corp-card" data-corp-card="' + escapeHtml(r.corp_id) + '" style="border:1px solid rgba(184,152,96,0.35);border-radius:8px;padding:0.7rem 0.8rem;margin-bottom:0.6rem;background:rgba(20,18,14,0.55)">' +
+      '<div style="display:flex;align-items:baseline;gap:0.6rem;flex-wrap:wrap">' +
+        '<b style="color:#ffd9a0;font-size:0.95rem">' + escapeHtml(r.tag || '----') + '</b>' +
+        '<span style="color:#e8dcc0">' + escapeHtml(r.name || 'Unnamed') + '</span>' +
+        '<span style="margin-left:auto;font-size:1.05rem;color:#fff"><b>' + _cxFmt(px) + '</b> <span style="font-size:0.7rem;color:#a89878">CR / SHARE</span></span>' +
+      '</div>' +
+      '<div style="display:flex;gap:1.1rem;flex-wrap:wrap;margin-top:0.35rem;font-size:0.72rem;color:#c9bfa6">' +
+        '<span>🔥 TREASURY <b style="color:#fff">' + Math.round(w.now).toLocaleString() + '</b></span>' +
+        '<span>WEEK <b style="color:' + (w.delta >= 0 ? '#6ee7a0' : '#ff7070') + '">' + (w.delta >= 0 ? '+' : '') + Math.round(w.delta).toLocaleString() + '</b> (' + (w.pct >= 0 ? '+' : '') + w.pct.toFixed(1) + '%)</span>' +
+        '<span>IN <b style="color:#6ee7a0">' + Math.round(w.inflow).toLocaleString() + '</b> · OUT <b style="color:#ff9a6b">' + Math.round(w.outflow).toLocaleString() + '</b></span>' +
+        '<span>📦 <b>' + Math.round(+r.vault_units || 0).toLocaleString() + '</b> units / ' + (r.vault_kinds | 0) + ' kinds</span>' +
+        '<span>👥 <b>' + (r.members | 0) + '</b></span>' +
+        '<span>⚙ <b>' + (r.ops_active | 0) + '</b> ops</span>' +
+        '<span>FLOAT <b>' + (r.float_held | 0).toLocaleString() + '</b> / ' + CORP_SHARES_OUT.toLocaleString() + '</span>' +
+      '</div>' +
+      '<div style="margin-top:0.45rem;display:flex;align-items:center;gap:0.6rem;flex-wrap:wrap">' +
+        '<span style="border:1px solid ' + col + ';color:' + col + ';border-radius:999px;padding:0.1rem 0.6rem;font-size:0.68rem;letter-spacing:0.08em"><b>' + w.rating + '</b></span>' +
+        '<span style="font-size:0.7rem;color:#a89878">' + escapeHtml(w.why) + '</span>' +
+      '</div>' +
+      (mine.qty > 0 ? '<div style="margin-top:0.35rem;font-size:0.72rem;color:#c9bfa6">YOU HOLD <b style="color:#fff">' + mine.qty.toLocaleString() + '</b> @ ' + _cxFmt(mine.avg) + ' · ' + (pl >= 0 ? '<span style="color:#6ee7a0">+' : '<span style="color:#ff7070">') + _cxFmt(Math.abs(pl)) + ' CR</span></div>' : '') +
+      '<div style="margin-top:0.5rem;display:flex;gap:0.4rem;align-items:center;flex-wrap:wrap">' +
+        '<input class="cx-corp-qty" data-corp-qty="' + escapeHtml(r.corp_id) + '" type="text" value="10" style="width:64px;background:#14120e;border:1px solid rgba(184,152,96,0.4);color:#e8dcc0;border-radius:4px;padding:0.25rem 0.4rem;font-size:0.75rem">' +
+        '<button class="cx-submit buy" data-corp-buy="' + escapeHtml(r.corp_id) + '" style="padding:0.3rem 0.8rem;font-size:0.72rem">BUY STAKE</button>' +
+        '<button class="cx-submit sell" data-corp-sell="' + escapeHtml(r.corp_id) + '" style="padding:0.3rem 0.8rem;font-size:0.72rem"' + (mine.qty > 0 ? '' : ' disabled') + '>SELL</button>' +
+        '<span style="font-size:0.66rem;color:#8b8168">book ' + Math.round(_corpBook(r)).toLocaleString() + ' CR · ' + (CX_TRADE_FEE * 100).toFixed(1) + '% fee</span>' +
+      '</div>' +
+    '</div>';
+  }).join('');
+  return '<div class="cx-panel-h"><h2>PLAYER<span class="acc">.</span>CORPORATIONS</h2><span class="cx-tag live">' + rows.length + ' LISTED</span></div>' +
+    '<div style="font-size:0.66rem;color:#a89878;letter-spacing:0.08em;margin-bottom:0.6rem">A share is priced from what the corporation holds: cinder, resources, members and running operations. The weekly report is its own treasury ledger, in aggregate — nobody sees another corporation\'s books.</div>' +
+    (cards || '<div style="padding:1rem;color:#a89878">No corporations are listed yet.</div>');
+}
+
+/* ═══ 📰 THE CRASH HERALD ════════════════════════════════════════════════════
+   A newsroom with no imagination: every story is a fact the game recorded —
+   the tape from part A, the corporation desk above, the world-event log, the
+   player's own book. It writes what happened and says where it read it. */
+function _cxHeraldStories() {
+  const out = [];
+  const movers = (typeof _cxMovers === 'function') ? _cxMovers(86400000, 6) : [];
+  for (const m of movers) {
+    const meta = (typeof _SALVAGE_BY_ID !== 'undefined' && _SALVAGE_BY_ID[m.id]) || null;
+    const name = (meta && meta.name) || String(m.id).toUpperCase();
+    const fl = _cxFlow(m.id, 86400000);
+    const srcs = Object.keys(fl.bySrc).sort((a, b) => fl.bySrc[b] - fl.bySrc[a]).slice(0, 2);
+    const up = m.pct >= 0;
+    out.push({
+      kind: up ? 'MARKETS' : 'MARKETS', cls: up ? 'bull' : 'crit',
+      head: name + (up ? ' climbs ' : ' slides ') + Math.abs(m.pct).toFixed(1) + '%',
+      body: (up ? 'Buyers took ' : 'Sellers moved ') + Math.max(fl.buys, fl.sells).toLocaleString() + ' units across ' + fl.prints + ' prints, carrying the price from ' + _cxFmt(m.from) + ' to ' + _cxFmt(m.to) + ' CR.'
+            + (srcs.length ? ' The flow came mostly from ' + srcs.join(' and ') + '.' : ''),
+      meta: 'THE TAPE · 24H',
+    });
+  }
+  const rows = (CorpMkt.rows || []).map((r) => ({ r, w: _corpWeekly(r), px: _corpSharePx(r) }));
+  const movers2 = rows.filter((x) => Math.abs(x.w.delta) > 0).sort((a, b) => Math.abs(b.w.pct) - Math.abs(a.w.pct)).slice(0, 4);
+  for (const x of movers2) {
+    const up = x.w.delta >= 0;
+    out.push({
+      kind: 'OPERATIONS', cls: up ? 'bull' : 'crit',
+      head: (x.r.name || x.r.tag) + (up ? ' banks ' : ' burns ') + Math.abs(Math.round(x.w.delta)).toLocaleString() + ' CR',
+      body: 'The week took in ' + Math.round(x.w.inflow).toLocaleString() + ' and paid out ' + Math.round(x.w.outflow).toLocaleString() + ', leaving a treasury of ' + Math.round(x.w.now).toLocaleString() + ' CR across ' + (x.r.members | 0) + ' member' + ((x.r.members | 0) === 1 ? '' : 's') + ' and ' + (x.r.ops_active | 0) + ' running operation' + ((x.r.ops_active | 0) === 1 ? '' : 's') + '. The desk rates it ' + x.w.rating + ' at ' + _cxFmt(x.px) + ' CR a share.',
+      meta: 'OPERATIONS DESK · 7D',
+    });
+  }
+  try {
+    const ev = (getCrashExchange().eventLog || []).slice(0, 4);
+    for (const e of ev) out.push({ kind: e.cat || 'WORLD', cls: e.cls || 'intel', head: String(e.msg || '').slice(0, 120), body: String(e.impact || ''), meta: 'WORLD EVENTS' });
+  } catch (e) {}
+  const fl = _cxFlow(null, 86400000);
+  const bySrc = Object.keys(fl.bySrc).sort((a, b) => fl.bySrc[b] - fl.bySrc[a]).slice(0, 5);
+  out.push({
+    kind: 'ECONOMY', cls: 'intel',
+    head: 'The day in numbers: ' + fl.prints.toLocaleString() + ' prints, ' + (fl.buys + fl.sells).toLocaleString() + ' units',
+    body: 'Buying took ' + fl.buys.toLocaleString() + ' units and selling ' + fl.sells.toLocaleString() + ', a net of ' + (fl.net >= 0 ? '+' : '') + fl.net.toLocaleString() + '.'
+          + (bySrc.length ? ' Busiest desks: ' + bySrc.map((k) => k + ' (' + fl.bySrc[k].toLocaleString() + ')').join(', ') + '.' : '')
+          + ((CorpMkt.rows || []).length ? ' ' + CorpMkt.rows.length + ' corporations are listed, holding ' + Math.round(CorpMkt.rows.reduce((a, r) => a + (+r.treasury || 0), 0)).toLocaleString() + ' CR between them.' : ''),
+    meta: 'THE TAPE · ALL ASSETS',
+  });
+  return out;
+}
+function _cxRenderHerald() {
+  try { corpMktFetch(); } catch (e) {}
+  const stories = _cxHeraldStories();
+  const lead = stories[0];
+  const rest = stories.slice(1);
+  const d = new Date();
+  const dateline = d.toDateString().toUpperCase();
+  const col = (c) => c === 'bull' ? '#6ee7a0' : c === 'crit' ? '#ff7a6b' : '#ffd166';
+  return '<div class="cx-grid" style="grid-template-columns:1fr">' +
+    '<section class="cx-panel" style="padding:1rem 1.2rem 1.4rem">' +
+      '<div style="text-align:center;border-bottom:3px double rgba(184,152,96,0.6);padding-bottom:0.5rem;margin-bottom:0.2rem">' +
+        '<div style="font-size:2.1rem;letter-spacing:0.22em;color:#ffd9a0;font-weight:900">THE CRASH HERALD</div>' +
+        '<div style="font-size:0.62rem;letter-spacing:0.3em;color:#a89878;margin-top:0.2rem">' + escapeHtml(dateline) + ' · PRICES, TREASURIES AND THE WORLD THAT MOVES THEM · FREE WITH A DESK</div>' +
+      '</div>' +
+      (lead ? '<div style="border-bottom:1px solid rgba(184,152,96,0.3);padding:0.9rem 0">' +
+        '<div style="font-size:0.62rem;letter-spacing:0.22em;color:' + col(lead.cls) + '">' + escapeHtml(lead.kind) + '</div>' +
+        '<div style="font-size:1.55rem;line-height:1.15;color:#fff;font-weight:800;margin:0.25rem 0 0.35rem">' + escapeHtml(lead.head) + '</div>' +
+        '<div style="font-size:0.86rem;color:#d8ccb0;max-width:62ch">' + escapeHtml(lead.body) + '</div>' +
+        '<div style="font-size:0.6rem;letter-spacing:0.18em;color:#8b8168;margin-top:0.4rem">' + escapeHtml(lead.meta) + '</div>' +
+      '</div>' : '') +
+      '<div style="column-count:2;column-gap:2rem;margin-top:0.8rem">' +
+        rest.map((st) =>
+          '<div style="break-inside:avoid;margin-bottom:1rem;border-left:2px solid ' + col(st.cls) + ';padding-left:0.7rem">' +
+            '<div style="font-size:0.58rem;letter-spacing:0.2em;color:' + col(st.cls) + '">' + escapeHtml(st.kind) + '</div>' +
+            '<div style="font-size:1rem;color:#ffe8c0;font-weight:700;margin:0.15rem 0 0.25rem">' + escapeHtml(st.head) + '</div>' +
+            '<div style="font-size:0.76rem;color:#c9bfa6">' + escapeHtml(st.body) + '</div>' +
+            '<div style="font-size:0.56rem;letter-spacing:0.16em;color:#8b8168;margin-top:0.3rem">' + escapeHtml(st.meta) + '</div>' +
+          '</div>').join('') +
+      '</div>' +
+      '<div style="margin-top:0.6rem;font-size:0.6rem;color:#8b8168;letter-spacing:0.08em">Every line above is read from the game\'s own record — the tape of prints, the corporation register and the world-event log. Nothing here is invented.</div>' +
+    '</section>' +
+  '</div>';
+}
 function renderCrashExchange() {
   try { _cxFetchStatsAll(); } catch (e) {}   // 📈 the shared tape's per-asset highs, for every row
   tickMarketDecay();
@@ -237067,6 +237374,7 @@ function renderCrashExchange() {
       ['routes',    'PLAYER TRADE ROUTES',  String(markets.routes.items.length)],
     ]},
     { label: '// ⚙ OPERATIONS', items: [
+      ['ops',       'PLAYER CORPORATIONS',  String((CorpMkt.rows || []).length || '—')],
       ['mining',    'MINING OPS',           String(markets.mining.items.length)],
       ['fishing',   'FISHING OPS',          String(markets.fishing.items.length)],
       ['oil',       'OIL CORPORATIONS',     String(markets.oil.items.length)],
@@ -237162,27 +237470,28 @@ function renderCrashExchange() {
       '<button class="cx-tb-btn ' + (range === r ? 'is-active' : '') + '" data-cx-range="' + r + '">' + r + '</button>'
     ).join('');
 
-    // 🏛 Foundation Reserve depth — shows pool size + a fill bar so the
-    // player can gauge slippage before placing a big order. Empty / thin
-    // pools light up red so it's obvious why a buy is going to hurt.
-    let reserveHtml = '';
+    /* 📊 THE FLOW — what this asset actually did over the last day, read off
+       the tape: units bought, units sold, and which parts of the game did it.
+       This replaced the Foundation Reserve depth bar, which advertised a pool,
+       a 4 % spread and "slippage scales with order size" — a model the desk no
+       longer runs (owner, v121v121: "Remove this… we are just buying shares"). */
+    let flowHtml = '';
     try {
-      if (typeof _cxGetReserve === 'function' && typeof _SALVAGE_BY_ID !== 'undefined' && _SALVAGE_BY_ID[focus.id]) {
-        const reserve = _cxGetReserve(focus.id);
-        if (reserve) {
-          const fillPct = Math.max(0, Math.min(100, Math.round((reserve.units / Math.max(1, reserve.initial)) * 100)));
-          const fillColor = fillPct >= 60 ? '#88e8a8' : (fillPct >= 25 ? '#ffd166' : '#ff7755');
-          const fillBg    = fillPct >= 60 ? 'rgba(136,232,168,0.15)' : (fillPct >= 25 ? 'rgba(255,209,102,0.15)' : 'rgba(255,119,85,0.18)');
-          reserveHtml =
-            '<div class="cx-reserve-pill" title="Foundation Reserve liquidity pool for ' + escapeHtml(focus.name || focus.id) + '. Thinner pools mean bigger slippage on large orders. 4% spread applies both ways — wash trading bleeds Cinder into this pool. Refills 1%/hour up to initial size.">' +
-              '<div class="cx-reserve-h">' +
-                '<span class="cx-reserve-l">🏛 RESERVE</span>' +
-                '<span class="cx-reserve-v" style="color:' + fillColor + '"><b>' + reserve.units.toLocaleString() + '</b> / ' + reserve.initial.toLocaleString() + ' units</span>' +
-              '</div>' +
-              '<div class="cx-reserve-bar" style="background:' + fillBg + '"><div class="cx-reserve-fill" style="width:' + fillPct + '%;background:' + fillColor + '"></div></div>' +
-              '<div class="cx-reserve-sub">' + fillPct + '% depth · spread 4% · slippage scales with order size</div>' +
-            '</div>';
-        }
+      const fl = _cxFlow(focus.id, 86400000);
+      if (fl.prints > 0) {
+        const tot = Math.max(1, fl.buys + fl.sells);
+        const buyPct = Math.round((fl.buys / tot) * 100);
+        const srcs = Object.keys(fl.bySrc).sort((a, b) => fl.bySrc[b] - fl.bySrc[a]).slice(0, 3)
+          .map((k) => escapeHtml(k) + ' ' + fl.bySrc[k].toLocaleString()).join(' · ');
+        flowHtml =
+          '<div class="cx-reserve-pill" title="Every buy, sell, craft, yield and delivery of ' + escapeHtml(focus.name || focus.id) + ' the world recorded in the last 24 hours.">' +
+            '<div class="cx-reserve-h">' +
+              '<span class="cx-reserve-l">📊 24H FLOW</span>' +
+              '<span class="cx-reserve-v" style="color:' + (fl.net >= 0 ? '#88e8a8' : '#ff7755') + '"><b>' + (fl.net >= 0 ? '+' : '') + fl.net.toLocaleString() + '</b> net units</span>' +
+            '</div>' +
+            '<div class="cx-reserve-bar" style="background:rgba(255,119,85,0.18)"><div class="cx-reserve-fill" style="width:' + buyPct + '%;background:#88e8a8"></div></div>' +
+            '<div class="cx-reserve-sub">' + fl.buys.toLocaleString() + ' bought · ' + fl.sells.toLocaleString() + ' sold · ' + fl.prints + ' prints' + (srcs ? ' · ' + srcs : '') + '</div>' +
+          '</div>';
       }
     } catch (e) {}
 
@@ -237197,15 +237506,20 @@ function renderCrashExchange() {
         '<div class="cx-tb-ind">VOL <b>' + volM + '</b></div>' +
         (_shared ? '<div class="cx-tb-ind" title="' + (CXHist.series[focus.id + '|' + range].rows.length) + ' shared points in this range">● LIVE</div>' : '') +
       '</div>' +
-      reserveHtml +
+      flowHtml +
       '<div class="cx-chart-wrap">' + _cxChartHtml(focus.id, range, series) + '</div>';
 
     // -------- 6. TRADE BOXES --------
     const tradable = (mkt.tradable && (typeof _SALVAGE_BY_ID !== 'undefined' && _SALVAGE_BY_ID[focus.id]));
     const initQty = 10;
-    const buyTotal  = _cxFmt(focus.price * initQty * 1.004) + ' CR';
-    const sellPx    = focus.price * 1.005;
-    const sellTotal = _cxFmt(sellPx * initQty * 0.994) + ' CR';
+    /* Both boxes are quoted by the SAME function that charges the order, so
+       what they print is what the button takes (v121v121). */
+    const _qB = tradable ? _cxQuoteOrder(focus.id, initQty, +1) : { px: focus.price, total: Math.ceil(focus.price * initQty * (1 + CX_TRADE_FEE)) };
+    const _qS = tradable ? _cxQuoteOrder(focus.id, initQty, -1) : { px: focus.price, total: Math.floor(focus.price * initQty * (1 - CX_SELL_FEE)) };
+    const buyPxQ   = _qB.px;
+    const buyTotal = _cxFmt(_qB.total) + ' CR';
+    const sellPx    = _qS.px;
+    const sellTotal = _cxFmt(_qS.total) + ' CR';
     const book = _cxOrderBookSynth(focus.price, focus.vol, (focus.id || '').charCodeAt(0));
     const sellBookHtml = book.sells.map(r => {
       const pct = book.sumS ? (r.sum / book.sumS) * 100 : 0;
@@ -237226,7 +237540,7 @@ function renderCrashExchange() {
       '<div class="cx-trade-grid">' +
         '<div class="cx-trade-box buy">' +
           '<h3>// BUY ORDER</h3>' +
-          '<div class="cx-tf"><label>PRICE / UNIT (CR)</label><input id="cx-buy-px" type="text" value="' + focus.price.toFixed(2) + '"></div>' +
+          '<div class="cx-tf"><label>PRICE / UNIT (CR)</label><input id="cx-buy-px" type="text" value="' + buyPxQ.toFixed(2) + '" readonly></div>' +
           '<div class="cx-tf"><label>QUANTITY</label><input id="cx-buy-qty" type="text" value="' + initQty + '"></div>' +
           '<div class="cx-tf"><label>TOTAL EST. (incl. 0.4% FEE)</label><input id="cx-buy-tot" type="text" readonly value="' + buyTotal + '"></div>' +
           '<button class="cx-submit buy" id="cx-buy-go"' + (tradable ? '' : ' disabled') + '>EXECUTE BUY</button>' +
@@ -237241,7 +237555,7 @@ function renderCrashExchange() {
         '</div>' +
         '<div class="cx-trade-box sell">' +
           '<h3>// SELL ORDER</h3>' +
-          '<div class="cx-tf"><label>PRICE / UNIT (CR)</label><input id="cx-sell-px" type="text" value="' + sellPx.toFixed(2) + '"></div>' +
+          '<div class="cx-tf"><label>PRICE / UNIT (CR)</label><input id="cx-sell-px" type="text" value="' + sellPx.toFixed(2) + '" readonly></div>' +
           '<div class="cx-tf"><label>QUANTITY</label><input id="cx-sell-qty" type="text" value="' + initQty + '"></div>' +
           '<div class="cx-tf"><label>NET (less 0.4% TRADE + 0.2% LISTING)</label><input id="cx-sell-tot" type="text" readonly value="' + sellTotal + '"></div>' +
           '<button class="cx-submit sell" id="cx-sell-go"' + (tradable ? '' : ' disabled') + '>EXECUTE SELL</button>' +
@@ -237362,10 +237676,12 @@ function renderCrashExchange() {
           '<button class="cx-tab ' + (tab === 'portfolio' ? 'is-active' : '') + '" data-cx-tab="portfolio">💼 PORTFOLIO' +
             (playerTrades.length ? '<span class="cx-tab-badge">' + playerTrades.length + '</span>' : '') +
           '</button>' +
+          '<button class="cx-tab ' + (tab === 'news' ? 'is-active' : '') + '" data-cx-tab="news">📰 THE CRASH HERALD</button>' +
         '</div>' +
       '</div>' +
 
-      (tab === 'portfolio'
+      (tab === 'news' ? _cxRenderHerald() :
+       tab === 'portfolio'
         ? _cxRenderPortfolio(holdings, totalHoldingsValue, cinderBal, azaBal, azaInfo, playerTrades)
         :
         '<div class="cx-grid">' +
@@ -237377,10 +237693,12 @@ function renderCrashExchange() {
           '</aside>' +
 
           '<section class="cx-panel">' +
-            focusHtml +
-            chartHtml +
-            tradeHtml +
+            (node === 'ops' ? _cxRenderOpsDesk() : '') +
+            (node === 'ops' ? '' : focusHtml) +
+            (node === 'ops' ? '' : chartHtml) +
+            (node === 'ops' ? '' : tradeHtml) +
 
+            (node === 'ops' ? '' : (
             '<div class="cx-panel-h" style="margin-top:0.4rem"><h2>' + escapeHtml(mkt.title.split('.')[0]) + '<span class="acc">.</span>' + escapeHtml(mkt.title.split('.')[1] || 'MARKET') + '</h2><span class="cx-tag hot">' + (search ? 'QUERY // "' + escapeHtml(search.toUpperCase()) + '"' : (filter !== 'all' && node === 'resources' ? 'FILTER // ' + filter.toUpperCase() : 'TOP MOVERS // 24H')) + '</span></div>' +
 
             '<div class="cx-search-box">' +
@@ -237393,8 +237711,8 @@ function renderCrashExchange() {
             '<div class="cx-mkt-table-wrap">' +
               '<div class="cx-mkt-row h"><span></span><span>ASSET</span><span style="text-align:right">PRICE</span><span style="text-align:right">24H Δ</span><span>SPARK</span></div>' +
               tblRowsHtml +
-            '</div>' +
-
+            '</div>'
+            )) +
             (mkt.hint ? '<div style="margin-top:0.6rem;font-size:0.62rem;color:#a89878;letter-spacing:0.1em">' + escapeHtml(mkt.hint) + '</div>' : '') +
           '</section>' +
 
@@ -237456,6 +237774,23 @@ function renderCrashExchange() {
     };
   });
 
+  /* 🏢 The corporation desk's own buttons. A stake is bought and sold through
+     corp_share_trade (sql/133): the database owns the share leg, so a sale of
+     shares the holder does not have is refused there rather than here. */
+  document.querySelectorAll('[data-corp-buy], [data-corp-sell]').forEach((btn) => {
+    btn.onclick = async () => {
+      const id = btn.dataset.corpBuy || btn.dataset.corpSell;
+      const sell = !!btn.dataset.corpSell;
+      const box = document.querySelector('[data-corp-qty="' + id + '"]');
+      const q = Math.max(1, Math.round(parseFloat(box && box.value) || 0));
+      btn.disabled = true;
+      const r = await _corpShareTrade(id, sell ? -q : q);
+      try { toast(r.msg, r.ok ? 2600 : 4200); } catch (e) {}
+      btn.disabled = false;
+      render();
+    };
+  });
+
   // Filter pills
   document.querySelectorAll('[data-cx-filter]').forEach(b => {
     b.onclick = () => { App._cxFilter = b.dataset.cxFilter; render(); };
@@ -237491,11 +237826,17 @@ function renderCrashExchange() {
   const buyPx  = document.getElementById('cx-buy-px');
   const buyQty = document.getElementById('cx-buy-qty');
   const buyTot = document.getElementById('cx-buy-tot');
+  /* A bigger order walks further through the market, so the PRICE box is
+     requoted with the size instead of being multiplied by a stale number.
+     Both boxes now agree with the charge to the cinder (v121v121). */
   const recalcBuy = () => {
     if (!buyPx || !buyQty || !buyTot) return;
-    const px = parseFloat(buyPx.value) || 0;
-    const q  = parseFloat(buyQty.value) || 0;
-    buyTot.value = _cxFmt(px * q * 1.004) + ' CR';
+    const q = parseFloat(buyQty.value) || 0;
+    try {
+      const qt = _cxQuoteOrder(focus.id, q, +1);
+      buyPx.value = qt.px.toFixed(2);
+      buyTot.value = _cxFmt(qt.total) + ' CR';
+    } catch (e) { buyTot.value = _cxFmt((parseFloat(buyPx.value) || 0) * q * (1 + CX_TRADE_FEE)) + ' CR'; }
   };
   if (buyPx)  buyPx.oninput  = recalcBuy;
   if (buyQty) buyQty.oninput = recalcBuy;
@@ -237505,9 +237846,12 @@ function renderCrashExchange() {
   const sellTot = document.getElementById('cx-sell-tot');
   const recalcSell = () => {
     if (!sellPx2 || !sellQty || !sellTot) return;
-    const px = parseFloat(sellPx2.value) || 0;
-    const q  = parseFloat(sellQty.value) || 0;
-    sellTot.value = _cxFmt(px * q * 0.994) + ' CR';
+    const q = parseFloat(sellQty.value) || 0;
+    try {
+      const qt = _cxQuoteOrder(focus.id, q, -1);
+      sellPx2.value = qt.px.toFixed(2);
+      sellTot.value = _cxFmt(qt.total) + ' CR';
+    } catch (e) { sellTot.value = _cxFmt((parseFloat(sellPx2.value) || 0) * q * (1 - CX_SELL_FEE)) + ' CR'; }
   };
   if (sellPx2) sellPx2.oninput = recalcSell;
   if (sellQty) sellQty.oninput = recalcSell;
@@ -265158,8 +265502,8 @@ try {
        that works everywhere except the one early path nobody tested. It is
        2KB with no dependencies. -->
 <script src="src/econ/peg.js?v=v121q51"></script>
-<script src="src/battle/effects.js?v=v121v120" defer></script>
-<script src="src/phone/handset.js?v=v121v120" defer></script>
+<script src="src/battle/effects.js?v=v121v121" defer></script>
+<script src="src/phone/handset.js?v=v121v121" defer></script>
 <script src="src/battle/combat.js?v=120m4" defer></script>
 <script src="src/battle/targeting.js?v=121e3hex" defer></script>
 <link rel="stylesheet" href="src/sprites/frames.css?v=120k3">

@@ -9,7 +9,7 @@
    "name": "haulOpenBoard",
    "kind": "function",
    "file": "public/index.html",
-   "line": 246257,
+   "line": 246601,
    "params": [],
    "async": true,
    "reads": [
@@ -81,7 +81,7 @@
    "name": "_haulWhy",
    "kind": "pure",
    "file": "public/index.html",
-   "line": 246190,
+   "line": 246534,
    "params": [
     "e",
     "fallback"
@@ -98,7 +98,7 @@
    "name": "_haulModelOf",
    "kind": "function",
    "file": "public/index.html",
-   "line": 246208,
+   "line": 246552,
    "params": [
     "v"
    ],
@@ -114,7 +114,7 @@
    "name": "_haulDriveIt",
    "kind": "function",
    "file": "public/index.html",
-   "line": 246248,
+   "line": 246592,
    "params": [],
    "async": false,
    "reads": [],
@@ -128,7 +128,7 @@
    "name": "_haulHasDepot",
    "kind": "pure",
    "file": "public/index.html",
-   "line": 246323,
+   "line": 246667,
    "params": [
     "id"
    ],
