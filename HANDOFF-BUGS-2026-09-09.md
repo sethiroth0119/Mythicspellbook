@@ -856,3 +856,46 @@ the pile that ability reads. Precedence where the author was explicit is
 unchanged: a name typed on the effect still wins over everything, and a card
 with its own token block still uses it. The ability cost is a fallback, never an
 override, and a card declaring no counter anywhere still falls to the default.
+
+## v121v130 — the resource duplication exploit
+
+Found by investigating an account the owner flagged for farming.
+
+**THE BUG**, in one line of the profile hydration:
+
+    for (const k in _cl) { const cv = _cl[k]|0, lv = _loc[k]|0; if (cv > lv) _loc[k] = cv; }
+
+`Profile.salvage` was merged from the cloud row by taking the LARGER of the two
+numbers per resource id, on every hydration. A spend can only ever make the
+local number SMALLER — `spendResources()` decrements the client mirror alone,
+and the server ledger (`user_resources`) is only ever topped UP by
+`wh_resync_resources`. So any hydration whose snapshot predated a spend put the
+resources straight back, and hydration happens on reload, on resume, on a second
+device and on the periodic fetch. Resources could go up and could never come
+down. `_whSeedLedger`'s own comment asserts the opposite — "a send deducts both,
+so the client can only ever run AHEAD by what the city produced" — and it is
+simply not true of any client-side spend.
+
+**THE EVIDENCE.** The flagged profile blob held 57,046 fuel · 56,822 food ·
+14,956 weaponParts · 7,350 metal against a stash ceiling of 2,000 + 250 per
+bought vault row that `addRes()` clamps every gain at, while `user_resources`
+for the same account held 227 fuel · 1,840 food · 0 weaponParts · 257 metal.
+1,515 "Delivery paid" credits landed on 11–12 Sep — 1,092 inside a single hour,
+90–500 ms apart — each supposedly SPENDING resources, and not one row of
+`user_resources` moved after 10 Sep.
+
+**THE FIX.** Salvage now obeys the same freshness rule every other field on that
+row already obeys: the newer side is taken WHOLE, including ids where it is
+smaller — precisely the spend the ratchet was swallowing. The max-merge survives
+only for a cloud row with nothing local behind it, where taking the larger
+cannot lose anything.
+
+**THE CASH-OUT.** `_aiDeliver` had no lock and no interval: a 3-run contract was
+drainable at 90 ms per press, and each run also raised rep, which raises the
+pay. It gets an in-flight lock and a 2.5 s minimum interval, both before the
+payout.
+
+**THE BLADE** is 26px (was 40) with the hotspot re-measured on the smaller
+render, and `html, body` joined the cursor selector — `*` matches ELEMENTS, so
+over a full-bleed background with no child under the pointer it fell through to
+the system arrow, which is why it was missing on the main menu.

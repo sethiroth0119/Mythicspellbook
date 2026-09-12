@@ -16955,7 +16955,12 @@
      any stylesheet rule, so the blade was being replaced by the system hand the
      moment it crossed anything clickable. The only way a custom pointer holds
      over markup like this is to outrank it. */
-  *, *::before, *::after { cursor: url('assets/cursors/abra-blade.png') 3 3, default !important; }
+  /* 🗡 v121v130 — html AND body, not just `*`. The universal selector matches
+     ELEMENTS; the pointer over a full-bleed background layer with no child
+     under it resolved against the root instead and fell back to the system
+     arrow — which is why the blade was missing on the main menu, the one
+     screen that is mostly background. */
+  html, body, *, *::before, *::after { cursor: url('assets/cursors/abra-blade.png') 2 2, default !important; }
   /* ✨ …and over anything that can be clicked, the blade LIGHTS UP: the same
      sword over its own blurred silhouette. A 40px cursor cannot change shape
      legibly, so it says "you can click this" with light instead. */
@@ -16963,7 +16968,7 @@
   .tile, .hub-tile, .card, .cardface, .forge-tab, .cx-nav-btn, .cx-tab, .logrow, summary, select,
   label.clickable, .clickable, [style*="cursor:pointer"], [style*="cursor: pointer"],
   a *, button *, .btn *, .tile *, .hub-tile *, [role="button"] *, [onclick] * {
-    cursor: url('assets/cursors/abra-blade-glow.png') 5 4, pointer !important;
+    cursor: url('assets/cursors/abra-blade-glow.png') 2 2, pointer !important;
   }
   /* a sword over a text box helps nobody */
   input[type="text"], input[type="number"], input[type="search"], input[type="password"],
@@ -39448,7 +39453,7 @@ body:has(#pack-opener-frame) #chat-overlay {
   // the console. Bump this every deploy alongside sw.js's CACHE_VERSION. If two
   // machines show different stamps, the older one is on stale code (hard-refresh);
   // if they MATCH but content still differs, it is a DATA/publish issue, not code.
-  window.BUILD_VERSION = 'v121v129';
+  window.BUILD_VERSION = 'v121v130';
   try {
     console.info('%cMythic Spellbook ' + window.BUILD_VERSION + '%c — build check: run  __mg.version',
       'font-weight:700;color:#b48cff', 'color:#7d7499');
@@ -52875,9 +52880,37 @@ async function cloudFetchProfile() {
     if (_cloudSalvage) {
       if (!Profile.salvage || typeof Profile.salvage !== 'object') Profile.salvage = {};
       const _loc = Profile.salvage, _cl = _cloudSalvage;
-      for (const k in _cl) {
-        const cv = _cl[k] | 0, lv = _loc[k] | 0;
-        if (cv > lv) _loc[k] = cv;
+      /* 🔴 v121v130 — THIS WAS A RATCHET, AND IT WAS THE RESOURCE DUPLICATION
+         EXPLOIT. It read:
+
+             for (const k in _cl) { if ((_cl[k]|0) > (_loc[k]|0)) _loc[k] = _cl[k]|0; }
+
+         — the LARGER of cloud and local, per id, on every hydration. A spend
+         can only ever make the local number smaller, and spendResources()
+         decrements the client mirror alone (the server ledger is only ever
+         topped UP, by wh_resync_resources). So every hydration whose snapshot
+         predated a spend put the resources back, and hydration happens on
+         reload, on resume, on a second device and on the periodic fetch.
+
+         Resources could go up and could never come down. A flagged account was
+         holding 57,046 fuel and 56,822 food against a 2,000-unit ceiling that
+         addRes() clamps every gain at, and had taken 978,193 Cinder from 1,515
+         deliveries — 1,092 of them in one hour, 90ms apart — whose resource
+         cost never once reached public.user_resources.
+
+         Freshness already decides every other field on this row, and the header
+         above explains why per-field cleverness here is the wrong shape. So
+         salvage obeys it too: the newer side is taken WHOLE, including the ids
+         where it is smaller — which is precisely the spend that was being
+         swallowed. The max-merge survives for the one case it was written for:
+         a cloud row with nothing local behind it, where taking the larger
+         cannot lose anything because there is nothing local to lose. */
+      const _haveLocalEdit = !!((Profile.cloud && Profile.cloud.lastLocalEditAt) || (Profile.cloud && Profile.cloud.pendingChanges));
+      if (!_haveLocalEdit) {
+        for (const k in _cl) { const cv = _cl[k] | 0, lv = _loc[k] | 0; if (cv > lv) _loc[k] = cv; }
+      } else if (!localIsFresher) {
+        for (const k in _loc) { if (!(k in _cl)) delete _loc[k]; }
+        for (const k in _cl) _loc[k] = _cl[k] | 0;
       }
     }
     if (typeof _ensureResources === 'function') _ensureResources();
@@ -260956,12 +260989,32 @@ function _aiEnterBusiness(corpId) {
     try { render(); } catch (e) {}
   } catch (e) { try { console.warn('[aiEnterBusiness]', e); } catch (_) {} }
 }
+/* 📦 One delivery at a time, and no faster than a person can mean it.
+   A flagged account took 1,092 payouts from this function inside one hour,
+   90–500 ms apart: the button re-renders pressable and nothing sat between
+   two calls. Each one also raises rep by 5, and the pay is computed from rep,
+   so a spammed contract inflated its own price as it drained. The contract's
+   AI_TRADE_WINDOW_MS is its DEADLINE — a delivery pushes it further out — so it
+   was never a cooldown and could not have been one. */
+const AI_DELIVER_COOLDOWN_MS = 2500;
+let _aiDeliverBusy = {};
 function _aiDeliver(corpId) {
   try {
     const c = AI_CORP_BY_ID[corpId]; if (!c) return;
     const t = _aiTradeState();
     const d = t.deal[corpId];
     if (!d) { showToast('No contract with ' + c.name + '.', 3000); return; }
+    if (_aiDeliverBusy[corpId]) { showToast('📦 Still loading that delivery…', 2000); return; }
+    {
+      const _since = Date.now() - ((d.lastRun | 0) || 0);
+      if (_since < AI_DELIVER_COOLDOWN_MS) {
+        showToast('📦 The dock is still turning the last truck around — '
+          + Math.ceil((AI_DELIVER_COOLDOWN_MS - _since) / 1000) + 's.', 2200);
+        return;
+      }
+    }
+    _aiDeliverBusy[corpId] = true;
+    try { setTimeout(() => { try { delete _aiDeliverBusy[corpId]; } catch (e) {} }, 50); } catch (e) { delete _aiDeliverBusy[corpId]; }
     const have = (typeof getRes === 'function') ? getRes(d.res) : 0;
     if (have < d.qty) {
       showToast('Short by ' + (d.qty - have) + ' ' + _meta(d.res).name
@@ -260971,6 +261024,7 @@ function _aiDeliver(corpId) {
     const cost = {}; cost[d.res] = d.qty;
     if (!spendResources(cost)) { showToast('Delivery failed — resources moved.', 3200); return; }
     if (typeof addGems === 'function') addGems(d.pay, 'Delivery paid');
+    d.lastRun = Date.now();          // 📦 the cooldown stamp — see the header
     d.left -= 1;
     t.done[corpId] = (t.done[corpId] || 0) + 1;
     t.rep[corpId] = Math.min(AI_REP_CLAMP, (t.rep[corpId] || 0) + 5);
@@ -266796,8 +266850,8 @@ try {
        that works everywhere except the one early path nobody tested. It is
        2KB with no dependencies. -->
 <script src="src/econ/peg.js?v=v121q51"></script>
-<script src="src/battle/effects.js?v=v121v129" defer></script>
-<script src="src/phone/handset.js?v=v121v129" defer></script>
+<script src="src/battle/effects.js?v=v121v130" defer></script>
+<script src="src/phone/handset.js?v=v121v130" defer></script>
 <script src="src/battle/combat.js?v=120m4" defer></script>
 <script src="src/battle/targeting.js?v=121e3hex" defer></script>
 <link rel="stylesheet" href="src/sprites/frames.css?v=120k3">

@@ -52,9 +52,15 @@ ok(/if \(p\.missions        && typeof p\.missions        === 'object'\)/.test(SR
 
 /* ── 7. the bunker, and the blade ── */
 ok(/<div className="brand-name">BUNKER<\/div>/.test(HUD), 'the word beside the back button is BUNKER');
-ok(/\*, \*::before, \*::after \{ cursor: url\('assets\/cursors\/abra-blade\.png'\) 3 3, default !important; \}/.test(SRC),
+/* v121v130 moved both of these deliberately: the blade was rebuilt at 26px
+   (owner: "make it smaller also it is too big") so the measured tip is 2,2
+   rather than 3,3 / 5,4, and `html, body` joined the selector because `*`
+   matches ELEMENTS — over a full-bleed background with no child under the
+   pointer it fell through to the system arrow, which is why the blade was
+   missing on the main menu. _resdupe_smoke pins the sizes and the hotspots. */
+ok(/html, body, \*, \*::before, \*::after \{ cursor: url\('assets\/cursors\/abra-blade\.png'\) 2 2, default !important; \}/.test(SRC),
   'the Abra Blade is the pointer, hotspot on the tip — and it outranks the 863 cursor:pointer declarations in this file, many of them inline styles that beat any stylesheet rule (v121v127: the blade was turning back into the hand)');
-ok(/cursor: url\('assets\/cursors\/abra-blade-glow\.png'\) 5 4, pointer !important;/.test(SRC) && /\[style\*="cursor:pointer"\]/.test(SRC),
+ok(/cursor: url\('assets\/cursors\/abra-blade-glow\.png'\) 2 2, pointer !important;/.test(SRC) && /\[style\*="cursor:pointer"\]/.test(SRC),
   '…and over anything clickable the blade GLOWS — including elements carrying their own inline pointer');
 ok(/textarea, \[contenteditable="true"\] \{ cursor: text !important; \}/.test(SRC) && /input\[type="range"\] \{ cursor: ew-resize !important; \}/.test(SRC),
   '…and a text box keeps its I-beam, a slider its grab handle');

@@ -34,7 +34,10 @@ const OUT_DIR = join('public', 'assets', 'cursors');
    the top-left, hilt trailing to the bottom-right, out of the way of what you
    are reading. */
 const ANGLE = -45;
-const SIZES = [{ name: 'abra-blade.png', px: 40 }, { name: 'abra-blade-lg.png', px: 56 }, { name: 'abra-blade-glow.png', px: 56, glow: true }];
+/* 🗡 v121v130 — the owner asked for a SMALLER blade: 40 → 26, and the glow
+   variant with it. The hotspot is re-measured on each rendered size rather
+   than scaled, so the tip still lands on the pixel the blade points with. */
+const SIZES = [{ name: 'abra-blade.png', px: 26 }, { name: 'abra-blade-lg.png', px: 40 }, { name: 'abra-blade-glow.png', px: 26, glow: true }];
 
 /* ✨ THE HOVER BLADE. Over anything clickable the pointer should say so, and a
    40px sword cannot say it by changing shape - so it says it with light: the
