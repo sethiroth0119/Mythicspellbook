@@ -194,7 +194,7 @@ const A = await import(pathToFileURL(D + 'mapforge.files.js').href);   // the up
      future failure names which half broke. */
   ok(/const view = opts\.view \|\| pv\.view \|\| 'fps';/.test(en), 'the engine mounts with the map\'s view');
   ok(/const myModel = resolveCharacter\(pv, avatarPick\(\)\);/.test(en) &&
-     /createAvatar\(THREE, \{ world, scene, player: \{ model: myModel/.test(en),
+     /createAvatar\(THREE, \{ world, scene, outfit, player: \{ model: myModel/.test(en),
     'and with the character this player chose, resolved against the map\'s cast — the map\'s own model is the fallback inside resolveCharacter, not a second code path');
   ok(/pointerLock: opts\.pointerLock !== false && view !== 'top'/.test(en), 'and top-down never grabs the mouse');
   const ed = read(D + 'mapforge.editor.js');

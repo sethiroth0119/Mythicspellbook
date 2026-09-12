@@ -39411,7 +39411,7 @@ body:has(#pack-opener-frame) #chat-overlay {
   // the console. Bump this every deploy alongside sw.js's CACHE_VERSION. If two
   // machines show different stamps, the older one is on stale code (hard-refresh);
   // if they MATCH but content still differs, it is a DATA/publish issue, not code.
-  window.BUILD_VERSION = 'v121v121';
+  window.BUILD_VERSION = 'v121v122';
   try {
     console.info('%cMythic Spellbook ' + window.BUILD_VERSION + '%c — build check: run  __mg.version',
       'font-weight:700;color:#b48cff', 'color:#7d7499');
@@ -43573,6 +43573,80 @@ function isForgeAdminOnly(kind, id) {
      must read the result.
    ⚠ HEROES USE 'card' AS THEIR KIND HERE, matching _heroLootable's existing
      isForgeLootable('card', hid) — one keyspace, not two. */
+/* ═══ 🔒 RELEASE — what exists in the Forge and what players may have ═══════
+   Two ways a card is held back, and they compose:
+
+     · UNRELEASED — the 🔒 pill on the card's row. Held back with no date, for
+       work in progress. Nothing releases it but the same pill.
+     · A SET WITH A RELEASE DATE — the card belongs to a set (Forge.cardSets)
+       whose releaseAt is in the future. At that instant it releases itself, on
+       every device, with nobody pressing anything: the check is a comparison
+       against the clock, not a job that has to run.
+
+   An admin still sees, edits and grants these cards; the gate is on what a
+   PLAYER can obtain. Copies already in a collection are deliberately left
+   alone — pulling a card out of a deck somebody already built is worse than
+   the leak it would close. */
+const CARD_SET_KEY = 'cardSets';
+function getCardSets() {
+  try { if (!Array.isArray(Forge.cardSets)) Forge.cardSets = []; return Forge.cardSets; } catch (e) { return []; }
+}
+/* Every set a card belongs to, local and published. */
+function _setsOfCard(id) {
+  const out = [];
+  try {
+    const all = getCardSets().concat((typeof Catalog !== 'undefined' && Array.isArray(Catalog.cardSets)) ? Catalog.cardSets : []);
+    const seen = {};
+    for (const st of all) {
+      if (!st || seen[st.id] || !Array.isArray(st.cardIds)) continue;
+      seen[st.id] = 1;
+      if (st.cardIds.indexOf(id) >= 0) out.push(st);
+    }
+  } catch (e) {}
+  return out;
+}
+/* When this card becomes obtainable: 0 = now, a number = the instant, Infinity
+   = held back with no date. A card in two sets releases with the EARLIEST. */
+function cardReleaseAt(id) {
+  try {
+    const p = getForgeObt('card', id);
+    if (p && p.unreleased) return Infinity;
+    const sets = _setsOfCard(id);
+    if (!sets.length) return 0;
+    let best = Infinity;
+    for (const st of sets) {
+      const at = (typeof st.releaseAt === 'number' && st.releaseAt > 0) ? st.releaseAt : 0;
+      best = Math.min(best, at);
+    }
+    return best === Infinity ? 0 : best;
+  } catch (e) { return 0; }
+}
+function isCardReleased(id) { const at = cardReleaseAt(id); return !at || Date.now() >= at; }
+/* The same question for a pack, so an unreleased set's pack cannot be bought:
+   a pack is held back by its own flag, by its set's date, or by containing a
+   card that is not out yet. */
+function packReleaseAt(p) {
+  try {
+    if (!p) return 0;
+    const o = getForgeObt('pack', p.id);
+    if (o && o.unreleased) return Infinity;
+    let at = (typeof p.releaseAt === 'number' && p.releaseAt > 0) ? p.releaseAt : 0;
+    for (const st of getCardSets()) if (st && st.packId === p.id && typeof st.releaseAt === 'number' && st.releaseAt > at) at = st.releaseAt;
+    return at;
+  } catch (e) { return 0; }
+}
+function isPackReleased(p) { const at = packReleaseAt(p); return !at || Date.now() >= at; }
+/* "in 3 days" / "on 14 Oct, 19:00" — for the admin row and the vendor tile. */
+function releaseWhenText(at) {
+  if (!at) return 'released';
+  if (!isFinite(at)) return 'held back';
+  const ms = at - Date.now();
+  if (ms <= 0) return 'released';
+  const d = new Date(at);
+  const mins = Math.round(ms / 60000), hrs = Math.round(ms / 3600000), days = Math.round(ms / 86400000);
+  const rel = mins < 90 ? 'in ' + mins + ' min' : hrs < 48 ? 'in ' + hrs + ' h' : 'in ' + days + ' days';
+  return rel + ' · ' + d.toLocaleString();
+}
 function grantCard(id, qty, opts) {
   const n = Math.max(0, Math.floor(Number(qty == null ? 1 : qty) || 0));
   if (!id || n <= 0) return 0;
@@ -43581,6 +43655,13 @@ function grantCard(id, qty, opts) {
     try {
       if (isForgeAdminOnly('card', id)) {
         try { console.info('🔒 grantCard refused an admin-only card: ' + id + (o.source ? ' (from ' + o.source + ')' : '')); } catch (e) {}
+        return 0;
+      }
+      /* 🔒 NOT RELEASED YET (v121v122) — held back by its pill, or in a set
+         whose date has not arrived. Same refusal, same reason: a card the
+         players are not supposed to have yet must not bank. */
+      if (typeof isCardReleased === 'function' && !isCardReleased(id)) {
+        try { console.info('🔒 grantCard refused an unreleased card: ' + id + ' (' + releaseWhenText(cardReleaseAt(id)) + ')' + (o.source ? ' (from ' + o.source + ')' : '')); } catch (e) {}
         return 0;
       }
     } catch (e) { /* an unreadable flag must not become a free card */ return 0; }
@@ -43598,18 +43679,162 @@ function playerObtainablePool(list) {
     return (list || []).filter((c) => {
       const cid = c && (c.id || c.cardId || c);
       if (!cid) return false;
-      return !isForgeAdminOnly('card', cid);
+      if (isForgeAdminOnly('card', cid)) return false;
+      return (typeof isCardReleased === 'function') ? isCardReleased(cid) : true;   // 🔒 v121v122
     });
   } catch (e) { return list || []; }
 }
 // Compact toggle row used by every Forge list renderer. Returns HTML for
 // three pill buttons (CRAFT / LOOT / ADMIN-ONLY) wired to data-obt-*.
+/* ═══ 🗓 SETS — a dated release ═════════════════════════════════════════════
+   { id, name, icon, releaseAt (ms, 0 = out now), cardIds[], packId, notes }
+
+   Held in Forge.cardSets, published into the shared catalogue with everything
+   else, and read by cardReleaseAt() / packReleaseAt() in part A. The date is
+   stored as a real instant (the admin picks it in local time; the game compares
+   it against Date.now()), so a set releases at the same moment for everyone
+   whatever timezone they are in — the same convention the Founder Drops use.
+
+   What a set does NOT do: it never removes a card anybody owns, and it never
+   touches a card an admin granted deliberately. It gates the routes a card can
+   arrive by, and the shelf its pack sits on. */
+function _newCardSet() {
+  const at = new Date(Date.now() + 7 * 86400000); at.setMinutes(0, 0, 0);
+  return { id: 'set_' + Date.now(), name: 'New set', icon: '🗓', releaseAt: at.getTime(), cardIds: [], packId: '', notes: '' };
+}
+function _setById(id) { return getCardSets().find((x) => x && x.id === id) || null; }
+/* datetime-local wants "YYYY-MM-DDTHH:MM" in LOCAL time; Date.toISOString is
+   UTC, so the naive conversion shifts a release by the timezone offset. */
+function _dtLocalValue(ms) {
+  const d = new Date(ms || Date.now());
+  const p = (x) => String(x).padStart(2, '0');
+  return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()) + 'T' + p(d.getHours()) + ':' + p(d.getMinutes());
+}
+function renderForgeSets() {
+  const sets = getCardSets();
+  const editing = App.editingSetId ? _setById(App.editingSetId) : null;
+  if (editing) return _renderSetEditor(editing);
+  const rows = sets.length ? sets.map((st) => {
+    const out = !st.releaseAt || Date.now() >= st.releaseAt;
+    const pack = (getAllCustomPacks() || []).find((p) => p && p.id === st.packId);
+    return '<div class="forge-list-row" data-set-row="' + escapeHtml(st.id) + '">' +
+      '<div class="forge-row-icon" style="font-size:1.6rem">' + escapeHtml(st.icon || '🗓') + '</div>' +
+      '<div class="forge-row-info">' +
+        '<div class="forge-row-name">' + escapeHtml(st.name || 'Unnamed set') +
+          ' <span class="rarity-badge" style="color:' + (out ? '#6ee7a0' : '#ffb066') + ';border-color:' + (out ? '#6ee7a0' : '#ffb066') + '">' + (out ? 'RELEASED' : 'SCHEDULED') + '</span></div>' +
+        '<div class="forge-row-meta">' + (st.cardIds || []).length + ' cards' + (pack ? ' · pack: ' + escapeHtml(pack.name || pack.id) : ' · no pack') +
+          ' · ' + escapeHtml(releaseWhenText(st.releaseAt)) + '</div>' +
+      '</div>' +
+      '<div class="forge-row-actions">' +
+        '<button class="btn-mini" data-set-act="edit" data-set-id="' + escapeHtml(st.id) + '">Edit</button>' +
+        (out ? '' : '<button class="btn-mini" data-set-act="now" data-set-id="' + escapeHtml(st.id) + '" title="Release it immediately">🚀 Release now</button>') +
+        '<button class="btn-mini btn-danger" data-set-act="delete" data-set-id="' + escapeHtml(st.id) + '">×</button>' +
+      '</div>' +
+    '</div>';
+  }).join('') : '<div class="small-text ink-dim" style="padding:1rem">No sets yet. A set holds cards back until its date, then releases them and puts its pack on the vendor\'s shelf by itself.</div>';
+  return '<div class="forge-section">' +
+    '<div style="display:flex;align-items:center;gap:1rem;flex-wrap:wrap">' +
+      '<div><h2 style="margin:0">CARD SETS</h2><div class="small-text ink-dim">Cards in a scheduled set cannot be obtained by any route until the date. Its pack joins the Vendor market at the same instant.</div></div>' +
+      '<button class="btn-primary" data-set-act="new" style="margin-left:auto">+ NEW SET</button>' +
+    '</div>' +
+    '<div class="forge-list" style="margin-top:0.8rem">' + rows + '</div>' +
+  '</div>';
+}
+function _renderSetEditor(st) {
+  const all = (typeof getAllCustomCards === 'function' ? getAllCustomCards() : (Forge.customCards || [])).filter((c) => c && c.id);
+  const q = (App.setCardSearch || '').toLowerCase();
+  const list = all.filter((c) => !q || String(c.name || '').toLowerCase().indexOf(q) >= 0).slice(0, 400);
+  const packs = (getAllCustomPacks() || []).filter(Boolean);
+  const picked = {}; (st.cardIds || []).forEach((id) => { picked[id] = 1; });
+  return '<div class="forge-section">' +
+    '<div style="display:flex;align-items:center;gap:0.6rem;flex-wrap:wrap">' +
+      '<button class="btn-mini" data-set-act="back">← Sets</button>' +
+      '<h2 style="margin:0">' + escapeHtml(st.name || 'Set') + '</h2>' +
+      '<span class="small-text ink-dim">' + escapeHtml(releaseWhenText(st.releaseAt)) + '</span>' +
+      '<button class="btn-primary" data-set-act="save" style="margin-left:auto">💾 Save set</button>' +
+    '</div>' +
+    '<div class="forge-grid" style="margin-top:0.8rem;display:grid;grid-template-columns:1fr 1fr;gap:0.8rem">' +
+      '<label class="forge-field"><span>Set name</span><input id="set-name" type="text" value="' + escapeHtml(st.name || '') + '"></label>' +
+      '<label class="forge-field"><span>Icon</span><input id="set-icon" type="text" value="' + escapeHtml(st.icon || '🗓') + '" maxlength="4"></label>' +
+      '<label class="forge-field"><span>Releases at (your local time)</span><input id="set-when" type="datetime-local" value="' + _dtLocalValue(st.releaseAt) + '"></label>' +
+      '<label class="forge-field"><span>Pack that carries it</span><select id="set-pack">' +
+        '<option value="">— none —</option>' +
+        packs.map((p) => '<option value="' + escapeHtml(p.id) + '"' + (st.packId === p.id ? ' selected' : '') + '>' + escapeHtml(p.name || p.id) + '</option>').join('') +
+      '</select></label>' +
+      '<label class="forge-field" style="grid-column:1 / -1"><span>Notes (admin only)</span><input id="set-notes" type="text" value="' + escapeHtml(st.notes || '') + '"></label>' +
+    '</div>' +
+    '<div style="margin-top:0.9rem;display:flex;align-items:center;gap:0.6rem;flex-wrap:wrap">' +
+      '<b>' + (st.cardIds || []).length + ' cards in this set</b>' +
+      '<input id="set-search" type="text" placeholder="Search cards…" value="' + escapeHtml(App.setCardSearch || '') + '" style="flex:1;min-width:200px">' +
+    '</div>' +
+    '<div class="forge-list" style="margin-top:0.5rem;max-height:46vh;overflow:auto">' +
+      list.map((c) => '<label class="forge-list-row" style="cursor:pointer">' +
+        '<input type="checkbox" data-set-card="' + escapeHtml(c.id) + '"' + (picked[c.id] ? ' checked' : '') + ' style="margin-right:0.6rem">' +
+        '<div class="forge-row-icon">' + _forgeRowThumb(c) + '</div>' +
+        '<div class="forge-row-info"><div class="forge-row-name">' + escapeHtml(c.name || c.id) + '</div><div class="forge-row-meta">' + cardMeta(c) + '</div></div>' +
+      '</label>').join('') +
+    '</div>' +
+  '</div>';
+}
+/* Bound after every Forge paint, beside the obtainability pills. */
+function _bindForgeSets() {
+  const save = () => {
+    const st = App.editingSetId ? _setById(App.editingSetId) : null;
+    if (!st) return;
+    const v = (id) => { const el = document.getElementById(id); return el ? el.value : null; };
+    const name = v('set-name'); if (name != null) st.name = String(name).slice(0, 80);
+    const icon = v('set-icon'); if (icon != null) st.icon = String(icon).slice(0, 4) || '🗓';
+    const notes = v('set-notes'); if (notes != null) st.notes = String(notes).slice(0, 400);
+    const pk = v('set-pack'); if (pk != null) st.packId = String(pk);
+    const when = v('set-when');
+    if (when) { const t = new Date(when).getTime(); if (isFinite(t)) st.releaseAt = t; }
+    const ids = [];
+    document.querySelectorAll('[data-set-card]').forEach((cb) => { if (cb.checked) ids.push(cb.dataset.setCard); });
+    /* Only the cards this page could show are on screen, so a search must not
+       drop the ones filtered out of view. */
+    const shown = {}; document.querySelectorAll('[data-set-card]').forEach((cb) => { shown[cb.dataset.setCard] = 1; });
+    st.cardIds = (st.cardIds || []).filter((id) => !shown[id]).concat(ids);
+    try { _persistForgeNow ? _persistForgeNow() : saveForge(); } catch (e) { try { saveForge(); } catch (e2) {} }
+  };
+  document.querySelectorAll('[data-set-act]').forEach((btn) => {
+    btn.onclick = (e) => {
+      e.preventDefault(); e.stopPropagation();
+      const act = btn.dataset.setAct, id = btn.dataset.setId;
+      if (act === 'new') { const st = _newCardSet(); getCardSets().push(st); App.editingSetId = st.id; }
+      else if (act === 'edit') { App.editingSetId = id; App.setCardSearch = ''; }
+      else if (act === 'back') { save(); App.editingSetId = null; }
+      else if (act === 'save') { save(); try { showToast('🗓 Set saved.', 1800); } catch (e2) {} }
+      else if (act === 'now') { const st = _setById(id); if (st) { st.releaseAt = Date.now(); try { showToast('🚀 Released — its cards and pack are live.', 2600); } catch (e2) {} } }
+      else if (act === 'delete') {
+        const st = _setById(id);
+        if (st && confirm('Delete the set "' + (st.name || id) + '"? Its cards stay; they simply stop being held back.')) {
+          Forge.cardSets = getCardSets().filter((x) => x.id !== id);
+          if (App.editingSetId === id) App.editingSetId = null;
+        } else return;
+      }
+      try { _persistForgeNow ? _persistForgeNow() : saveForge(); } catch (e2) { try { saveForge(); } catch (e3) {} }
+      render();
+    };
+  });
+  const sb = document.getElementById('set-search');
+  if (sb) sb.oninput = () => { save(); App.setCardSearch = sb.value; render(); const el = document.getElementById('set-search'); if (el) { el.focus(); el.setSelectionRange(el.value.length, el.value.length); } };
+}
 function renderObtToggles(kind, id) {
   if (!kind || !id) return '';
   const p = getForgeObt(kind, id);
+  /* 🔒 NOT RELEASED YET — the fourth pill. When it is on, or the card's set has
+     a date still ahead, no player can obtain the card by any route; the row
+     says which, and when. */
+  const _rAt = (kind === 'card') ? cardReleaseAt(id) : 0;
+  const _held = !!(p && p.unreleased) || (_rAt && Date.now() < _rAt);
+  const _relPill =
+    '<button class="forge-obt-pill warn ' + (_held ? 'on' : '') + '" data-obt-kind="' + escapeHtml(String(kind)) + '" data-obt-id="' + escapeHtml(String(id)) + '" data-obt-key="unreleased" title="' +
+      (_held ? 'NOT RELEASED YET — ' + escapeHtml(releaseWhenText(_rAt || Infinity)) + '. No player can obtain this by any route; copies already owned are untouched.' : 'Released. Click to hold it back from players.') +
+      '">' + (_held ? '🔒 UNRELEASED' : '🔓 RELEASED') + '</button>';
   return '<span class="forge-obt" title="Obtainability — admin only">' +
     '<button class="forge-obt-pill ' + (p.craftable ? 'on' : '') + '" data-obt-kind="' + escapeHtml(String(kind)) + '" data-obt-id="' + escapeHtml(String(id)) + '" data-obt-key="craftable" title="' + (p.craftable ? 'Craftable by players · click to disable' : 'NOT craftable · click to enable') + '">🔨</button>' +
     '<button class="forge-obt-pill ' + (p.lootable ? 'on' : '') + '" data-obt-kind="' + escapeHtml(String(kind)) + '" data-obt-id="' + escapeHtml(String(id)) + '" data-obt-key="lootable" title="' + (p.lootable ? 'Can drop from loot / packs · click to disable' : 'Cannot drop from loot · click to enable') + '">🎁</button>' +
+    _relPill +
     '<button class="forge-obt-pill warn ' + (p.adminOnly ? 'on' : '') + '" data-obt-kind="' + escapeHtml(String(kind)) + '" data-obt-id="' + escapeHtml(String(id)) + '" data-obt-key="adminOnly" title="' + (p.adminOnly ? 'ADMIN-GRANT-ONLY · click to allow normal obtainment' : 'Normal obtainment allowed · click to LOCK to admin grants only') + '">👑</button>' +
   '</span>';
 }
@@ -43622,7 +43847,8 @@ function _bindForgeObtToggles() {
       const cur = getForgeObt(k, id);
       setForgeObt(k, id, key, !cur[key]);
       try {
-        showToast('🔒 ' + (key === 'craftable' ? 'Craftable' : key === 'lootable' ? 'Lootable' : 'Admin-only') + ': ' + (!cur[key] ? 'ON' : 'OFF'), 1800);
+        showToast((key === 'unreleased' ? (!cur[key] ? '🔒 Not released yet — players cannot obtain it' : '🔓 Released to players') :
+          '🔒 ' + (key === 'craftable' ? 'Craftable' : key === 'lootable' ? 'Lootable' : 'Admin-only') + ': ' + (!cur[key] ? 'ON' : 'OFF')), 2200);
       } catch (e2) {}
       render();
     };
@@ -48541,6 +48767,12 @@ const Profile = {
   // Same convention as sleeves: owned holds ids, equipped holds the IMAGE.
   ownedDiceSkins: [],
   equippedDiceSkin: null,
+  /* 👕 Player Closet (/src/closet) — the outfit worn in every Athena hub and
+     the clothing ids the player has bought. `outfit` = { body, wear: { cat: itemId } }.
+     Money never sits here: a purchase spends through spendGems() and then
+     appends the id to `owned`. Reaches the modules ONLY through
+     MythicBridge.closet (the globals trap). */
+  closet: { outfit: null, owned: [] },
   // 🗺️ Campaign ids the player has cleared (final boss beaten). Drives
   // campaign chaining — a campaign with requiresCampaignId stays locked
   // until its prerequisite id is in here.
@@ -51424,6 +51656,8 @@ async function cloudSyncProfile() {
       // 🎲 Crafting Station — dice skins you own and wear.
       __ownedDiceSkins__:   Array.isArray(Profile.ownedDiceSkins) ? Profile.ownedDiceSkins : [],
       __equippedDiceSkin__: (typeof Profile.equippedDiceSkin === 'string') ? Profile.equippedDiceSkin : null,
+      // 👕 Player Closet — bought clothing + the worn outfit ride the forge JSONB like every cosmetic above
+      __closet__:           (Profile.closet && typeof Profile.closet === 'object') ? Profile.closet : { outfit: null, owned: [] },
       __equippedSleeve__:   (typeof Profile.equippedSleeve === 'string') ? Profile.equippedSleeve : null,
       // 🦸 Chosen Camp Heights survivor id (set once on first entry; sticks).
       __campSurvivorId__:    (typeof Profile.campSurvivorId === 'string') ? Profile.campSurvivorId : null,
@@ -53237,6 +53471,13 @@ async function cloudFetchProfile() {
         Profile.ownedDiceSkins = Object.keys(dset);
       }
       if (typeof f.__equippedDiceSkin__ === 'string') Profile.equippedDiceSkin = f.__equippedDiceSkin__;
+      // 👕 Player Closet — owned ids union-merge (a purchase on another device is never lost); the outfit is last-writer-wins
+      if (f.__closet__ && typeof f.__closet__ === 'object') {
+        const cur = (Profile.closet && typeof Profile.closet === 'object') ? Profile.closet : { outfit: null, owned: [] };
+        const cset = {};
+        [].concat(cur.owned || [], f.__closet__.owned || []).forEach(id => { if (typeof id === 'string') cset[id] = 1; });
+        Profile.closet = { outfit: (f.__closet__.outfit && typeof f.__closet__.outfit === 'object') ? f.__closet__.outfit : (cur.outfit || null), owned: Object.keys(cset) };
+      }
       // 🦸 Camp Heights survivor pick — restored last-writer-wins.
       if (typeof f.__campSurvivorId__ === 'string') Profile.campSurvivorId = f.__campSurvivorId__;
       // 🏳 Camp's registered District Node + Reconstruction Network state.
@@ -56517,6 +56758,9 @@ async function cloudPublishCatalog(opts) {
       // with no deliberate publish step and no way to take it back.
       // Clear the flag (or use __mg.releaseDrafts()) when it is ready to ship.
       cards:      stripBig(slim((Forge.customCards || []).filter(c => c && !c.draft))),
+      /* 🗓 v121v122 — the sets ride along so a scheduled release reaches every
+       player: they hold the cards back until the instant, then let them go. */
+      cardSets: (Forge.cardSets || []).filter(st => st && st.id).map(st => ({ id: st.id, name: st.name, icon: st.icon, releaseAt: st.releaseAt | 0, cardIds: Array.isArray(st.cardIds) ? st.cardIds.slice(0, 2000) : [], packId: st.packId || '' })),
       moves:      stripBig(movesWithAi),
       items:      stripBig(Forge.customItems || []),
       packs:      stripBig(Forge.customPacks || []),
@@ -73366,8 +73610,13 @@ function getCardPoolForPacks(opts) {
   // 🚫 HEROES ARE NEVER IN A PACK. A hero is earned by choosing a starter deck
   // (v119o5); dropping them from packs would undercut that, and a duplicate hero
   // has nowhere to go.
+  /* 🔒 v121v122 — the shared pack / body-loot / dilemma pool consulted nothing
+     about obtainability, which is why the release gate goes HERE as well as in
+     grantCard: filtering alone would let a hardcoded id through, and gating
+     alone would roll a blank slot. */
   const allCustomNonHero = (typeof getAllCustomCards === 'function' ? getAllCustomCards() : (Forge.customCards || []))
-    .filter(c => c && c.type !== 'hero');
+    .filter(c => c && c.type !== 'hero')
+    .filter(c => { try { return (typeof isCardReleased === 'function') ? isCardReleased(c.id) : true; } catch (e) { return true; } });
   // 🜂 ARCHONS + FUSION KALONS are reported as kind 'summon' so the Pack Creator
   // can target them as their own group. They already reached the pool, but were
   // indistinguishable from ordinary units, so a pack could not be built around
@@ -77269,6 +77518,7 @@ function loadForge() {
       if (p.princePortfolios && typeof p.princePortfolios === 'object') Profile.princePortfolios = _mergePrincePortfolios(p.princePortfolios, Profile.princePortfolios); // 🚗 car co (merged by id)
       if (p.blackRiver      && typeof p.blackRiver      === 'object') Profile.blackRiver      = p.blackRiver;       // ⛽ oil co
       if (p.fuelCommand     && typeof p.fuelCommand     === 'object') Profile.fuelCommand     = p.fuelCommand;      // ⛽ fuel co
+      if (p.closet          && typeof p.closet          === 'object') Profile.closet          = { outfit: (p.closet.outfit && typeof p.closet.outfit === 'object') ? p.closet.outfit : null, owned: Array.isArray(p.closet.owned) ? p.closet.owned.filter(x => typeof x === 'string') : [] };   // 👕 player closet
       // 🦸 Starter-deck state — restore so the new-player gate never re-fires.
       if (p.starterPicked === true) Profile.starterPicked = true;
       if (typeof p.starterDeckId === 'string') Profile.starterDeckId = p.starterDeckId;
@@ -138508,6 +138758,15 @@ function renderTitle() {
               if (typeof showToast === 'function') showToast('📡 Emergency Broadcast opened in a new tab.', 3200);
             } catch (e) {}
           } },
+      // 👕 PLAYER CLOSET — the character creator: dress the character every
+      //    Athena hub draws you as, shop clothing by brand. Lives in /src/closet
+      //    (window.MythicCloset); this tile is the only thing index.html knows.
+      //    Same null-when-unloaded contract as Mercenaries below.
+      ((typeof window !== 'undefined' && window.MythicCloset)
+        ? { id: 'btn-closet', icon: '<span style="font-size:3rem;line-height:1;filter:drop-shadow(0 4px 14px rgba(0,0,0,0.7))">👕</span>', name: 'Player Closet', sub: 'Dress your character · shop by brand', accent: '#f4d06f',
+            badge: (() => { try { const c = Profile.closet; const n = (c && c.outfit && c.outfit.wear) ? Object.keys(c.outfit.wear).length : 0; return n ? n + ' worn' : null; } catch (e) { return null; } })(),
+            onclick: () => { try { window.MythicCloset.open(); } catch (e) { showToast('⚠ The Player Closet did not load.', 3200); } } }
+        : null),
       // ⚔ MERCENARIES — the escrow job board. Sits directly under Emergency
       // Broadcast because that is where it LIVES: posting a contract puts a
       // job on the network feed, applying notifies the employer there, and a
@@ -138569,6 +138828,16 @@ function renderTitle() {
               else showToast('Athena Engine is still loading — try again in a moment.', 2600);
             } catch (e) { try { console.warn('[athena] open failed', e); } catch (_) {} }
           }, 'Athena Engine is admin-only.') },
+        // 👕 CLOSET STUDIO — where clothing is fitted to the characters and
+        //    brands are made (/src/closet). Also on the Athena top bar.
+        { id: 'btn-closet-studio', icon: '🧵', name: 'Closet Studio',  sub: 'Brands · clothing · fit it to the characters',
+          accent: '#f4d06f',
+          onclick: adminClick(() => {
+            try {
+              if (window.MythicCloset && window.MythicCloset.openStudio) window.MythicCloset.openStudio();
+              else showToast('The Player Closet is still loading — try again in a moment.', 2600);
+            } catch (e) { try { console.warn('[closet] studio open failed', e); } catch (_) {} }
+          }, 'The Closet Studio is admin-only.') },
       ];
       return [...everyoneTiles, ...adminTiles];
     })(),
@@ -144459,6 +144728,7 @@ function renderPricingAdmin() {
         <button id="open-battle-athena" class="btn-secondary" style="margin-top:0.5rem;width:100%;border:1px solid #e7c757;color:#ffe9a8" title="Edit the live battle board inside Athena Engine: paint terrain, move or replace props, add anything">⚔ Battle board in Athena Engine</button>
         <button id="open-farm-athena" class="btn-secondary" style="margin-top:0.5rem;width:100%;border:1px solid #e7c757;color:#ffe9a8" title="Edit the Homestead Farm as a game scene: move or replace its buildings for every player">🐄 Homestead Farm in Athena Engine</button>
         <button id="open-widget-designer" class="btn-secondary" style="margin-top:0.5rem;width:100%;border:1px solid #e7c757;color:#ffe9a8">🧩 Open Widget Designer</button>
+        <button id="open-closet-studio" class="btn-secondary" style="margin-top:0.5rem;width:100%;border:1px solid #e7c757;color:#ffe9a8" title="Player Closet: make brands, add clothing (.glb) and fit it to the characters players dress — hats, shirts, backpacks, sneakers, watches, earrings, chains, gloves, scarves">👕 Closet Studio (clothing &amp; brands)</button>
         <button id="open-ui-screens" class="btn-secondary" style="margin-top:0.5rem;width:100%;border:1px solid #4aa3ff;color:#dff4ff" title="Every screen and every player-facing text in one table — edit, find & replace, save, set live">🗂 Screens &amp; Strings</button>
         <button id="open-ui-editor" class="btn-secondary" style="margin-top:0.5rem;width:100%;border:1px solid #4aa3ff;color:#dff4ff" title="Click any element of the game and retitle, restyle or hide it — for every player once live">✎ Edit the game UI (live)</button>
         <div class="small-text ink-dim" style="margin-top:0.4rem">Also reachable at <code>?widgets=1</code>. Only an admin can set a widget <strong>live</strong> for every player (the server enforces it).</div>
@@ -145327,6 +145597,9 @@ function renderPricingAdmin() {
   };
   const faBtn = document.getElementById('open-farm-athena');
   if (faBtn) faBtn.onclick = () => { try { if (!(window.MythicFarm && window.MythicFarm.openInAthena && window.MythicFarm.openInAthena())) showToast('Athena Engine is still loading — try again in a moment.', 2600); } catch (e) { try { console.warn('[farm] athena open failed', e); } catch (_) {} } };
+  // 👕 Player Closet studio (/src/closet registers window.MythicCloset) — same contract as the map creator.
+  const csBtn = document.getElementById('open-closet-studio');
+  if (csBtn) csBtn.onclick = () => { try { if (window.MythicCloset && window.MythicCloset.openStudio) window.MythicCloset.openStudio(); else showToast('The Player Closet is still loading — try again in a moment.', 2600); } catch (e) { try { console.warn('[closet] open failed', e); } catch (_) {} } };
   const awBtn = document.getElementById('open-widget-designer');
   if (awBtn) awBtn.onclick = () => {
     try {
@@ -146204,6 +146477,7 @@ function renderForge() {
     { id: 'events',     label: 'Events',     count: Forge.customEvents.length },
     { id: 'encounters', label: '🎲 Encounters', count: (Forge.customEncounters || []).length },
     { id: 'packs',      label: '📦 Packs',   count: (Forge.customPacks || []).length },
+    { id: 'sets',       label: '🗓 Sets',     count: (Forge.cardSets || []).length },
     { id: 'structureDecks', label: '🃏 Decks', count: (Forge.structureDecks || []).length },
     { id: 'guides',     label: '📖 Guides',  count: (Forge.pageGuides || []).length },
     { id: 'tutorials',  label: '✦ Tutorials', count: (Forge.tutorials || []).length },
@@ -146217,7 +146491,7 @@ function renderForge() {
   // FORGE_TAB_ICONS rather than inside the label so the glyph can be sized
   // independently; a label with its own leading emoji has it stripped.
   const FORGE_TAB_ICONS = {
-    cards: '🃏', moves: '⚔️', events: '🌍', encounters: '🎲', packs: '📦',
+    cards: '🃏', moves: '⚔️', events: '🌍', encounters: '🎲', packs: '📦', sets: '🗓',
     structureDecks: '🎴', guides: '📖', tutorials: '✦', traders: '🤝',
     loadouts: '🛡️', items: '🎒', resources: '🧰', onboarding: '🎓',
   };
@@ -146242,6 +146516,7 @@ function renderForge() {
   else if (App.forgeTab === 'events') body = renderForgeEvents();
   else if (App.forgeTab === 'encounters') body = renderForgeEncounters();
   else if (App.forgeTab === 'packs') body = renderForgePacks();
+  else if (App.forgeTab === 'sets') body = renderForgeSets();
   else if (App.forgeTab === 'structureDecks') body = renderForgeStructureDecks();
   else if (App.editingTutorialId) body = renderTutorialEditor();
   else if (App.forgeTab === 'guides') body = renderForgeGuides();
@@ -146351,6 +146626,7 @@ function renderForge() {
   // 🔒 Obtainability toggles — wire the 🔨 / 🎁 / 👑 pills for every list row.
   //    Bound LAST so it overrides any tab-level click handlers above.
   try { _bindForgeObtToggles(); } catch (e) {}
+  try { _bindForgeSets(); } catch (e) {}
   // 📝 Restore any in-progress editor field values + focus + caret that
   // were captured before this render. This is what stops background
   // renders from wiping the move/card name + description the admin is
@@ -190662,8 +190938,11 @@ function _buildPackShopBody(gems, sovBal) {
   // who authored them locally.
   // 🛒 Respect the pack's Vendor Market visibility. Filtered AFTER the engine
   // conversion so the flag is read from the same shape the storefront renders.
+  /* 🔒 v121v122 — a pack whose set has not reached its release date is not on
+     the shelf; at that instant it appears by itself, with no admin action. */
   const customAsEngine = getAllCustomPacks().map(toEnginePackDef)
-    .filter(Boolean).filter(d => d.inVendor !== false);
+    .filter(Boolean).filter(d => d.inVendor !== false)
+    .filter(d => { try { return isPackReleased(d); } catch (e) { return true; } });
   const allPacks = [...customAsEngine];
 
   const renderPackTile = (p) => {
@@ -241591,6 +241870,45 @@ try { Object.defineProperty(window, '__mythicCityModels', { get: () => { try { r
         return true;
       } catch (e) { return false; }
     },
+    /* 👕 THE PLAYER CLOSET (/src/closet) — the outfit worn in every hub, the
+       clothing the player owns, and the ONLY way the closet spends money.
+       `charge` goes through spendGems() / spendSovereigns() so a purchase is
+       ledgered and cloud-persisted exactly like an avatar or a sleeve; the
+       module never touches Profile.gems. `grant` only ever appends. Everything
+       else is a cosmetic preference and rides saveProfile(). */
+    closet: {
+      signedIn: () => { try { return !!(Profile.cloud && Profile.cloud.signedIn); } catch (e) { return false; } },
+      outfit: () => { try { const c = Profile.closet; return (c && c.outfit && typeof c.outfit === 'object') ? JSON.parse(JSON.stringify(c.outfit)) : null; } catch (e) { return null; } },
+      setOutfit: (o) => {
+        try {
+          if (!o || typeof o !== 'object') return false;
+          const s = JSON.stringify(o); if (s.length > 4000 || /[<>]/.test(s)) return false;
+          if (!Profile.closet || typeof Profile.closet !== 'object') Profile.closet = { outfit: null, owned: [] };
+          Profile.closet.outfit = JSON.parse(s);
+          try { saveProfile(); } catch (e) {}
+          return true;
+        } catch (e) { return false; }
+      },
+      owned: () => { try { const c = Profile.closet; return (c && Array.isArray(c.owned)) ? c.owned.slice() : []; } catch (e) { return []; } },
+      grant: (id) => {
+        try {
+          id = String(id || '').slice(0, 64); if (!/^[A-Za-z0-9_-]{2,64}$/.test(id)) return false;
+          if (!Profile.closet || typeof Profile.closet !== 'object') Profile.closet = { outfit: null, owned: [] };
+          if (!Array.isArray(Profile.closet.owned)) Profile.closet.owned = [];
+          if (Profile.closet.owned.indexOf(id) < 0) Profile.closet.owned.push(id);
+          try { if (typeof _persistProgressNow === 'function') _persistProgressNow(); else saveProfile(); } catch (e) {}
+          return true;
+        } catch (e) { return false; }
+      },
+      balance: (cur) => { try { return cur === 'sovereigns' ? (Profile.sovereigns || 0) : (Profile.gems || 0); } catch (e) { return 0; } },
+      charge: (amount, cur, reason) => {
+        try {
+          amount = Math.floor(+amount || 0); if (amount <= 0) return true;
+          if (cur === 'sovereigns') return !!spendSovereigns(amount, reason || 'Player Closet');
+          return !!spendGems(amount, reason || 'Player Closet');
+        } catch (e) { return false; }
+      },
+    },
     hubs: () => [{ id: 'main', name: 'Main menu' }, { id: 'battle', name: 'Battle Hall' }, { id: 'forge', name: 'Forge Sanctum' }, { id: 'exchange', name: 'Ruin Exchange' }, { id: 'codex', name: 'Codex' }, { id: 'field', name: 'The Field' }, { id: 'arcanum', name: 'Arcanum' }],
     openHub: (h) => { try { const ok = ['main', 'battle', 'forge', 'exchange', 'codex', 'field', 'arcanum']; h = ok.includes(h) ? h : 'main'; App.screen = 'title'; App.titleHub = h === 'main' ? null : h; render(); return true; } catch (e) { return false; } },
     guides: () => {
@@ -265274,6 +265592,15 @@ render();
      ⚠ Bump ?v= on every change — the service worker caches /src/* like any
        other static asset, and a missed bump ships invisibly. -->
 <script type="module" src="src/mapforge/index.js?v=mf19"></script>
+<!-- 👕 PLAYER CLOSET — the character creator (players) and the Closet Studio
+     (admins): clothing fitted to the characters by measurement, brands, the
+     outfit every Athena hub draws. Registers window.MythicCloset; inert until
+     opened (Forge Sanctum → Player Closet, the Athena top bar, ?closet=1).
+     Migration: sql/134_player_closet.sql (renumbered on merge — 132 is this
+     tree's Node Inventory migration, applied weeks ago).
+     ⚠ Bump ?v= on every change — the service worker caches /src/* like any
+       other static asset, and a missed bump ships invisibly. -->
+<script type="module" src="src/closet/index.js?v=pc1"></script>
 <!-- 🧩 ATHENA WIDGETS — Blueprint-style UI widgets and themes (/src/widgets).
      Registers window.AthenaUI. At boot it loads every LIVE widget/theme
      (public.ui_widgets, sql/040 — or the device's cached copy) and mounts
@@ -265502,8 +265829,8 @@ try {
        that works everywhere except the one early path nobody tested. It is
        2KB with no dependencies. -->
 <script src="src/econ/peg.js?v=v121q51"></script>
-<script src="src/battle/effects.js?v=v121v121" defer></script>
-<script src="src/phone/handset.js?v=v121v121" defer></script>
+<script src="src/battle/effects.js?v=v121v122" defer></script>
+<script src="src/phone/handset.js?v=v121v122" defer></script>
 <script src="src/battle/combat.js?v=120m4" defer></script>
 <script src="src/battle/targeting.js?v=121e3hex" defer></script>
 <link rel="stylesheet" href="src/sprites/frames.css?v=120k3">

@@ -99,7 +99,7 @@ const av = await import(pathToFileURL(D + 'mapforge.avatar.js').href);
 
 /* ── 3. THE HUB DRAWS THE CHARACTER, AND KEEPS THE FALLBACK ──────────────── */
 {
-  ok(/function makeFigure\(name, pickId\)/.test(SESSION), 'a figure is built for a specific chosen character');
+  ok(/function makeFigure\(name, pickId, wear\)/.test(SESSION), 'a figure is built for a specific chosen character, wearing a specific outfit (v121v122: the Player Closet)');
   ok(/createAvatar\(THREE, \{ world: S\.g\.world, scene: S\.g\.scene,/.test(SESSION),
     'a peer\'s model loads through the WORLD asset cache — two people in the same character share one template');
   ok(/resolveCharacter\(pl, pickId\)/.test(SESSION), 'through the same resolver the local player uses');
@@ -111,8 +111,8 @@ const av = await import(pathToFileURL(D + 'mapforge.avatar.js').href);
     'the character is disposed with the figure — it is a second scene group with its own mixer');
   const teardown = /hub\.figures\.forEach\(f => \{[^\n]*\}\);/.exec(SESSION);
   ok(!!teardown && /f\.av\.dispose/.test(teardown[0]), 'including when the whole hub is torn down', teardown && teardown[0].slice(0, 90));
-  ok(/if \(f && \(f\.pick \|\| ''\) !== \(p\.m \|\| ''\)\)/.test(SESSION),
-    'a peer who changes character mid-session is rebuilt rather than left in the old one');
+  ok(/if \(f && \(\(f\.pick \|\| ''\) !== \(p\.m \|\| ''\) \|\| \(f\.wear \|\| ''\) !== \(p\.w \|\| ''\)\)\)/.test(SESSION),
+    'a peer who changes character OR outfit mid-session is rebuilt rather than left in the old one');
 }
 
 /* ── 4. THE CHOICE TRAVELS ON A PACKET THAT ALREADY EXISTED ──────────────── */
