@@ -696,3 +696,107 @@ clickable. There are 863 `cursor:pointer` declarations in index.html, many of th
 styles that beat any stylesheet rule, so the fix is `!important` plus a
 `[style*="cursor:pointer"]` selector, pointing at a purple-aura variant of the blade.
 Verified in-browser: plain → blade, button → glow, inline-pointer → glow, text box → I-beam.
+
+## v121v128 — three new card effects, the assault-prompt cost bug, spell counters (fourth report), victory & defeat music, six tracker reports
+
+### The three card effects the owner asked for
+
+**🔇 Suppression Aura** — "While this unit is on the field enemy players cannot
+use spells, or activate units passive, or on play abilities." It is CONTINUOUS,
+so it is never resolved: the engine asks the board. `_battleIsLocked(state,
+side, cat)` is already the single choke point every spell / deploy / counter
+path on both sides reads, so teaching it a second source of truth locks spells
+everywhere at once with no new call sites. The two categories it did not have —
+activating a unit's ability, and an on-play firing — were added at the three
+functions that own them (`_canUseFieldAbility`, the AI's field-ability loop, and
+`applyOnPlayEffect`). It is a LIVE BOARD READ, deliberately, not a status
+stamped on the enemy's cards: the aura has to end the instant the unit leaves
+the field, and a stamped status outlives its source. Memoised on the units array
+by identity, so asking it on every effect resolution costs nothing.
+
+**⚰️ Banish Unless Called From Hand** — needed a fact no unit had ever recorded:
+where it came from. The two paths that ARE a hand play stamp `_fromHand`; the
+other seven `buildUnit` callers (summon, raise, token, tunnel emergence, mutate)
+leave it unset, which is precisely the card's condition. Swept at the end of its
+owner's turn, after the turnEnd triggers so a card can answer before it goes.
+
+**💥 Punish Arrivals** — hangs off the arrival event the engine already fires
+from both hand-deploy paths, plus `_fireAnywhereForSummons`, the choke point
+every effect-spawned unit passes — rather than a ninth hand-rolled hook. The
+weakness bonus reads the same `MATCHUPS` / `getFactionMatchup` tables the damage
+formula does, so "weak to" means on the card what it means in combat.
+
+### The assault-prompt cost bug (owner)
+"You pay the cost — for example you pay 50 health — then the modal appears to
+play an assault card from your hand, you click skip and the spell does not play
+even though you paid the cost."
+
+`_interceptCardCost` pays the cost, sets `App._cardCostPaid`, re-enters
+`playSpell`, and clears the receipt in a `finally`. But that re-entry does not
+RESOLVE the spell when an assault card is in hand — it parks the play on
+`App.ui.assaultPrompt` and returns immediately, waiting for a click. The
+`finally` then wiped the receipt, so Skip re-entered with no receipt and
+`_interceptCardCost` charged the cost a SECOND time; a hero that had just paid 50
+life could not pay 50 more, the gate refused, and the spell never fired with the
+life already gone. The receipt now survives a SUSPENDED play and is torn up by
+whichever hand finishes it.
+
+### Spell counters — the FOURTH report, and the bug standing behind the third
+The owner's card, read out of the live catalog, settles what is authored:
+`Ualti Spirit — counterToken {id:'ualticounter', name:'Ualti Counters', max:4},
+onPlay {type:'addCounters', amount:2, counterName:'', radius:1,
+counterSide:null, tSide:'enemy'}`. So v121v125 IS working: `counterSide` null
+reads as 'self' and the token resolves off the card. The counters still never
+arrived because the line that picks the recipient tested OBJECT IDENTITY:
+
+    if (_side === 'self' && u !== unit) return;
+
+`state.units` is rebuilt by half a dozen steps between a card being played and
+its on-play resolving — the multiplayer on-play stamp remaps the whole array,
+so does the infection zone, so can the weather summoner and the in-grave tick.
+Each hands the board a COPY of the caster while `unit` still points at the
+original, after which "itself" matched nothing and the log said "finds nothing
+to put Ualti Counters on". Nothing else in this file tests a unit by object;
+the engine compares ids, for exactly this reason. Also fixed alongside it: a
+caster that is not on the board at all (a hand / grave / field ability resolves
+through a hero-anchored synthetic) now gets its own counters, "self" no longer
+demands a position, and the range test for OTHERS is the hex `distance()` rather
+than Chebyshev, which on an odd row reaches non-neighbours and misses neighbours.
+
+### Victory and defeat music (owner)
+Victory had a loop and an Audio Manager slot. DEFEAT had neither — losing
+dropped straight into silence, because `isVictoryActive()` is false the moment
+the loser is you and the battle track is stopped by the same sync pass that
+would have started the victory one. `assets/Audio/defeat music.mp3` has been in
+the build all along, referenced by nothing. Defeat is now victory's exact mirror
+— its own element, its own playlist slot in the Audio Manager, its own
+`isDefeatActive()` — with one deliberate asymmetry: `stopVictoryMusic()` stops
+BOTH, because it is called from fourteen places and every one of them means the
+player has left the end-of-match moment.
+
+### Six tracker reports
+- **bug-mtxqh027** — Reconstruction's back button was the last one in the camp
+  still naming a screen instead of asking `_campBackTarget()`. 'camp' is the
+  BUNKER; 'campOps' is the camp page.
+- **bug-mtxmvepn** — every deploy calls `render()`, which rebuilds the camp from
+  a template string, so the two `.dpx-scroll` panes come back as new elements at
+  zero. Remembered per pane AND per tab.
+- **bug-mtxmdmq1** — `roadCapParts()` counted a Supply Depot as one building
+  however tall it was. Housing is `popCap * t.lvl`, the barracks garrison is
+  `garrison * t.lvl`, production is `RATE_MULT ** (t.lvl - 1)` — this line was
+  the odd one out, so three upgrades bought no road.
+- **bug-mtxkunre** — a new city starts with `stock: {}` and cannot make a plank
+  until it has power, a Logging Camp and a Sawmill, each needing crew that needs
+  housing. The BASIC house pays no planks; the sink stays on the Apartment (16),
+  Block (40), Tower (90) and High-Rise (200).
+- **bug-mtxl7z60** (high) — `planCost` summed `c.cinder` and threw the rest of
+  `costOf` away, so the Develop button priced a district in 🔥 alone while the
+  plan also needed metal, supplies and planks. Approving it stalled development
+  one silent permit at a time, because each site pays as it STARTS. The panel
+  now prints the full materials bill in the city's own cost chips.
+- **bug-mtxq7yoy** — the "vault full" throttle is real, but the row asserted
+  something the player cannot check: the ceiling counts the WHOLE Base Vault
+  (every id in Profile.salvage) while the city's strip shows the twelve-id
+  mirror. Both numbers were already read and discarded; the row names them now.
+- **bug-mtxlmhvr** — "ometimes" in the Tutor Shop guide. Authored content, fixed
+  in the catalog rather than in code.

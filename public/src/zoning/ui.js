@@ -84,6 +84,12 @@ export function mountUI(api, ctx) {
 #nz-panel .nzft{display:flex;align-items:center;gap:10px;margin-top:8px;
   border-top:1px solid rgba(255,255,255,.08);padding-top:8px}
 #nz-panel .nzsel{flex:1;min-width:0;color:var(--mist,#9d907a);font-size:11px;line-height:1.35}
+/* 🧾 the materials this district will draw (bug-mtxl7z60) */
+#nz-panel #nz-bill:empty{display:none}
+#nz-panel #nz-bill{margin-top:8px;border-top:1px solid rgba(255,255,255,.08);padding-top:8px}
+#nz-panel .nz-bill-t{color:var(--gold,#d4af37);font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;margin-bottom:4px}
+#nz-panel .nz-bill-c{display:flex;flex-wrap:wrap;gap:6px;font-size:12px}
+#nz-panel .nz-bill-n{color:var(--mist,#9d907a);font-size:10.5px;line-height:1.35;margin-top:5px}
 #nz-panel .nzsel b{color:var(--bone,#e9e0cc)}
 #nz-panel .nzgo{border:1px solid rgba(212,175,55,.6);border-radius:5px;padding:7px 12px;cursor:pointer;
   background:linear-gradient(180deg,rgba(212,175,55,.24),rgba(120,90,20,.2));color:#ffd98a;font-size:12px;white-space:nowrap}
@@ -143,6 +149,11 @@ export function mountUI(api, ctx) {
        that palette arms, not a separate tool. */
     + '<div id="nz-spec"></div>'
     + '<div id="nz-gate"></div>'
+    /* 🧾 v121v128 (bug-mtxl7z60) — the materials row, ABOVE the footer so it
+       reads as part of the price rather than as an afterthought under the
+       button. Empty (and therefore invisible) whenever the plan draws nothing
+       but cinder, which is what the button has always said on its own. */
+    + '<div id="nz-bill"></div>'
     + '<div class="nzft"><div class="nzsel" id="nz-sel"></div>'
     + '<button class="nzgo" type="button" data-act="develop" id="nz-go">🏗 Develop</button></div>';
 
@@ -243,6 +254,24 @@ export function mountUI(api, ctx) {
       const p = api.plan(null);
       const cost = api.planCost(p.out, p.grow);
       const work = p.out.length + p.grow.length;
+      /* 🧾 v121v128 (bug-mtxl7z60) — WHAT THIS DISTRICT ACTUALLY COSTS, beside
+         the button that spends it. The chips are the city's own: they name the
+         resource, say what you are holding, and turn red when you are short —
+         the same pricing every other build in the game gets. Cinder is left to
+         the button, which has always carried it, so the row is what was
+         missing rather than a second copy of what was there. */
+      const bill = (typeof api.planBill === 'function') ? api.planBill(p.out, p.grow) : null;
+      const billRow = panel.querySelector('#nz-bill');
+      if (billRow) {
+        const mat = {};
+        if (bill) for (const k in bill) { if (k !== 'cinder' && (bill[k] | 0) > 0) mat[k] = bill[k] | 0; }
+        const any = Object.keys(mat).length > 0;
+        billRow.innerHTML = (!work || !any)
+          ? ''
+          : '<div class="nz-bill-t">🧾 Materials this district will draw</div>'
+            + '<div class="nz-bill-c">' + (ctx.costChipsHtml ? ctx.costChipsHtml(mat) : Object.entries(mat).map(([k, v]) => v + ' ' + k).join(' · ')) + '</div>'
+            + '<div class="nz-bill-n">Each site pays as it STARTS, so a shortfall stops the next permit rather than refunding the district.</div>';
+      }
       /* 🏗 THE BUTTON HAS TWO STATES BECAUSE DEVELOPMENT NOW HAS TWO STATES.
          It is no longer "build all of this, now" — it approves the district and
          private developers build it out over time, one permit at a time (see

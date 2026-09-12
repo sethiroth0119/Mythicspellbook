@@ -3,7 +3,7 @@
    every stored clip is listed with its size and can be deleted, shuffle is a
    switch, and Just Business and the City Builder have music at all.
    Run: node _audiozones_smoke.mjs */
-import { readFileSync } from 'fs';
+import { existsSync, readFileSync } from 'fs';
 let fails = 0;
 const ok = (c, m, x) => { console.log((c ? '  PASS ' : '  FAIL ') + m + (c || x === undefined ? '' : '  ← ' + x)); if (!c) fails++; };
 const SRC = readFileSync('./public/index.html', 'utf8').replace(/\r\n/g, '\n');
@@ -57,6 +57,41 @@ ok((SRC.match(/App\.screen === 'pricingAdmin'/g) || []).length >= 1 && /App\.scr
   for (let i = 0; i < 40; i++) shuffled.push(api._musicOrder('b', 5).join(','));
   ok(new Set(shuffled).size > 1 && shuffled.every((s2) => s2.split(',').sort().join(',') === '0,1,2,3,4'), 'run for real: shuffle on gives a different order without ever dropping or repeating a track');
 }
+
+/* ── 💀 v121v128 — VICTORY AND DEFEAT MUSIC ────────────────────────────────
+   Owner: "We need victory and defeat music so add it for when victory or
+   defeat is qued for a player." Victory had a loop and a playlist slot;
+   DEFEAT had neither, so losing a match dropped straight into silence —
+   isVictoryActive() is false the moment the loser is you, and the battle track
+   is stopped by the same sync pass that would have started the victory one.
+   The asset has been sitting in the build all along, referenced by nothing. */
+ok(/\{ id: 'defeat',\s+label: '💀 Defeat',/.test(SRC), 'Defeat is a playlist slot the Audio Manager can stock, beside Victory');
+ok(/const DEFEAT_MUSIC_SRC = 'assets\/Audio\/defeat%20music\.mp3';/.test(SRC), '…pointing at the track that shipped with the game and was never played');
+ok(existsSync('./public/assets/Audio/defeat music.mp3'), '…and that file is really there', 'assets/Audio/defeat music.mp3');
+ok(/function isDefeatActive\(\) \{/.test(SRC) && /return App\.state\.gameOver === 'ai';/.test(SRC),
+  'defeat is asked the same question victory is, with the answer flipped');
+{
+  const d = SRC.slice(SRC.indexOf('function isDefeatActive()'), SRC.indexOf('function isDefeatActive()') + 400);
+  ok(/if \(App\.screen !== 'battle'\) return false;/.test(d) && /if \(App\.replayViewing\) return false;/.test(d),
+    '…including the replay exclusion — a replay of a loss is something you are watching, not something happening to you');
+}
+ok(/if \(isDefeatActive\(\)\) \{[\s\S]{0,420}playDefeatMusic\(\);/.test(SRC), 'the router plays it, at the same priority as victory');
+{
+  const branch = SRC.slice(SRC.indexOf('if (isDefeatActive()) {'), SRC.indexOf('if (isDefeatActive()) {') + 420);
+  ok(!/stopVictoryMusic\(\)/.test(branch),
+    '…and the defeat branch does NOT call stopVictoryMusic, which now stops BOTH — it would cut this track off in the same breath as starting it');
+}
+{
+  const stop = SRC.slice(SRC.indexOf('function stopVictoryMusic()'), SRC.indexOf('function stopVictoryMusic()') + 800);
+  ok(/_defeatAudioEl\.pause\(\)/.test(stop),
+    'one stop ends the end-of-match moment: stopVictoryMusic is called from fourteen places and every one of them means the player has left it, so fourteen separate edits would only drift apart');
+}
+{
+  const play = SRC.slice(SRC.indexOf('function playVictoryMusic()'), SRC.indexOf('function playVictoryMusic()') + 900);
+  ok(/_defeatAudioEl\.pause\(\)/.test(play),
+    '…and each loop silences its opposite DIRECTLY, so a result that flips inside one sync pass cannot leave both playing');
+}
+ok(/if \(_defeatAudioEl\) _defeatAudioEl\.volume = v;/.test(SRC), 'the music volume slider moves it too');
 
 /* the knobs */
 const v = (SRC.match(/window\.BUILD_VERSION = '([^']+)'/) || [])[1];

@@ -51,8 +51,22 @@ ok(/try \{ autoStashTick\(false\); \} catch \(e\) \{\}/.test(NC) && /try \{ auto
 }
 
 /* ── 3. planks as a build cost ── */
-ok((NC.match(/, planks: \d+ \}/g) || []).length >= 13, 'thirteen city-builder buildings take planks (housing through high-rise, barracks, tower, gate, shop, office, retail, club, arena)', (NC.match(/, planks: \d+ \}/g) || []).length);
-ok(/highrise:\s*\{ name: 'High-Rise',[^\n]*planks: 200 \}/.test(NC) && /housing:\s*\{ name: 'Housing',[^\n]*planks: 4 \}/.test(NC), 'from 4 planks for Housing to 200 for a High-Rise');
+/* 🪚 v121v128 (bug-mtxkunre) — TWELVE, not thirteen. The BASIC house came off
+   the list on the reporter's own recommendation: a new city starts with
+   `stock: {}`, and it cannot make a plank until it has raised power, a Logging
+   Camp and a Sawmill — each of which needs crew, and crew needs housing. So the
+   city's very first house sat behind three buildings it could not staff. This
+   is a deliberate change to what the file says, not a baseline being raised:
+   the pin below asserts the new rule, including that the sink survives
+   everywhere it was doing work. */
+ok((NC.match(/, planks: \d+ \}/g) || []).length >= 12, 'twelve city-builder buildings take planks (the apartment tiers, barracks, tower, gate, shop, office, retail, club, arena) — the basic house no longer does', (NC.match(/, planks: \d+ \}/g) || []).length);
+ok(/highrise:\s*\{ name: 'High-Rise',[^\n]*planks: 200 \}/.test(NC) && /apartment:\s*\{ name: 'Apartment Building',[^\n]*planks: 16 \}/.test(NC),
+  'from 16 planks for an Apartment to 200 for a High-Rise — every housing tier ABOVE the basic house still pays');
+{
+  const h = NC.slice(NC.indexOf("  housing:  { name: 'Housing'"), NC.indexOf("  housing:  { name: 'Housing'") + 260);
+  ok(!/planks/.test(h) && /cost: \{ cinder: 26, metal: 10, supplies: 6 \}/.test(h),
+    '…and the basic house is plank-free, with nothing else about its price moved (bug-mtxkunre)');
+}
 ok((FARM.match(/planks: \d+/g) || []).length === 12, 'the feed business: six farm buildings take planks at levels 2 and 3 (Feed Mill, the pens, the Farm Kitchen)', (FARM.match(/planks: \d+/g) || []).length);
 ok(/id: 'feedmill'[\s\S]{0,600}\{ cinder: 90000, wood: 140, stone: 90, metal: 40, planks: 40 \},\n\s*\{ cinder: 225000, wood: 300, stone: 200, metal: 120, planks: 100 \}/.test(FARM), 'the Feed Mill: 40 planks at level 2, 100 at level 3; level 1 stays plank-free');
 {

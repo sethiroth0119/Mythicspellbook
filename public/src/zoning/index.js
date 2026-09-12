@@ -566,6 +566,27 @@ export function mount(ctx) {
     }
     return { out, grow, skip };
   }
+  /* 🧾 v121v128 (bug-mtxl7z60) — THE WHOLE BILL. costOf() returns every
+     resource a building takes; planCost below keeps the cinder and drops the
+     rest, which is why the Develop button could price a district in 🔥 alone
+     and say nothing about the metal, supplies and planks it also needs. The
+     player approved a plan they could not pay for and development then stalled
+     one permit at a time in silence, because each site pays as it STARTS.
+     planCost is left returning cinder exactly as it did — its name, its
+     meaning and its caller are unchanged; this is the sibling that answers the
+     question the panel was never able to ask. */
+  function planBill(list, grow) {
+    const bill = {};
+    if (!ctx.costOf) return bill;
+    const addCost = (c) => { if (c) for (const k in c) bill[k] = (bill[k] | 0) + (c[k] | 0); };
+    for (const p of (list || [])) { try { addCost(ctx.costOf(p.type, 1)); } catch (e) {} }
+    for (const p of (grow || [])) {
+      try {
+        for (let l = (p.t.lvl | 0) + 1; l <= targetLvl(p.zone, p.t, p.x, p.z); l++) addCost(ctx.costOf(p.t.type, l));
+      } catch (e) {}
+    }
+    return bill;
+  }
   function planCost(list, grow) {
     let cin = 0;
     if (!ctx.costOf) return 0;
@@ -1039,7 +1060,7 @@ export function mount(ctx) {
     ZONES, ZONE_BY_ID, CATS,
     zoneAt, zoneDef, setZone,
     applyPaint, applyRect, applyFill,
-    housingSeed, afterLoad, develop, plan: (only) => plan(only || null), planCost,
+    housingSeed, afterLoad, develop, plan: (only) => plan(only || null), planCost, planBill,
     /* 🏗 DEVELOPMENT. `devSite` / `devSites` are read by node-city's order gate
        (bldIsDev / bldDevSites) to keep private building sites out of the crew
        load — they are part of this module's contract with the host, not a

@@ -9,7 +9,7 @@
      believed the file was already live. Only a CONTENT change moves the hash
      and forces a re-upload, so bump this stamp whenever the city 404s, and
      probe it (grep NC_BUILD on the served page) to prove the deploy landed. -->
-<script>window.NC_BUILD = "v121v127-collect";</script>
+<script>window.NC_BUILD = "v121v128-effects";</script>
 <!-- ════════════════════════════════════════════════════════════════════════
      NODE CITY — SimCity-style settlement layer for Mythic Spellbook.
      Three.js WebGPU (auto-falls back to WebGL2). Realistic sun/moon cycle.
@@ -4745,7 +4745,11 @@ const BUILDINGS = {
               desc: 'Cane rows, a cutting yard and drying racks. Cuts sugar cane and saves seed — the two field deposits neither the Farm nor the Fiber Croft will take.' },
   riftbore: { gen: { anomalousMatter: 0.04, dimensionalMaterial: 0.02 }, name: 'Deep Rift Bore', ico: '🌌', cost: { cinder: 110, metal: 26, fuel: 16 }, pop: 3, crew: 2,
               desc: 'A cased bore into the tear itself under a containment collar. Where the Rift Siphon skims what has already leaked out, this reaches the seams beneath — anomalous matter, reality matter, soul energy, dimensional material and reality fragments.' },
-  housing:  { name: 'Housing',       ico: '🏠', cost: { cinder: 26, metal: 10, supplies: 6 , planks: 4 }, pop: 0, popCap: 6,
+  /* 🪚 v121v128 (bug-mtxkunre) — the BASIC house pays no planks. It is the one
+     building a city must raise before it can staff anything, and planks need
+     power + a Logging Camp + a Sawmill, each of which needs crew that needs
+     housing. The sink stays on every tier above this one (16 / 40 / 90 / 200). */
+  housing:  { name: 'Housing',       ico: '🏠', cost: { cinder: 26, metal: 10, supplies: 6 }, pop: 0, popCap: 6,
               desc: 'Shelters citizens. +6 population cap per level.' },
   /* ══════════════════════════════════════════════════════════════════════
      🏢 THE DENSITY LADDER — four residential tiers above the house.
@@ -27613,8 +27617,15 @@ $('logcard').addEventListener('click', (ev) => {
 function roadCapParts() {
   let depots = 0, convoy = 0;
   for (const t of Object.values(game.tiles)) {
-    // 🏗 An unfinished depot maintains no road: capacity arrives with the doors.
-    if (t.type === 'depot' && !t.damaged && !bldSite(t)) depots++;
+    /* 🏗 An unfinished depot maintains no road: capacity arrives with the doors.
+       🛤️ v121v128 (bug-mtxmdmq1, "supply buildings do not add roads when
+       levelled up") — and it maintains MORE road at every level, like every
+       other capacity in this file: housing is popCap * t.lvl, the barracks
+       garrison is garrison * t.lvl, production is RATE_MULT ** (t.lvl - 1).
+       This line counted a depot as one building however tall it was, so a
+       player who spent three upgrades on a Supply Depot got no more road than
+       one who spent none. */
+    if (t.type === 'depot' && !t.damaged && !bldSite(t)) depots += Math.max(1, t.lvl | 0);
     if (t.type === 'anchor' && t.anchor && ((NODE_TYPES[t.anchor.node.node_type] || {}).feeds || []).includes('__roads__')) convoy++;
   }
   return { depots, convoy, cap: ROAD_CAP_BASE + depots * ROAD_PER_DEPOT + convoy * ROAD_PER_CONVOY };
@@ -28760,6 +28771,10 @@ function _stashRate(rate, want, out) {
    whole point is that the throttle is VISIBLE — see the advisor row in
    renderNeeds() and the "vault was full" line in the away report. */
 let _stashChoke = null;
+/* 🏰 The Base Vault ceiling as the LEDGER counts it, so the advisor row can
+   name it. 0 = not read yet / no known ceiling, and the row then says nothing
+   about it rather than printing a zero (see bug-mtxq7yoy). */
+let _ledgerCap = 0, _ledgerHeld = 0;
 /* 🏰 ══ THE HOLDINGS THE PLAN IS ALLOWED TO REASON ABOUT ══════════════════════
    🔴 THE THIRD ROUND OF THIS BUG WAS ENTIRELY HERE, IN ONE ARGUMENT. Round two
       widened what _stashRebalancePlan ITERATES (`for (const r in target)`), and
@@ -30008,9 +30023,17 @@ async function economyTick(dtMin) {
        than this code. Idling a city because we could not READ the cap would be
        far worse than the over-production this fixes. */
   let _ledgerFree = Infinity;
+  /* 🏰 …and the two numbers it is the difference OF. The row below tells the
+     player their vault is full; it could not tell them how full, or of what,
+     because the tick kept only the remainder. That is the whole of
+     bug-mtxq7yoy: the ceiling counts the WHOLE Base Vault (getResourceUnits
+     sums every id in Profile.salvage, seventy-odd of them) while the city's
+     strip shows the twelve-id mirror, so a player checks the only vault figure
+     they can see, finds room in it, and reasonably calls the message false. */
   try {
     const _hr = await MythicCityBridge.resourceHeadroom();
     if (_hr && Number.isFinite(_hr.free)) _ledgerFree = Math.max(0, _hr.free);
+    if (_hr && (_hr.cap | 0) > 0) { _ledgerCap = _hr.cap | 0; _ledgerHeld = Math.max(0, _hr.units | 0); }
   } catch (e) { _ledgerFree = Infinity; }
   /* 🏰 …AND THE HOLDINGS BEHIND THAT SAME CEILING, IN THE SAME BREATH. `_hr.free`
      is `cap - getResourceUnits()`, a sum over the WHOLE of Profile.salvage; the
@@ -30327,6 +30350,7 @@ async function economyTick(dtMin) {
        room by hand. */
     _stashChoke = (_split.factor < 1 && _split.want > 0)
       ? { factor: _split.factor, perMin: _split.want / Math.max(1e-9, dtMin), free: _ledgerFree,
+          cap: _ledgerCap, held: _ledgerHeld,
           mix: Object.assign({}, _ledgerRate), want: Object.assign({}, _ledgerWant) }
       : null;
   }
@@ -39404,10 +39428,20 @@ function evaluateNeeds() {
     const _gain = _stashRebalanceGain(_stashChoke.mix || {}, _stashHeldNow(),
                                       Number.isFinite(_stashChoke.free) ? _stashChoke.free : 0,
                                       _stashChoke.want);
-    add('stashfull', '🏰', 'STASH FULL — your vault has no room left, so the city is running at ' +
-      pct + '% of the ' + Math.round(_stashChoke.perMin) + '/min it could produce. The room that does ' +
-      'free up goes to whichever resource is furthest below its share of your output. Spend some ' +
-      'stash, or buy Vault Containers in the Vendor Market.' +
+    /* 🏰 v121v128 (bug-mtxq7yoy) — SAY WHICH VAULT, AND SAY THE NUMBER. The
+       row asserted "no room left" against a figure the player cannot see: the
+       ceiling is the BASE VAULT total across every resource you own, while
+       this city's strip shows only what this city trades in. Both numbers were
+       already read and thrown away. Nothing about the throttle changed. */
+    const _capTxt = (_stashChoke.cap > 0)
+      ? ' Your Base Vault is holding ' + Math.round(_stashChoke.held).toLocaleString() + ' of ' +
+        Math.round(_stashChoke.cap).toLocaleString() + ' units — that ceiling counts EVERYTHING you own, ' +
+        'not just what this city makes, so it can be full of cargo this city never shows you.'
+      : '';
+    add('stashfull', '🏰', 'STASH FULL — your Base Vault has no room left, so the city is running at ' +
+      pct + '% of the ' + Math.round(_stashChoke.perMin) + '/min it could produce.' + _capTxt +
+      ' The room that does free up goes to whichever resource is furthest below its share of your ' +
+      'output. Spend some stash, or buy Vault Containers in the Vendor Market.' +
       (_gain.rises
         ? '<br><b>' + _gain.plan.units.toLocaleString() + ' units are above their share of your output</b> — ' +
           'that surplus is what is choking the rest.' +
@@ -50271,6 +50305,10 @@ async function _ncResourceNeeds() {
       buildMesh, placeMeshAt, dropTileMesh, applyDamagedLook,
       tileFromEvent, setMode,
       costOf, payCost, computeLinks, updateHUD, toast, logEvent, saveSoon,
+      /* 🧾 v121v128 — the zoning panel prices a district in the SAME chips as
+         every other build cost (bug-mtxl7z60): resource name, what you hold,
+         red when you are short. It had costOf and no way to render it. */
+      costChipsHtml,
       place: (type, x, z) => { placeType = type; return tryPlace(x, z); },
       /* 🖱 THE OTHER HALF OF THE TOOL EXCLUSION. `mode` is a plain `let` in this
          module script (the globals trap again), so the module cannot read it and

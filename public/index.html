@@ -39446,7 +39446,7 @@ body:has(#pack-opener-frame) #chat-overlay {
   // the console. Bump this every deploy alongside sw.js's CACHE_VERSION. If two
   // machines show different stamps, the older one is on stale code (hard-refresh);
   // if they MATCH but content still differs, it is a DATA/publish issue, not code.
-  window.BUILD_VERSION = 'v121v127';
+  window.BUILD_VERSION = 'v121v128';
   try {
     console.info('%cMythic Spellbook ' + window.BUILD_VERSION + '%c — build check: run  __mg.version',
       'font-weight:700;color:#b48cff', 'color:#7d7499');
@@ -47596,6 +47596,10 @@ const MUSIC_SLOTS = [
   { id: 'colosseum', label: '🏛 Colosseum',        hint: 'Colosseum hub',                          defaults: () => [COLOSSEUM_MUSIC_SRC] },
   { id: 'exchange',  label: '💰 Black Market',     hint: 'Ruin Exchange / market screens',         defaults: () => [EXCHANGE_MUSIC_SRC] },
   { id: 'victory',   label: '🏆 Victory',          hint: 'Plays when you win',                     defaults: () => [VICTORY_MUSIC_SRC] },
+  /* 💀 v121v128 — losing a match played NOTHING. isVictoryActive() is false for
+     the loser and the battle loop is stopped by the same sync pass, so the
+     defeat screen sat in silence. The track shipped in the build all along. */
+  { id: 'defeat',    label: '💀 Defeat',           hint: 'Plays when you lose',                    defaults: () => [DEFEAT_MUSIC_SRC] },
   /* 🔊 v121v123 — two rooms that played NOTHING. Just Business is a screen, so
      the router reaches it on its own; the City Builder is an overlay iframe
      that never changes App.screen, so open and close call the router by hand.
@@ -47803,6 +47807,7 @@ function _ensureVictoryAudioEl() {
 function playVictoryMusic() {
   const settings = (typeof getSettings === 'function') ? getSettings() : (Profile.settings || {});
   if (settings.musicEnabled === false) { stopVictoryMusic(); return; }
+  if (_defeatAudioEl) { try { _defeatAudioEl.pause(); _defeatAudioEl.currentTime = 0; } catch (e) {} }
   const el = _ensureVictoryAudioEl();
   _musicBind(el, 'victory', isVictoryActive);
   el.volume = Math.max(0, Math.min(1, settings.musicVolume != null ? settings.musicVolume : 0.5));
@@ -47813,10 +47818,62 @@ function playVictoryMusic() {
 }
 function stopVictoryMusic() {
   if (_victoryAudioEl) { try { _victoryAudioEl.pause(); _victoryAudioEl.currentTime = 0; } catch (e) {} }
+  /* 💀 …and the defeat loop with it. This is called from fourteen places and
+     every one of them means "the player has left the end-of-match moment";
+     both loops belong to that one moment, so stopping them together is the
+     honest shape. The alternative is fourteen edits free to drift apart. */
+  if (_defeatAudioEl) { try { _defeatAudioEl.pause(); _defeatAudioEl.currentTime = 0; } catch (e) {} }
 }
 function setVictoryMusicVolume(vol) {
   const v = Math.max(0, Math.min(1, vol || 0));
   if (_victoryAudioEl) _victoryAudioEl.volume = v;
+  if (_defeatAudioEl) _defeatAudioEl.volume = v;
+}
+
+// ============================================================================
+// 💀 DEFEAT MUSIC — victory's mirror, for the other half of the result.
+// Same lifetime rules: it starts when the gameover overlay is up on the battle
+// screen and the player has lost, and it is stopped by the same sync pass the
+// moment they leave. Shares the master toggle and the music volume.
+// ============================================================================
+const DEFEAT_MUSIC_SRC = 'assets/Audio/defeat%20music.mp3';
+let _defeatAudioEl = null;
+function _ensureDefeatAudioEl() {
+  if (_defeatAudioEl) return _defeatAudioEl;
+  _defeatAudioEl = new Audio();
+  _defeatAudioEl.loop = true;
+  _defeatAudioEl.preload = 'auto';
+  _defeatAudioEl.src = DEFEAT_MUSIC_SRC;
+  return _defeatAudioEl;
+}
+function playDefeatMusic() {
+  const settings = (typeof getSettings === 'function') ? getSettings() : (Profile.settings || {});
+  if (settings.musicEnabled === false) { stopDefeatMusic(); return; }
+  /* The two are mutually exclusive by construction (one gameOver, one winner),
+     but a state that flips inside a single sync pass would otherwise leave the
+     other loop running under this one — so each play stops its opposite
+     DIRECTLY rather than through stopVictoryMusic(), which now stops both and
+     would silence this call the instant it made it. */
+  if (_victoryAudioEl) { try { _victoryAudioEl.pause(); _victoryAudioEl.currentTime = 0; } catch (e) {} }
+  const el = _ensureDefeatAudioEl();
+  _musicBind(el, 'defeat', isDefeatActive);
+  el.volume = Math.max(0, Math.min(1, settings.musicVolume != null ? settings.musicVolume : 0.5));
+  if (el.paused) {
+    const p = el.play();
+    if (p && typeof p.catch === 'function') p.catch(() => { _armMenuAudioGesture(); });
+  }
+}
+function stopDefeatMusic() {
+  if (_defeatAudioEl) { try { _defeatAudioEl.pause(); _defeatAudioEl.currentTime = 0; } catch (e) {} }
+}
+// True when the player has LOST and the gameover overlay is up — the exact
+// mirror of isVictoryActive, down to the replay exclusion (a replay of a loss
+// is something you are watching, not something that just happened to you).
+function isDefeatActive() {
+  if (typeof App === 'undefined' || !App || !App.state) return false;
+  if (App.screen !== 'battle') return false;
+  if (App.replayViewing) return false;
+  return App.state.gameOver === 'ai';
 }
 
 // Returns true when the player has won and the gameover overlay is up. Used by
@@ -47970,6 +48027,19 @@ function syncMusicForScreen() {
     stopBattleMusic();
     stopRogueliteMusic();
     playVictoryMusic();
+    return;
+  }
+  /* 💀 …and the other half of the result, at the same priority. Deliberately
+     does NOT call stopVictoryMusic(): that stops the defeat loop too, so it
+     would cut this track off in the same breath as starting it. playDefeatMusic
+     silences the victory element itself. */
+  if (isDefeatActive()) {
+    stopMenuMusic();
+    stopExchangeMusic();
+    stopCampaignMusic();
+    stopBattleMusic();
+    stopRogueliteMusic();
+    playDefeatMusic();
     return;
   }
   // ⚔ Battle sequence (VS screen → coin flip → battle) — Last Stand at the
@@ -102943,6 +103013,23 @@ const ONPLAY_TYPES = [
   // your hero included (toggle with `empowerHero`). `amount` is the PERCENT.
   { id: 'empowerTeam',   label: '💪 Empower Team (+N% ATK & MAG to your units + hero)', needs: ['amount','empowerHero'] },
   { id: 'transformAlly', label: 'Transform Ally (force Kalon on nearby ally)', needs: ['radius'] },
+  /* 🔇 SUPPRESSION AURA — continuous, and the only effect in this registry that
+     is never "resolved": while the unit carrying it stands on the field, the
+     OTHER side cannot cast spells, activate a unit's ability, or fire an
+     on-play. It is asked for by _silenceLocks, which every lock path consults
+     through _battleIsLocked. Authoring it in any effect slot is enough; it
+     needs no fields because the card text names all three restrictions. */
+  { id: 'auraSilence',   label: '🔇 Suppression Aura (while this is on the field, enemies cannot cast spells, activate abilities or fire on-plays)', needs: [] },
+  /* ⚰️ NOT CALLED FROM YOUR HAND — the Yu-Gi-Oh "if this card was Special
+     Summoned, destroy it during the End Phase" clause. A unit remembers whether
+     it was played from hand (_fromHand, stamped by the two hand-deploy paths);
+     anything else — a summon, a raise, a token, a flip, a mutate — did not come
+     from your hand, and this sweeps it at the end of its owner's turn. */
+  { id: 'exileIfNotFromHand', label: '⚰️ Banish Unless Called From Hand (if this was NOT played from your hand, it goes to the graveyard at the end of your turn)', needs: [] },
+  /* 💥 PUNISH ARRIVALS — "whenever an enemy unit enters the battlefield, this
+     unit deals N damage to it, and N again if it is weak to this unit's faction
+     or element". Both halves read the same matchup tables combat does. */
+  { id: 'punishEntry',   label: '💥 Punish Arrivals (damage every enemy unit that enters the field — doubled if it is weak to this unit)', needs: ['amount'] },
   // 🌀 Summon — admin picks a summon-card id; spawns N copies adjacent
   // to the unit when it enters play. `amount` controls count.
   { id: 'summon',        label: '🌀 Summon (spawn a summon-card adjacent)', needs: ['amount','summonCard'] },
@@ -103210,16 +103297,16 @@ const ONPLAY_TYPES = [
 //    by any scoped counter card in the game. They are grouped now, and "🔧 Other"
 //    stays only as the never-lose-an-effect backstop it was meant to be.
 const ONPLAY_TYPE_GROUPS = [
-  { label: '💥 Damage & Removal',   ids: ['aoeDamage','aoeKill','singleKill','targetStrike','damageHero','destroyTarget','destroyFrozen','burnBurst','boardWipe','purgeAscended','banishUnit','vanishTribe','chainDamage','damagePerCard','damageFromGrave','drainLife','fight','mirrorWard','purityPact'] },
+  { label: '💥 Damage & Removal',   ids: ['aoeDamage','aoeKill','singleKill','targetStrike','damageHero','destroyTarget','destroyFrozen','burnBurst','boardWipe','purgeAscended','banishUnit','vanishTribe','chainDamage','damagePerCard','damageFromGrave','drainLife','fight','mirrorWard','purityPact','punishEntry'] },
   { label: '🛡 Buffs & Debuffs',    ids: ['grantPassive','intimidate','aoeStatus','buffSelf','buffAllies','applyBuffDebuff','bestow','empowerTeam','equipStats','proliferate','swapAtkDef','mirrorStats','stealStatus','rewind','readyAllies','buffPerCard','stillnessSeal'] },
   { label: '❤️ Healing & Energy',   ids: ['heal','healHero','energyGain','kalonSource'] },
   { label: '👑 Control & Movement', ids: ['takeControl','takeControlAll','bounceUnit','vanishTemp','vanishReturn','pullUnits','pushUnits','swapPositions','transformAlly','cloneUnit','soulSwap'] },
   { label: '🃏 Cards & Hand',       ids: ['drawCards','drawFiltered','searchDeck','discardCards','discardSelf','peekHand','peekDiscard','peekBanish','stealCard','cheapenHand','scry','inspire','shuffleToDeck','copyLastMove'] },
   { label: '⚰️ Graveyard & Void',   ids: ['millSelf','millSearch','millEnemy','surveil','deckToGrave','reviveGrave','graveToHand','selfToHand','banishGrave','vanishGraveRandom','vanishGravePick','vanishGraveUnit','negateGraveyard','graveSteal','voidFromGrave','banishDeck','banishHand','drawFromVoid','recycleVoid'] },
-  { label: '🌟 Summon & Sacrifice', ids: ['summon','summonSelf','summonFromZone','setFromZone','polycreate','polyFromGrave','sacrifice','sacrificeSelf','sacrificeToSummon','sacrificeNearby','tributeDraw','sendMatching','tributeRite'] },
+  { label: '🌟 Summon & Sacrifice', ids: ['summon','summonSelf','summonFromZone','setFromZone','polycreate','polyFromGrave','sacrifice','sacrificeSelf','sacrificeToSummon','sacrificeNearby','tributeDraw','sendMatching','tributeRite','exileIfNotFromHand'] },
   { label: '🌦 Field, Weather & Day-Night', ids: ['setWeather','setTimeOfDay','clearWeather','weatherLock','paintSurface','absorbSurface','clearSurfaces','clearWalls','clearTraps','revealTraps','destroyLocation'] },
   { label: '⛽🔵 Fuel & Counters', ids: ['refuel','addCounters','removeCounters'] },
-  { label: '🔒 Locks, Reveal & Utility', ids: ['negateField','costSeal','callLock','sealSlot','delayedBlast','verdict','scanAllEnemies','scanAllTurn'] },
+  { label: '🔒 Locks, Reveal & Utility', ids: ['negateField','costSeal','callLock','sealSlot','delayedBlast','verdict','scanAllEnemies','scanAllTurn','auraSilence'] },
 ];
 // 🔎 THE ONE-LINE EXPLANATION, LIFTED FROM THE LABEL RATHER THAN COPIED.
 // Every one of the 118 ONPLAY_TYPES labels is "<icon> <Name> (<what it does>)" —
@@ -105179,7 +105266,18 @@ function _interceptCardCost(card, again) {
       if (!res) { try { renderBattle(); } catch (e) {} return; }   // cancelled — nothing spent
       App.state = { ...res.state, log: [...(res.state.log || []), ...(res.log || [])] };
       App._cardCostPaid = card.instanceId;
-      try { again(); } finally { App._cardCostPaid = null; }
+      /* 🩹 v121v128 — the receipt has to outlive a SUSPENDED play. `again()`
+         re-enters playSpell, which does not always resolve: with an assault
+         card in hand it parks the play on App.ui.assaultPrompt and returns
+         immediately, waiting for a click. Clearing the marker here meant Skip
+         re-entered with no receipt and was charged the cost a SECOND time —
+         and a hero that had just paid 50 life could not pay 50 more, so the
+         gate refused and the spell never fired with the life already spent
+         (owner report). Whoever finishes the play tears the receipt up. */
+      try { again(); } finally {
+        const _suspended = !!(App.ui && (App.ui.assaultPrompt || App.ui.costPrompt));
+        if (!_suspended) App._cardCostPaid = null;
+      }
     });
     return true;
   } catch (e) { try { console.warn('[card cost gate]', e); } catch (_) {} return false; }
@@ -106602,6 +106700,12 @@ function _canUseFieldAbility(state, unit) {
   if (unit.owner !== 'player') return { ok: false, why: 'You do not control it.' };
   if (unit.isFaceDown) return { ok: false, why: 'It is face-down.' };
   if ((unit._negatedTurns | 0) > 0 || unit._negatedBy) return { ok: false, why: 'Its effects are negated.' };
+  /* 🔇 v121v128 — a suppression aura on the other side stops an ability being
+     activated at all. Named so the disabled row says WHY, not just "no". */
+  {
+    const _sil = (typeof _isSilencedBy === 'function') ? _isSilencedBy(state, 'player') : null;
+    if (_sil) return { ok: false, why: '🔇 ' + (_sil.name || 'An enemy aura') + ' suppresses your abilities.' };
+  }
   if (App.ui && App.ui.aiBusy) return { ok: false, why: 'Wait for the enemy to finish.' };
   const turnNo = (state.turnNumber | 0) || 0;
   if (fa.oncePerTurn && turnNo > 0 && (unit._faUsedTurn | 0) === turnNo) return { ok: false, why: 'Already used this turn.' };
@@ -111305,6 +111409,23 @@ try { window.__mg = window.__mg || {}; window.__mg.afxRelayIn = _afxOnRelayed; }
 try { window.__mg = window.__mg || {}; window.__mg.afxAnnounce = _afxAnnounce; } catch (e) {}
 
 function applyOnPlayEffect(state, unit, card) {
+  /* 🔇 v121v128 — SUPPRESSION AURA. "Enemy players cannot … activate units
+     passive, or on play abilities." Only those two: an arrival's on-play (no
+     _actZone) and a unit's activated ability (_actZone 'field'). A spell is
+     stopped upstream by the 'spell' lock, and a graveyard / hand ability is
+     neither of the two things the card names, so both are left alone. */
+  try {
+    const _z = card && card._actZone;
+    if ((!_z || _z === 'field') && unit && unit.owner && typeof _isSilencedBy === 'function') {
+      const _sil = _isSilencedBy(state, unit.owner);
+      if (_sil) {
+        return { ...state, log: [...(state.log || []), {
+          msg: '🔇 ' + ((card && card.name) || (unit && unit.name) || 'That effect') + ' is suppressed by ' + (_sil.name || 'an enemy aura') + '.',
+          color: 'amber', kind: 'status', cardId: _sil.originalCardId || _sil.cardId || null, icon: '🔇',
+        }] };
+      }
+    }
+  } catch (e) {}
   // 🧬 a grant made earlier this turn for "units called this turn" reaches this one
   try { if (unit && !unit.isHero && typeof _applyTurnGrants === 'function') _applyTurnGrants(unit); } catch (e) {}
   // 🔥 Punish the activation itself, BEFORE the effect resolves — the burn
@@ -114601,15 +114722,46 @@ function _applyOnPlayOneRaw(state, unit, card) {
         tok = (eff.counterName && _ctrSlug(eff.counterName)) ? { id: _ctrSlug(eff.counterName), name: String(eff.counterName).trim(), icon: '🔵' } : null;
         tok = tok || window.MythicCounters.tokenOf(unit) || window.MythicCounters.tokenOf(eff) || null;
         const _tid = tok ? tok.id : null;
+        /* 🔵 v121v128 — BY ID, NOT BY OBJECT. This read `u !== unit`, and
+           `state.units` is rebuilt by half a dozen steps between a card being
+           played and its on-play resolving (the multiplayer on-play stamp
+           remaps the whole array, so does the infection zone, so can the
+           weather summoner and the in-grave tick). Each of those hands the
+           board a COPY of the caster while `unit` still points at the
+           original — after which "itself" matched nothing at all and the log
+           said "finds nothing to put Ualti Counters on". Nothing else in this
+           file tests a unit by identity; it compares ids, for this exact
+           reason. Fourth report of the same symptom. */
         (state.units || []).forEach(u => {
-          if (!u || !u.alive || !u.pos) return;
-          if (_side === 'self' && u !== unit) return;          // 🔵 itself only — the common case
-          if (_side === 'ally' && u.owner !== owner) return;
-          if (_side === 'enemy' && u.owner === owner) return;
-          if (Math.max(Math.abs(u.pos.x - unit.pos.x), Math.abs(u.pos.y - unit.pos.y)) > radius) return;
+          if (!u || !u.alive) return;
+          if (_side === 'self') {
+            if (u.id !== unit.id) return;
+          } else {
+            if (_side === 'ally' && u.owner !== owner) return;
+            if (_side === 'enemy' && u.owner === owner) return;
+            /* 📐 …and the range test is the hex one. This was Chebyshev —
+               Math.max(|dx|, |dy|) — which on an odd row reaches tiles that are
+               not neighbours and misses tiles that are. HEXSPEC §5: distance()
+               is the only correct measure, and every other radius in this
+               handler already goes through inRadius. SELF never asks: a unit
+               is at distance zero from itself, and a hand / grave / field
+               ability resolves through a hero-anchored caster whose pos is not
+               a real board position. */
+            if (!u.pos || !inRadius(u)) return;
+          }
           const d = window.MythicCounters.add(state, u, _n, _tid);
           if (d) { touched++; moved += Math.abs(d); }
         });
+        /* 🖐 A CASTER THAT IS NOT ON THE BOARD still gets its own counters.
+           A hand ability, a graveyard ability and a card-shaped permanent all
+           resolve through a synthetic caster anchored on the hero, which is
+           not in state.units — so 'self' had nothing to find even once the id
+           test was right. Applied to the caster itself in that case, which is
+           what the card says and where the ability that SPENDS them looks. */
+        if (_side === 'self' && touched === 0 && unit) {
+          const d = window.MythicCounters.add(state, unit, _n, _tid);
+          if (d) { touched++; moved += Math.abs(d); }
+        }
         // 🌋 Card-shaped permanents you control take counters too — this is the
         // "not just units, location cards can have counters" half of the spec.
         if (_side === 'ally' || _side === 'all') {
@@ -114981,6 +115133,10 @@ function _fireAnywhereForSummons(state, res) {
     for (const sid of res.spawned) {
       const live = (s.units || []).find(u => u && u.id === sid && u.alive);
       if (live) s = _fireAnywhereOnPlay(s, live, res.def || null);
+      /* …and a summoned unit ENTERS the battlefield too — this is the choke
+         point every effect-spawned unit passes through. */
+      const live2 = (s.units || []).find(u => u && u.id === sid && u.alive);
+      if (live2 && typeof _punishEntry === 'function') { try { s = _punishEntry(s, live2); } catch (e) {} }
     }
     return s;
   } catch (e) { return state; }
@@ -116921,6 +117077,12 @@ function _fireTriggers(state, event, ctx) {
   // Snapshot the responder ids first; effects can mutate the unit list.
   // 🃏 A face-down (Subterfuge) unit is a hidden trap — its trigger abilities stay
   // DORMANT until it's flipped face up. Triggers only fire while face up.
+  /* 💥 AN ARRIVAL IS AN ARRIVAL. Both hand-deploy paths already announce it
+     here, so the Punish Arrivals sweep hangs off the event rather than off a
+     ninth hand-rolled call site. */
+  if (event === 'summon' && ctx.unit && typeof _punishEntry === 'function') {
+    try { s = _punishEntry(s, (s.units || []).find(u => u && u.id === ctx.unit.id) || ctx.unit); } catch (e) {}
+  }
   const ids = s.units.filter(u => u && u.alive && !u.isFaceDown && _unitTriggers(u).length).map(u => u.id);
   for (const uid0 of ids) {
     const live = (s.units || []).find(x => x && x.id === uid0 && x.alive);
@@ -122577,6 +122739,10 @@ const endPlayerTurn = (state) => {
   s = _expireEotGrants(s, 'player'); _clearTurnGrants('player');
   // ⚡ turnEnd triggers (player's turn ending). actorOwner = 'player'.
   try { if (typeof _fireTriggers === 'function') s = _fireTriggers(s, 'turnEnd', { actorOwner: 'player', side: 'player' }); } catch (e) {}
+  // ⚰️ …and anything that declared "if I wasn't called from your hand, I fall
+  //    at the end of your turn". AFTER the turnEnd triggers on purpose: a card
+  //    that answers its own end-of-turn gets to answer before it goes.
+  try { if (typeof _eotNotFromHandSweep === 'function') s = _eotNotFromHandSweep(s, 'player'); } catch (e) {}
   // ⚰ In-Grave tick (player's turn ending) — fires before we transition the
   // turn pointer so 'turnEnd' graveyard effects belong to the side that just
   // finished playing. Symmetrical with the turnStart hook in startTurn.
@@ -122609,6 +122775,7 @@ const endAITurn = (state) => {
   try { s = _vanishReturnTick(s, 'player'); s = _vanishReturnTick(s, 'ai'); } catch (e) {}
   // ⚡ turnEnd triggers (AI's turn ending). actorOwner = 'ai'.
   try { if (typeof _fireTriggers === 'function') s = _fireTriggers(s, 'turnEnd', { actorOwner: 'ai', side: 'ai' }); } catch (e) {}
+  try { if (typeof _eotNotFromHandSweep === 'function') s = _eotNotFromHandSweep(s, 'ai'); } catch (e) {}
   // 🧹 Belt + suspenders — clear any UI state that could have leaked from
   // the AI turn (counter prompt that never closed, chain stack that never
   // settled, half-applied counter flash). Without this, a stuck counter
@@ -161737,8 +161904,176 @@ function _counterTickPunishers(state, opts) {
     }
   } catch (e) {}
 }
+/* 🗂 EVERY EFFECT AUTHORED ON A CARD, wherever the author put it. The three
+   effects below are conditions, not actions: nothing "resolves" them, so the
+   engine has to be able to find them by reading the card. The slots are the
+   same five _cardMentionText walks, plus the trigger list, so an author who
+   drops 🔇 Suppression Aura into an Extra Effect or a trigger gets the same
+   behaviour as one who puts it in the primary slot. */
+function _authoredEffectsOf(c) {
+  if (!c || typeof c !== 'object') return [];
+  try {
+    let out = []
+      .concat(c.onPlay ? [c.onPlay] : [])
+      .concat(Array.isArray(c.onPlayExtra) ? c.onPlayExtra : [])
+      .concat(c.graveActive && c.graveActive.effect ? [c.graveActive.effect] : [])
+      .concat(c.fieldActive && c.fieldActive.effect ? [c.fieldActive.effect] : [])
+      .concat(c.handActive && c.handActive.effect ? [c.handActive.effect] : [])
+      .concat(c.flipEffect ? [c.flipEffect] : [])
+      .concat(c.inGrave ? [c.inGrave] : []);
+    if (Array.isArray(c.triggers)) for (const t of c.triggers) { if (t && t.effect) out.push(t.effect); }
+    return out.filter(e => e && typeof e === 'object' && e.type);
+  } catch (e) { return []; }
+}
+/* The effect object a LIVE UNIT declares, or null. A unit on the board carries
+   runtime fields only, so the authored effects come off its card definition —
+   the same resolution _unitAuras does, for the same reason. A face-down unit
+   is a hidden trap and declares NOTHING until it is flipped, which is the rule
+   every trigger in this file already follows. */
+function _unitDeclaresEffect(u, id) {
+  try {
+    if (!u || !u.alive || u.isFaceDown || !id) return null;
+    if ((u._negatedTurns | 0) > 0 || u._negatedBy) return null;   // its effects are off
+    const own = _authoredEffectsOf(u).find(e => e.type === id);
+    if (own) return own;
+    const cid = u.cardId || u.originalCardId;
+    const def = (cid && typeof _cardDefById === 'function') ? _cardDefById(cid) : null;
+    return def ? (_authoredEffectsOf(def).find(e => e.type === id) || null) : null;
+  } catch (e) { return null; }
+}
+/* Every live unit on `side` declaring `id`, as {unit, eff} pairs. */
+function _boardDeclarers(state, id, side) {
+  const out = [];
+  try {
+    for (const u of ((state && state.units) || [])) {
+      if (!u || !u.alive) continue;
+      if (side && u.owner !== side) continue;
+      const eff = _unitDeclaresEffect(u, id);
+      if (eff) out.push({ unit: u, eff });
+    }
+  } catch (e) {}
+  return out;
+}
+/* 🔇 IS THIS SIDE SUPPRESSED? True when the OPPOSING side has a live, face-up
+   unit declaring 🔇 Suppression Aura. Deliberately a live board read rather
+   than a status stamped on the enemy's cards: the aura has to end the instant
+   the unit leaves the field, and a stamped status outlives its source. */
+var _silenceMemo = null;   // { units: <the array identity>, player: u|null, ai: u|null }
+function _isSilencedBy(state, side) {
+  try {
+    if (!state || !side || !Array.isArray(state.units)) return null;
+    /* 🗃 Keyed on the units array BY IDENTITY, exactly as _auraSrcMemo is: the
+       engine rebuilds that array for every board change, so the memo expires
+       the moment the aura's source could have moved, died or been flipped. It
+       matters because applyOnPlayEffect asks this on every single resolution. */
+    if (_silenceMemo && _silenceMemo.units === state.units) return _silenceMemo[side] || null;
+    const find = (sd) => {
+      const list = _boardDeclarers(state, 'auraSilence', sd === 'player' ? 'ai' : 'player');
+      return list.length ? list[0].unit : null;
+    };
+    _silenceMemo = { units: state.units, player: find('player'), ai: find('ai') };
+    return _silenceMemo[side] || null;
+  } catch (e) { return null; }
+}
+/* The five lock categories are unchanged; 'spell', 'passive' and 'onplay' may
+   now ALSO be answered by a suppression aura standing on the other side.
+   Every existing caller gets the aura for free — which is the whole reason the
+   aura is expressed here instead of at nine separate call sites. */
+const _SILENCED_CATS = { spell: true, passive: true, onplay: true };
 function _battleIsLocked(state, side, cat) {
-  try { return !!(state && state[side] && state[side]._locks && state[side]._locks[cat]); } catch (e) { return false; }
+  try {
+    if (state && state[side] && state[side]._locks && state[side]._locks[cat]) return true;
+    if (_SILENCED_CATS[cat] && _isSilencedBy(state, side)) return true;
+    return false;
+  } catch (e) { return false; }
+}
+/* 💥 AN ENEMY UNIT JUST LANDED. Every live unit on the other side declaring
+   punishEntry hits it for `amount` (10 by default), and for `amount` again
+   when the arrival is weak to the punisher's element or faction — the same
+   two tables the damage formula reads, so "weak to" means on the card what it
+   means in combat. Marked per arrival so one entry cannot be punished twice by
+   the same unit if two arrival hooks both see it. */
+function _punishEntry(state, entering) {
+  try {
+    if (!state || !entering || !entering.alive || entering.isWall) return state;
+    const foe = entering.owner === 'player' ? 'ai' : 'player';
+    const punishers = _boardDeclarers(state, 'punishEntry', foe);
+    if (!punishers.length) return state;
+    const log = [...(state.log || [])];
+    let units = state.units.slice();
+    const elemsOf = (u) => (typeof getElementsOf === 'function' ? (getElementsOf(u) || []) : (u.elements || []));
+    const facsOf  = (u) => (typeof getFactionsOf === 'function' ? (getFactionsOf(u) || []) : (u.factions || []));
+    for (const { unit: p, eff } of punishers) {
+      if (p.id === entering.id) continue;
+      const live = units.find(x => x && x.id === entering.id && x.alive);
+      if (!live) break;                                  // it died to an earlier punisher
+      if ((live._entryPunishedBy || []).indexOf(p.id) >= 0) continue;
+      const base = Math.max(1, (eff.amount | 0) || 10);
+      /* WEAK TO THIS UNIT'S ELEMENT — MATCHUPS[e].weakTo lists the elements
+         that are strong against e, which is exactly "e is weak to them". */
+      let weak = false;
+      try {
+        const mine = elemsOf(p);
+        for (const de of elemsOf(live)) {
+          const m = (typeof MATCHUPS !== 'undefined' && MATCHUPS[de]) || null;
+          if (m && (m.weakTo || []).some(x => mine.indexOf(x) >= 0)) { weak = true; break; }
+        }
+      } catch (e) {}
+      /* …OR TO ITS FACTION — getFactionMatchup(f).weakVs is derived the same way. */
+      if (!weak) {
+        try {
+          const mine = facsOf(p);
+          for (const df of facsOf(live)) {
+            const m = (typeof getFactionMatchup === 'function') ? getFactionMatchup(df) : null;
+            if (m && (m.weakVs || []).some(x => mine.indexOf(x) >= 0)) { weak = true; break; }
+          }
+        } catch (e) {}
+      }
+      const dmg = weak ? base * 2 : base;
+      const trig = applyDamageTriggers(live, dmg, 'physical');
+      const hurt = { ...trig.unit, _entryPunishedBy: (live._entryPunishedBy || []).concat([p.id]) };
+      units = units.map(x => (x && x.id === entering.id) ? hurt : x);
+      (trig.log || []).forEach(l => log.push(l));
+      log.push({
+        msg: '💥 ' + (p.name || 'A unit') + ' punishes ' + (live.name || 'the arrival') + ' for ' + dmg + '!',
+        sub: weak ? (live.name || 'It') + ' is weak to ' + (p.name || 'it') + ' — ' + base + ' + ' + base : '',
+        color: p.owner === 'player' ? 'green' : 'red', kind: 'activate',
+        cardId: p.originalCardId || p.cardId || null, cardType: p.isHero ? 'hero' : 'unit', icon: '💥',
+      });
+      if (!hurt.alive && hurt.isHero) state = { ...state, gameOver: hurt.owner === 'player' ? 'ai' : 'player' };
+    }
+    return { ...state, units, log };
+  } catch (e) { return state; }
+}
+/* ⚰️ END OF `side`'s TURN — anything declaring exileIfNotFromHand that did NOT
+   come from that player's hand goes to the graveyard. _fromHand is stamped by
+   the two hand-deploy paths and by nothing else, so a token, a raise, a summon,
+   a tunnel emergence and a mutate all read as "not called from your hand".
+   Destroyed exactly the way the Send Matching effect destroys a unit — zeroed
+   and routed through _battleOnUnitKilled — so the graveyard entry, the
+   tombstone and the death triggers are the ordinary ones. */
+function _eotNotFromHandSweep(state, side) {
+  try {
+    if (!state || !Array.isArray(state.units)) return state;
+    const doomed = _boardDeclarers(state, 'exileIfNotFromHand', side).filter(d => !d.unit._fromHand);
+    if (!doomed.length) return state;
+    const ids = new Set(doomed.map(d => d.unit.id));
+    const log = [...(state.log || [])];
+    let s2 = { ...state, units: state.units.map(u => ids.has(u.id) ? { ...u, currentHp: 0, alive: false } : u) };
+    for (const d of doomed) {
+      log.push({
+        msg: '⚰️ ' + (d.unit.name || 'A unit') + ' was not called from your hand — it falls at the end of the turn.',
+        color: side === 'player' ? 'red' : 'green', kind: 'death',
+        cardId: d.unit.originalCardId || d.unit.cardId || null, cardType: 'unit', icon: '⚰️',
+      });
+      try {
+        const dead = (s2.units || []).find(u => u && u.id === d.unit.id);
+        const ph = (s2.units || []).find(h => h && h.owner === side && h.isHero);
+        if (dead && typeof _battleOnUnitKilled === 'function') _battleOnUnitKilled(s2, ph || null, dead);
+      } catch (e) {}
+    }
+    return { ...s2, log };
+  } catch (e) { return state; }
 }
 function _battleApplyCounterLock(state, card, lockedSide) {
   try {
@@ -163363,7 +163698,10 @@ function _activateAssaultCard(instanceId) {
   else _completeAssaultAttack();
 }
 // Execute the pending attack that was deferred for the assault prompt.
+/* An attack was never charged through the cost gate, but a play parked behind
+   the SAME overlay may have been — so this path releases the receipt too. */
 function _completeAssaultAttack() {
+  try { if (!(App.ui && App.ui.assaultPrompt && App.ui.assaultPrompt.kind === 'spell')) App._cardCostPaid = null; } catch (e) {}
   const ap = App.ui && App.ui.assaultPrompt;
   App.ui.assaultPrompt = null;
   if (!ap) { renderBattle(); return; }
@@ -163419,10 +163757,19 @@ function _completeAssaultAttack() {
 function _completeAssaultSpell() {
   const ap = App.ui && App.ui.assaultPrompt;
   App.ui.assaultPrompt = null;
-  if (!ap || !ap.pendingSpellCard) { renderBattle(); return; }
+  if (!ap || !ap.pendingSpellCard) { try { App._cardCostPaid = null; } catch (e) {} renderBattle(); return; }
   // _inAssaultSpellResume prevents re-triggering the assault prompt a second time.
   App._inAssaultSpellResume = true;
-  try { playSpell(ap.pendingSpellCard); } finally { App._inAssaultSpellResume = false; }
+  /* 🩹 v121v128 — this is the hand that FINISHES a play the cost gate paid for
+     and then suspended, so it is the hand that tears the receipt up. Without
+     the receipt surviving to here the cost was charged twice and the spell
+     never resolved; without clearing it here the receipt would outlive the
+     play and the next copy of that instance would cast for free. */
+  try { playSpell(ap.pendingSpellCard); }
+  finally {
+    App._inAssaultSpellResume = false;
+    try { if (App._cardCostPaid === ap.pendingSpellCard.instanceId) App._cardCostPaid = null; } catch (e) {}
+  }
 }
 
 // ============================================================
@@ -172202,6 +172549,9 @@ function _playOnPlayCinematicImpl(unit, card, opts) {
         case 'sendMatching':  return `Send ${a || 1} matching card${(a || 1) === 1 ? '' : 's'} from your ${onPlay.sendZone === 'hand' ? 'hand' : onPlay.sendZone === 'field' ? 'field' : 'hand or field'} to the graveyard.`;
         case 'empowerTeam':   return `Your units${onPlay.empowerHero === false ? '' : ' and hero'} gain +${a || 30}% ATK and MAG.`;
         case 'transformAlly': return `Force-ascend a nearby ally to Kalon.`;
+        case 'auraSilence':   return `While this is on the field, enemies cannot cast spells, activate abilities or fire on-play effects.`;
+        case 'exileIfNotFromHand': return `If this was not called from your hand, it goes to the graveyard at the end of your turn.`;
+        case 'punishEntry':   return `Deals ${a || 10} damage to every enemy unit that enters the field — ${(a || 10) * 2} if it is weak to this unit.`;
         case 'intimidate':  return `Debuff enemies ${r}.`;
         case 'kalonSource': return `Gain ${a || 1} Kalon source.`;
         case 'summon':      return `Summon ${a || 1} reinforcement${(a||1) > 1 ? 's' : ''} adjacent.`;
@@ -175512,6 +175862,11 @@ function placeUnit(card, pos, opts) {
   }
   const prof = getUnitProfile(card.id);
   const unit = buildUnit(card, 'player', pos, ph.heroPassive, prof.level, prof.xp);
+  /* 🖐 v121v128 — THIS is a hand play, and nothing else in the file is. Eight
+     paths call buildUnit; the other seven are summons, raises, tokens, tunnel
+     emergences and mutates, none of which were "called from your hand". The
+     ⚰️ Banish Unless Called From Hand effect reads exactly this flag. */
+  unit._fromHand = true;
   // 🃏 SUBTERFUGE — set the unit FACE DOWN (a hidden trap). Its Flip Effect fires
   // LATER when revealed (manual flip on a later turn, an enemy moving adjacent, or
   // taking damage), NOT on placement. Falls back to the card's on-play effect as the
@@ -177784,6 +178139,9 @@ function aiScoreUnitCard(card, state, playerProf) {
     else if (t === 'takeControlAll')  score += 120;                                  // every enemy unit — the biggest swing in the game
     else if (t === 'sacrificeNearby') score += 6 * ((onPlay.sacDamage | 0) || (onPlay.amount | 0) || 10);
     else if (t === 'empowerTeam')     score += 2.2 * ((onPlay.amount | 0) || 30);     // permanent team ATK/MAG
+    else if (t === 'auraSilence')     score += 90;                                    // 🔇 shuts the other side's effects off entirely
+    else if (t === 'punishEntry')     score += 2.5 * ((onPlay.amount | 0) || 10);     // 💥 taxes every arrival for as long as it lives
+    else if (t === 'exileIfNotFromHand') score -= 20;                                 // ⚰️ a drawback, not a payoff
     else if (t === 'summonSelf')      score += 45;                                    // a free body out of the grave
     else if (t === 'sendMatching')    score += 10;                                    // cost-shaped; mild on its own
     else if (t === 'millSearch')      score += 12;
@@ -178291,7 +178649,7 @@ function doAIStep() {
           // COUNTER window first (trigger 'summon'). Uses `s` (unchanged unless
           // the player counters, in which case we take the negate branch instead).
           const _deployBestUnit = () => {
-            const newUnit = { ...buildUnit(best, 'ai', target, aiHero.heroPassive), aiActed: false };
+            const newUnit = { ...buildUnit(best, 'ai', target, aiHero.heroPassive), aiActed: false, _fromHand: true };   // 🖐 the AI's hand play (v121v128)
             // 🏃 Speed — mirror the player deploy path: buildUnit defaults every unit
             // summoning-sick, so Speed must actively clear the flags (Defender still can't attack).
             if (hasPassive(newUnit, 'speed') || _turnGrantGives(newUnit, 'speed')) { newUnit.hasMoved = false; newUnit.hasAttacked = hasPassive(newUnit, 'defender'); }
@@ -178518,6 +178876,7 @@ function doAIStep() {
       for (const u of (s.units || [])) {
         if (!u || !u.alive || u.owner !== 'ai' || u.isFaceDown) continue;
         if ((u._negatedTurns | 0) > 0 || u._negatedBy) continue;
+        if (typeof _battleIsLocked === 'function' && _battleIsLocked(s, 'ai', 'passive')) break;   // 🔇 suppressed
         const fa = _fieldAbilityOf(u);
         if (!fa) continue;
         let cost = Math.max(0, fa.energyCost | 0);
@@ -185708,6 +186067,21 @@ function renderCamp() {
   `;
   const _dbBtn = document.getElementById('camp-debrief-close');
   if (_dbBtn) _dbBtn.onclick = () => { App._campDebrief = null; render(); };
+  /* 📜 v121v128 (bug-mtxmvepn) — KEEP THE DEPLOY LISTS WHERE THE PLAYER LEFT
+     THEM. Every deploy action calls render(), which rebuilds this whole screen
+     from a template string: the two .dpx-scroll panes that come back are new
+     elements, at scrollTop 0. Deploying the survivor at the bottom of a long
+     roster therefore meant scrolling the whole list again for the next one.
+     Remembered per pane (they are the only scrollers in this layout) and
+     restored before paint, so there is no visible jump-and-return. */
+  try {
+    const _dpx = App._dpxScroll || (App._dpxScroll = {});
+    document.querySelectorAll('.dpx-scroll').forEach((el, i) => {
+      const key = (App._campDeployTab || 'deploy') + ':' + i;
+      if (_dpx[key] > 0) el.scrollTop = _dpx[key];
+      el.addEventListener('scroll', () => { try { _dpx[key] = el.scrollTop; } catch (e) {} }, { passive: true });
+    });
+  } catch (e) {}
   // 🧭 Deploy / Park / Barracks rail. Deploy shows both panels (the reference
   // layout); Park and Barracks each show one full-width.
   root.querySelectorAll('[data-dpxtab]').forEach(b => {
@@ -256266,7 +256640,14 @@ try {
         case 'camp-defend-convoy': openConvoyDefense(); break;
         case 'convoy-launch': launchConvoyDefense(); break;
         case 'recon-open': App.screen = 'reconstruction'; try { render(); } catch (err) {} break;
-        case 'recon-back': App.screen = 'camp'; try { render(); } catch (err) {} break;
+        /* 🩹 v121v128 (bug-mtxqh027) — the LAST back button in the camp that
+           still named a screen instead of asking where the player came from.
+           'camp' is the BUNKER (renderCamp with the base-builder over it); the
+           camp page is 'campOps'. So opening Reconstruction from the camp and
+           pressing Back dropped the player into the bunker and made them walk
+           back in. _campBackTarget() is the rule v121v48 wrote for exactly
+           this, and every other sub-screen already asks it. */
+        case 'recon-back': App.screen = (typeof _campBackTarget === 'function') ? _campBackTarget() : 'camp'; try { render(); } catch (err) {} break;
         case 'recon-reclaim': { const s = t.getAttribute('data-site'); if (s) openReconReclaim(s); break; }
         case 'recon-reclaim-confirm': { const s = t.getAttribute('data-site'); if (s) reconReclaim(s); break; }
         case 'recon-ev-choice': { const i = +t.getAttribute('data-idx'), ci = +t.getAttribute('data-cidx'); reconEventChoice(i, ci); break; }
@@ -266355,8 +266736,8 @@ try {
        that works everywhere except the one early path nobody tested. It is
        2KB with no dependencies. -->
 <script src="src/econ/peg.js?v=v121q51"></script>
-<script src="src/battle/effects.js?v=v121v127" defer></script>
-<script src="src/phone/handset.js?v=v121v127" defer></script>
+<script src="src/battle/effects.js?v=v121v128" defer></script>
+<script src="src/phone/handset.js?v=v121v128" defer></script>
 <script src="src/battle/combat.js?v=120m4" defer></script>
 <script src="src/battle/targeting.js?v=121e3hex" defer></script>
 <link rel="stylesheet" href="src/sprites/frames.css?v=120k3">

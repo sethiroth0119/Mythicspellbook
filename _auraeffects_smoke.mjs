@@ -31,6 +31,13 @@ function slice(name) {
   }
   return SRC.slice(i + 1, k + 1);
 }
+/* …and one whole top-level line, by its opening text. Slicing a fixed number
+   of characters cut the object literal in half. */
+function line(head) {
+  const i = SRC.indexOf('\n' + head);
+  if (i < 0) throw new Error('no line ' + head);
+  return SRC.slice(i + 1, SRC.indexOf('\n', i + 1) + 1);
+}
 
 /* ── the vocabulary ───────────────────────────────────────────────────────── */
 ok(/\{ id: 'auraSilence',\s+label: '🔇 Suppression Aura/.test(SRC), '🔇 Suppression Aura is an effect type an author can pick');
@@ -59,8 +66,8 @@ ok(/\{ id: 'punishEntry',\s+label: '💥 Punish Arrivals/.test(SRC) && /needs: \
     extra:    { id: 'extra', name: 'Late Hush', onPlay: { type: 'drawCards' }, onPlayExtra: [{ type: 'auraSilence' }] },
   };
   const code = slice('_authoredEffectsOf') + slice('_unitDeclaresEffect') + slice('_boardDeclarers')
-    + slice('_isSilencedBy') + 'var _silenceMemo = null;'
-    + SRC.slice(SRC.indexOf('const _SILENCED_CATS'), SRC.indexOf('const _SILENCED_CATS') + 60)
+    + 'var _silenceMemo = null;' + slice('_isSilencedBy')
+    + line('const _SILENCED_CATS')
     + slice('_battleIsLocked')
     + '\nreturn { _isSilencedBy, _battleIsLocked, _unitDeclaresEffect, _boardDeclarers };';
   const F = new Function('_cardDefById', 'MATCHUPS', 'getFactionMatchup', code);
@@ -119,14 +126,19 @@ ok(/\{ id: 'punishEntry',\s+label: '💥 Punish Arrivals/.test(SRC) && /needs: \
     return out.units.find(u => u.id === arrival.id);
   };
 
-  const neutral = run({ id: 'a', alive: true, owner: 'player', name: 'Neutral', currentHp: 100, elements: ['water'], factions: ['knight'] });
+  /* The warden is water / demon. Neutral therefore has to be weak on NEITHER
+     axis: water is not weak to water, and demon is not weak to demon. */
+  const neutral = run({ id: 'a', alive: true, owner: 'player', name: 'Neutral', currentHp: 100, elements: ['water'], factions: ['demon'] });
   ok(neutral.currentHp === 90, 'run for real: an arrival that is not weak takes the flat 10', neutral.currentHp);
 
-  const weakElem = run({ id: 'a', alive: true, owner: 'player', name: 'Ember', currentHp: 100, elements: ['fire'], factions: ['knight'] });
+  /* weak by ELEMENT only — fire is weak to water, demon is not weak to demon */
+  const weakElem = run({ id: 'a', alive: true, owner: 'player', name: 'Ember', currentHp: 100, elements: ['fire'], factions: ['demon'] });
   ok(weakElem.currentHp === 80, 'run for real: fire is weak to water — 10 + 10, exactly as the card reads', weakElem.currentHp);
 
+  /* weak by FACTION only — water is not weak to water, but knight is weak to
+     demon. "its faction OR element" means either axis alone is enough. */
   const weakFac = run({ id: 'a', alive: true, owner: 'player', name: 'Paladin', currentHp: 100, elements: ['water'], factions: ['knight'] });
-  ok(weakFac.currentHp === 90, 'run for real: knight is weak to demon by FACTION — but this warden is checked against its own factions, so the tables decide, not the test');
+  ok(weakFac.currentHp === 80, 'run for real: knight is weak to demon by FACTION alone — the card says faction OR element, so either axis doubles it', weakFac.currentHp);
 
   const own = (() => {
     const ally = { id: 'a', alive: true, owner: 'ai', name: 'Friend', currentHp: 100, elements: ['fire'], factions: [] };
