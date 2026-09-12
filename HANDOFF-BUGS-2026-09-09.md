@@ -1024,3 +1024,62 @@ right. `.forge-header` itself is NOT re-laid-out — it is shared by many screen
 and changing it globally to move one button is how a header regression reaches
 pages nobody tested. (I had this filed as blocked on "which screen"; the repro
 was in the report and I had not read it carefully enough.)
+
+---
+
+## v121v134 — the acting card's ART, on all three ability surfaces
+
+Owner, pointing at the ⚡ ABILITY ACTIVATED panel: *"It is this black transparent
+box line here you can remove this for me"* — and, separately, *"When Heros or
+units use their ability show the card art right now it is show the old card
+frame and an emoji"*.
+
+**Both sentences are the same bug.** Three surfaces asked one resolver,
+`_abilityCardArt`, for the acting card's picture, and it failed far more often
+than it should — so each showed its own fallback:
+
+| surface | fallback the player saw |
+|---|---|
+| the ⚡ panel | `.ab-card` with no `<img>` — `background:#0c0a12` inside a coloured border. **That is the black transparent box.** |
+| the activation cinematic | `vfx-cine-card` painted with the frame PNG. **That is the "old card frame".** |
+| the battle log | `_abilityFrameUrl` first, then the `.em` **emoji**. |
+
+**Why it failed.** `_abilityCardArt` deliberately refuses any `blob:` URL,
+because the art LRU can revoke one. But `_lazyLoadCardArt` stores every streamed
+card art as exactly that — `Forge.cardArt[id] = _artBlobToUrl(v)`. So the art the
+player was looking at **on the board** was resident, usable, and thrown away.
+What was left was the thumbnail tier, which returns `null` on the FIRST ask by
+design (`getThumb` kicks an async IDB read and answers null until it lands) — and
+the panel is a one-shot DOM node, so "the next render" never comes for it.
+
+**The fix** — one resolver, `_abilityArtBest(cardId, big)`, shared by all three:
+
+1. a stable cloud/data URL first, as before — nothing can revoke it;
+2. then the **resident art, `blob:` included**. Reading it LRU-touches the id, so
+   it is the newest of 500 and a 14s panel cannot outlive it, and every call site
+   already pairs its `<img>` with an `onerror` that hides a failed load. A
+   revocable URL that renders beats a frame PNG that is not the card;
+3. then the thumbnail tier and the multiplayer visualiser's art;
+4. and when nothing is resident it **kicks the forced disk read**, so the next
+   paint has it — which is what the constantly-repainting log needs.
+
+`big` picks the order between 2 and 3: the 72px panel row and the log thumbnail
+prefer the tiny thumb (no full-res decode for a postage stamp), the full-screen
+cinematic does not. Sibling `h_`/`u_` ids are tried, because the Forge files hero
+and unit art under them while a battle unit carries only the bare card id.
+
+**And the black box is gone on both paths.** `_abilityCardHtml` emits no box at
+all when there is no art and none coming; when a streamed read is still in
+flight it emits the box **hidden** and `_abilityArtWatch` polls ~3.6s and reveals
+it the moment the art lands. The poll stops dead when the panel closes.
+
+⚠ The frame fallback is **removed** from the log — the owner named it as the
+wrong thing to show. The cinematic keeps one only for a card with no art
+anywhere, where an empty spotlight would be worse than a card back.
+
+Suite: `_abilityart_smoke.mjs` (runs the resolution order for real, including the
+`blob:` that used to be discarded). `_battlelog_smoke.mjs`'s art pin used to
+REQUIRE the frame fallback; it now requires its absence, and the claim it was
+written to protect — art resolved at render time, never stored on the entry,
+because the log is copied into every replay snapshot and sent whole over the
+socket — is asserted unchanged.

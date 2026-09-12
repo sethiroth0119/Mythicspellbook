@@ -11,8 +11,20 @@ const HUD = readFileSync('./public/base/hud.jsx', 'utf8').replace(/\r\n/g, '\n')
 
 /* ── 1. the log shows the card ── */
 ok(/function _bcLogRow\(l\) \{/.test(SRC) && /visible\.slice\(-400\)\.reverse\(\)\.map\(l => _bcLogRow\(l\)\)/.test(SRC), 'every row is built from the entry, not interpolated into one string');
-ok(/function _bcLogArt\(l\) \{/.test(SRC) && /_abilityCardArt\(l\.cardId\)/.test(SRC) && /_abilityFrameUrl\(l\.cardType \|\| 'unit'\)/.test(SRC),
-  'the art is resolved from the card id at RENDER time, with the frame as fallback');
+/* ⚠ THIS PIN USED TO REQUIRE THE FRAME FALLBACK. v121v134 removed it because the
+   owner named it as the wrong thing to show — "it is show the old card frame and
+   an emoji" where the card art belongs — so the pin now requires its ABSENCE.
+   The claim it was actually written to protect is untouched: the art is resolved
+   at RENDER time and never stored on the entry, because the log is copied into
+   every replay snapshot and sent whole over the socket, where a data: URL on an
+   entry would be paid for a thousand times over. */
+{
+  const f = SRC.slice(SRC.indexOf('function _bcLogArt(l) {'), SRC.indexOf('function _bcLogRow(l) {'));
+  ok(/function _bcLogArt\(l\) \{/.test(SRC) && /_abilityArtBest\(l\.cardId, false\)/.test(f),
+    'the art is resolved from the card id at RENDER time, never stored on the entry');
+  ok(!/_abilityFrameUrl/.test(f) && !/artUrl:/.test(f),
+    '…and the generic card back is NOT drawn in its place — no art at all falls through to the emoji instead');
+}
 ok(/if \(!l \|\| !l\.cardId \|\| l\.hidden\) return '';/.test(SRC), 'a face-down card shows no art — the same redaction the on-screen flourish uses');
 ok(!/artUrl: /.test(SRC.slice(SRC.indexOf('function _afxLogEntry'), SRC.indexOf('function _afxAnnounce'))),
   'an entry NEVER carries the art itself: the log is cloned into up to 1200 replay snapshots and sent whole over the socket');

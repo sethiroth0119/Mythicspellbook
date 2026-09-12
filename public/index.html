@@ -39453,7 +39453,7 @@ body:has(#pack-opener-frame) #chat-overlay {
   // the console. Bump this every deploy alongside sw.js's CACHE_VERSION. If two
   // machines show different stamps, the older one is on stale code (hard-refresh);
   // if they MATCH but content still differs, it is a DATA/publish issue, not code.
-  window.BUILD_VERSION = 'v121v133';
+  window.BUILD_VERSION = 'v121v134';
   try {
     console.info('%cMythic Spellbook ' + window.BUILD_VERSION + '%c — build check: run  __mg.version',
       'font-weight:700;color:#b48cff', 'color:#7d7499');
@@ -109273,16 +109273,112 @@ function _abilityFrameUrl(cardType) {
   return 'assets/Frames/' + (FR[cardType] || 'unit%20card') + '.png?v=4';
 }
 
+/* 🎴 v121v134 — THE ONE RESOLVER the ability panel, the cinematic and the battle
+   log all ask. Owner: "when Heros or units use their ability show the card art —
+   right now it is show the old card frame and an emoji."
+
+   The old resolver refused every `blob:` URL for fear of the art LRU revoking
+   it, and _lazyLoadCardArt stores EVERY streamed card art as a blob: — so the
+   art on screen on the board was resident and usable and this threw it away.
+   It is accepted here because reading it LRU-touches the id (newest of 500, so
+   no 14s panel can outlive it) and every call site pairs its <img> with an
+   onerror. A revocable URL that renders beats a frame PNG that is not the card.
+
+   Sibling ids are tried because a hero's art is saved under h_<id> and a unit's
+   under u_<id> by the Forge, and a battle unit carries only the bare card id.
+   `big` picks between full art and the tiny thumb: a 72px row wants the thumb
+   (no full-res decode for a postage stamp), the full-screen cinematic does not. */
+function _abilityArtIds(cardId) {
+  const id = String(cardId || '');
+  return id ? [id, 'u_' + id, 'h_' + id] : [];
+}
+function _abilityArtBest(cardId, big) {
+  const ids = _abilityArtIds(cardId);
+  if (!ids.length) return null;
+  const stable = () => {
+    try { if (typeof Forge !== 'undefined' && Forge.cardArtUrl) { for (const i of ids) if (Forge.cardArtUrl[i]) return Forge.cardArtUrl[i]; } } catch (e) {}
+    return null;
+  };
+  const thumb = () => {
+    try { if (typeof getThumb === 'function') { for (const i of ids) { const t = getThumb(i); if (t) return t; } } } catch (e) {}
+    return null;
+  };
+  const resident = () => {
+    try {
+      if (typeof Forge !== 'undefined' && Forge.cardArt) {
+        for (const i of ids) {
+          const a = Forge.cardArt[i];
+          if (a) { try { _lazyTouch('car', i); } catch (e) {} return (typeof _frameUrl === 'function') ? _frameUrl(a) : a; }
+        }
+      }
+    } catch (e) {}
+    return null;
+  };
+  const mp = () => {
+    try { if (typeof App !== 'undefined' && App._mpViz && App._mpViz.art) { for (const i of ids) if (App._mpViz.art[i]) return App._mpViz.art[i]; } } catch (e) {}
+    return null;
+  };
+  const order = big ? [stable, resident, thumb, mp] : [stable, thumb, resident, mp];
+  for (const f of order) { const v = f(); if (v) return v; }
+  // Nothing resident — pull it off disk so the NEXT paint has it. Forced, because
+  // the _carIds index is not proof of absence (art written in the other storage
+  // mode lives in the monolith and was never indexed).
+  try { if (typeof _lazyLoadCardArt === 'function') for (const i of ids) _lazyLoadCardArt(i, true); } catch (e) {}
+  return null;
+}
+/* Is a read worth WAITING for? Only if the id is known to disk — otherwise the
+   panel would hold an empty slot open for a card that has no art at all. */
+function _abilityArtKnown(cardId) {
+  try {
+    for (const i of _abilityArtIds(cardId)) {
+      if (typeof Forge === 'undefined') break;
+      if (Forge.cardArtUrl && Forge.cardArtUrl[i]) return true;
+      if (Forge.cardArt && Forge.cardArt[i]) return true;
+      if (Forge._carIds && Forge._carIds.has(i)) return true;
+      if (Forge._thumbIds && Forge._thumbIds.has(i)) return true;
+    }
+  } catch (e) {}
+  return false;
+}
+/* The ⚡ panel is a one-shot DOM node — it is appended once and never
+   re-rendered, so a streamed read that lands 200ms later would otherwise never
+   reach it. Poll briefly, fill the <img>, reveal the frame. If it never lands,
+   the box stays hidden: no empty black square either way. */
+let _abArtSeq = 0;
+function _abilityArtWatch(domId, cardId) {
+  let tries = 12;                                  // ~3.6s, then give up quietly
+  const tick = () => {
+    const box = document.getElementById(domId);
+    if (!box) return;                              // panel closed — stop
+    const art = _abilityArtBest(cardId, false);
+    if (art) {
+      const img = box.querySelector('img');
+      if (img) { img.src = String(art); box.style.display = ''; }
+      return;
+    }
+    if (--tries > 0) setTimeout(tick, 300);
+  };
+  setTimeout(tick, 300);
+}
+
+/* 🎴 v121v134 — THE ART, OR NOTHING. Owner, pointing at the empty frame in the
+   panel: "It is this black transparent box line here you can remove this for me."
+   `.ab-card` is background:#0c0a12 inside a coloured border, so with no <img>
+   inside it it IS that box. It is no longer emitted when there is no art to put
+   in it, and when a streamed read is still in flight it is emitted HIDDEN and
+   revealed by _abilityArtWatch the moment the art lands — so the black square
+   cannot appear on either path. */
 function _abilityCardHtml(entry) {
   const ec = (entry && entry.elemColor) || '#e8a04c';
   const eico = (entry && entry.elemIcon) || '';
-  // Full card art (prefer stable getCardArt, fall back to the persistent thumb), in an
-  // element-colored border with the element badge — matches the approved mockup.
-  let art = null;
-  try { if (typeof getCardArt === 'function') { const a = getCardArt(entry && entry.cardId); if (a && String(a).slice(0, 5) !== 'blob:') art = a; } } catch (e) {}
-  if (!art) art = _abilityCardArt(entry && entry.cardId);
-  return '<div class="ab-card" style="--ec:' + ec + '">'
-    + (art ? '<img src="' + String(art).replace(/"/g, '&quot;') + '" alt="" decoding="async" onerror="this.style.display=\'none\'">' : '')
+  const cid = entry && entry.cardId;
+  const art = _abilityArtBest(cid, false);
+  // No art and none coming — draw no frame at all rather than an empty square.
+  if (!art && !_abilityArtKnown(cid)) return '';
+  const domId = 'ab-card-' + (++_abArtSeq);
+  if (!art) { try { _abilityArtWatch(domId, cid); } catch (e) {} }
+  return '<div class="ab-card" id="' + domId + '" style="--ec:' + ec + (art ? '' : ';display:none') + '">'
+    + '<img src="' + (art ? String(art).replace(/"/g, '&quot;') : '') + '" alt="" decoding="async" onerror="this.style.display=\'none\'">'
     + (eico ? '<span class="ab-card-elem">' + eico + '</span>' : '')
     + '</div>';
 }
@@ -109463,7 +109559,7 @@ function _announceAbility(unit, card, opts) {
         col: isHero ? '#e8a04c' : '#c9502e',
         // Canvas fallback, used only if the real card face cannot be rendered.
         frameUrl: (typeof _abilityFrameUrl === 'function') ? _abilityFrameUrl(isHero ? 'hero' : card.type) : null,
-        artUrl: (typeof _abilityCardArt === 'function') ? _abilityCardArt(cardId) : null,
+        artUrl: (typeof _abilityArtBest === 'function') ? _abilityArtBest(cardId, true) : null,
       },
       // The card face — the real FRAME PNG (a static asset, always loads) with the
       // art inset into the frame's window. Was renderHandCard, whose full-bleed art
@@ -109478,9 +109574,12 @@ function _announceAbility(unit, card, opts) {
           // card — the new unit art has its frame + name baked in, so drop the frame PNG,
           // the name banner AND the empty description box + border under it. Prefer stable
           // full art (cloud/data URL), fall back to the persistent thumb; frame only if artless.
-          let _ar = null;
-          try { if (typeof getCardArt === 'function') { const a = getCardArt(cardId); if (a && String(a).slice(0, 5) !== 'blob:') _ar = a; } } catch (e) {}
-          if (!_ar && typeof _abilityCardArt === 'function') _ar = _abilityCardArt(cardId);
+          /* 🎴 v121v134 — one resolver, full art first (this fills the screen, so
+             the 160px thumb is the last thing it should settle for). It now also
+             accepts the resident blob:, which is what the board is already
+             showing, so the "old card frame" fallback below is reached only when
+             the card genuinely has no art anywhere. */
+          let _ar = (typeof _abilityArtBest === 'function') ? _abilityArtBest(cardId, true) : null;
           if (_ar) {
             return '<div class="vfx-cine-card vfx-cine-card--art"><img src="' + String(_ar).replace(/"/g, '&quot;')
               + '" alt="" decoding="async" onerror="this.parentNode.style.display=\'none\'"></div>';
@@ -168283,8 +168382,13 @@ function _bcLogButton(s) {
 function _bcLogArt(l) {
   try {
     if (!l || !l.cardId || l.hidden) return '';
-    let art = (typeof _abilityCardArt === 'function') ? _abilityCardArt(l.cardId) : null;
-    if (!art && typeof _abilityFrameUrl === 'function') art = _abilityFrameUrl(l.cardType || 'unit');
+    /* 🎴 v121v134 — the FRAME FALLBACK IS GONE. Owner: the log "is show the old
+       card frame and an emoji" where the card art belongs. A generic card back
+       is not the card, and it cost the row its emoji too. The resolver now
+       reaches the resident art the board is already drawing, and kicks the disk
+       read when it does not — and the log repaints on every state change, so the
+       next row picks it up. No art at all still falls through to the emoji. */
+    let art = (typeof _abilityArtBest === 'function') ? _abilityArtBest(l.cardId, false) : null;
     if (!art) return '';
     return '<img class="logart" src="' + escapeHtml(art) + '" alt="" loading="lazy" decoding="async" onerror="this.style.display=\'none\'">';
   } catch (e) { return ''; }
@@ -267180,8 +267284,8 @@ try {
        that works everywhere except the one early path nobody tested. It is
        2KB with no dependencies. -->
 <script src="src/econ/peg.js?v=v121q51"></script>
-<script src="src/battle/effects.js?v=v121v133" defer></script>
-<script src="src/phone/handset.js?v=v121v133" defer></script>
+<script src="src/battle/effects.js?v=v121v134" defer></script>
+<script src="src/phone/handset.js?v=v121v134" defer></script>
 <script src="src/battle/combat.js?v=120m4" defer></script>
 <script src="src/battle/targeting.js?v=121e3hex" defer></script>
 <link rel="stylesheet" href="src/sprites/frames.css?v=120k3">
