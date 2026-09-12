@@ -800,3 +800,59 @@ player has left the end-of-match moment.
   mirror. Both numbers were already read and discarded; the row names them now.
 - **bug-mtxlmhvr** — "ometimes" in the Tutor Shop guide. Authored content, fixed
   in the catalog rather than in code.
+
+## v121v129 — card art for cards that are played; spell counters land in the pile the card spends from
+
+### 🎴 Card art in the battle log (owner, with a screenshot of a log that is all text)
+v121v126 built the row that can draw it — `_bcLogRow` resolves the art at RENDER
+time from `l.cardId`, falls back to the card frame, and suppresses it entirely
+for a face-down card. What it never got was the ID: the five places that
+announce a card being PLAYED all pushed a bare `{ msg, color }`, the oldest
+shape in the file and the one thing the renderer cannot draw. So a whole match
+of deploys scrolled past as sentences while the activations that followed them
+showed their art. All five now carry the id the caller was already holding — a
+unit you play, a unit the AI plays, the one it drops as an interception, an
+opponent's unit arriving over the socket (`originalCardId`, not the battle
+instance), and a spell the enemy casts. Each keeps its `msg` and `color`
+exactly, so the filter chips, the relay and the replay snapshots are untouched.
+🃏 A Subterfuge SET carries the id with `hidden: true` — the same redaction the
+on-screen flourish uses, so a face-down play does not leak its art.
+
+### 🔵 Spell counters — the FOURTH report, and a THIRD distinct cause
+"I just summoned this archon who gets spell counters, it has the on play gain
+spellcounters but still it has no spell counters when entered play" — the
+ability row reading "Needs 2 🔵 Krystal Flutters · it holds 0".
+
+Krystal Anomaly Opal Butterfly, read out of the live catalog:
+
+    counterToken : null                                  ← the token block is OFF
+    onPlay       : { type:'addCounters', amount:2, counterName:'' }
+    fieldActive  : { counters: { n:2, id:'krystalflutter',
+                                 name:'Krystal Flutter' } }
+
+The card names its counter in exactly ONE place — the cost of the ability that
+spends it — and the two halves of the engine resolved that name completely
+differently. SPENDING (`_fieldAbilityCounterCost`) re-slugs `fc.name` and reads
+the pile `krystalflutter`. PLACING tried `eff.counterName` (blank), the card's
+own `counterToken` (absent), the effect's token (absent), and fell through to
+`DEFAULT_TOKEN`, filling a pile called `charge`. Two piles, one card: the
+counters really were placed, and logged, into somewhere nothing on that card
+can see.
+
+This is not an authoring mistake. The effect's counter-name box is blank by
+default, the card's token block is optional and off by default, and the
+ability's cost carries its own id and name — so authoring the card the obvious
+way produces this every time, which is why the same symptom has now been
+reported four times across three cards with three different causes underneath
+(v125: the recipient side read the damage dropdown; v128: the recipient was
+matched by object identity across a rebuilt units array; v129: this).
+
+Fixed by adding one step to the token chain: when the effect names no counter
+and the card carries no token of its own, use the counter the CARD'S OWN
+ABILITIES SPEND — `_cardCounterDecl` reads `fieldActive` / `graveActive` /
+`handActive` / `triggers[]` counter costs off the card definition and slugs the
+NAME first, exactly as the spend side does, so the pile filled is byte-for-byte
+the pile that ability reads. Precedence where the author was explicit is
+unchanged: a name typed on the effect still wins over everything, and a card
+with its own token block still uses it. The ability cost is a fallback, never an
+override, and a card declaring no counter anywhere still falls to the default.

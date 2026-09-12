@@ -5985,6 +5985,8 @@
   .bchrome .logrow.lk-death{background:linear-gradient(90deg,rgba(255,70,70,.10),transparent 60%)}
   .bchrome .logrow.lk-activate{background:linear-gradient(90deg,rgba(150,110,255,.10),transparent 60%)}
   .bchrome .logrow.lk-status{background:linear-gradient(90deg,rgba(120,200,255,.08),transparent 60%)}
+  /* 🎴 a card being PLAYED — the moment the art is there for */
+  .bchrome .logrow.lk-play{background:linear-gradient(90deg,rgba(212,175,55,.10),transparent 60%)}
   .bchrome .logrow .txt{color:#e9e2d4;min-width:0;word-break:break-word}
   .bchrome .logrow.log-red .txt{color:#ffb0a2}
   .bchrome .logrow.log-green .txt{color:#b7f0c4}
@@ -39446,7 +39448,7 @@ body:has(#pack-opener-frame) #chat-overlay {
   // the console. Bump this every deploy alongside sw.js's CACHE_VERSION. If two
   // machines show different stamps, the older one is on stale code (hard-refresh);
   // if they MATCH but content still differs, it is a DATA/publish issue, not code.
-  window.BUILD_VERSION = 'v121v128';
+  window.BUILD_VERSION = 'v121v129';
   try {
     console.info('%cMythic Spellbook ' + window.BUILD_VERSION + '%c — build check: run  __mg.version',
       'font-weight:700;color:#b48cff', 'color:#7d7499');
@@ -106721,6 +106723,42 @@ function _canUseFieldAbility(state, unit) {
    null when the ability has no counter cost; otherwise { ok, why, n, id, from,
    have, icon, name, waivesEnergy, onEmpty }. The counter id defaults to the
    unit's own token so "spend 2 of my counters" needs no name typed twice. */
+/* 🔵 THE COUNTER THIS CARD DEALS IN, when it never declared a token.
+   A card may name its counter in three places: the token block (counterToken),
+   the effect that places them (counterName), and the COST of an ability that
+   spends them (…counters.name / .id). The first two are optional and blank by
+   default; the third is not optional at all, because an ability that costs
+   counters cannot be authored without naming one. So when the first two are
+   silent this is the card's own answer, and it is the only one available —
+   there is nothing to guess between.
+   Returns { id, name, icon } or null. The id is re-slugged from the NAME, the
+   same way _fieldAbilityCounterCost does it, so the pile this fills is byte-for-
+   byte the pile that ability reads. */
+function _cardCounterDecl(unit) {
+  try {
+    if (!unit || typeof _ctrSlug !== 'function') return null;
+    let def = unit;
+    const hasCost = (d) => d && ((d.fieldActive && d.fieldActive.counters) || (d.graveActive && d.graveActive.counters)
+      || (d.handActive && d.handActive.counters) || (Array.isArray(d.triggers) && d.triggers.some(t => t && t.counters)));
+    if (!hasCost(def)) {
+      const cid = unit.cardId || unit.originalCardId || unit.id;
+      const d2 = (cid && typeof _cardDefById === 'function') ? _cardDefById(cid) : null;
+      if (hasCost(d2)) def = d2; else return null;
+    }
+    const slots = []
+      .concat(def.fieldActive && def.fieldActive.counters ? [def.fieldActive.counters] : [])
+      .concat(def.graveActive && def.graveActive.counters ? [def.graveActive.counters] : [])
+      .concat(def.handActive && def.handActive.counters ? [def.handActive.counters] : [])
+      .concat(Array.isArray(def.triggers) ? def.triggers.filter(t => t && t.counters).map(t => t.counters) : []);
+    for (const fc of slots) {
+      if (!fc) continue;
+      const id = (fc.name ? _ctrSlug(fc.name) : '') || (fc.id ? _ctrSlug(fc.id) : '');
+      if (!id) continue;
+      return { id, name: fc.name || 'Counter', icon: fc.icon || '🔵' };
+    }
+    return null;
+  } catch (e) { return null; }
+}
 function _fieldAbilityCounterCost(state, unit, fa, owner) {
   const fc = fa && fa.counters;
   if (!fc || !(fc.n > 0)) return null;
@@ -114720,7 +114758,14 @@ function _applyOnPlayOneRaw(state, unit, card) {
       if (window.MythicCounters) {
         // 🔵 a counter NAMED on the effect wins; else this card's own token; else the effect's
         tok = (eff.counterName && _ctrSlug(eff.counterName)) ? { id: _ctrSlug(eff.counterName), name: String(eff.counterName).trim(), icon: '🔵' } : null;
-        tok = tok || window.MythicCounters.tokenOf(unit) || window.MythicCounters.tokenOf(eff) || null;
+        /* 🔵 v121v129 — …and if the card never declared a TOKEN, the counter
+           its own ability SPENDS is the one it deals in. Without this the
+           on-play filled the default 'charge' pile while the ability read
+           'krystalflutter', so a card whose ability costs 2 Krystal Flutters
+           entered play holding 0 of them — placed, logged, and invisible to
+           everything on the card (owner, fourth report, third card). */
+        tok = tok || window.MythicCounters.tokenOf(unit) || _cardCounterDecl(unit)
+                  || window.MythicCounters.tokenOf(eff) || null;
         const _tid = tok ? tok.id : null;
         /* 🔵 v121v128 — BY ID, NOT BY OBJECT. This read `u !== unit`, and
            `state.units` is rebuilt by half a dozen steps between a card being
@@ -162298,7 +162343,8 @@ function _aiAutoCounter(state, opts) {
     energy: energy - (cheapest.cost | 0),
   };
   if (aiDeployedUnit) {
-    log.push({ msg: `⏱ AI deploys ${cheapest.name} as a counter unit — intercepting!`, color: 'red' });
+    log.push({ msg: `⏱ AI deploys ${cheapest.name} as a counter unit — intercepting!`, color: 'red',
+      kind: 'play', cardId: cheapest.id || null, cardType: 'unit', icon: cheapest.icon || '⚔' });
   }
   // 🎴 COUNTER cinematic — same premium VFX the player gets when casting,
   // so a negated spell feels like a real interrupt rather than a silent
@@ -175955,7 +176001,11 @@ function placeUnit(card, pos, opts) {
     ...s,
     units: [...s.units, unit],
     player: { ...s.player, hand: s.player.hand.filter(c => c.instanceId !== card.instanceId), energy: s.player.energy - getEffectiveCardCost(card, s, 'player') },
-    log: [...s.log, { msg: card.isSubterfuge ? `🃏 You set a unit face-down.` : `You play ${card.name} (Lv ${prof.level})`, color: 'green' }],
+    /* 🎴 v121v129 — the row can draw the card; it only ever needed the id.
+       A face-down set carries `hidden`, which is the same redaction the
+       on-screen flourish uses, so the art stays out of the opponent's log. */
+    log: [...s.log, { msg: card.isSubterfuge ? `🃏 You set a unit face-down.` : `You play ${card.name} (Lv ${prof.level})`, color: 'green',
+      kind: 'play', cardId: card.id || null, cardType: 'unit', icon: card.icon || '⚔', hidden: !!card.isSubterfuge }],
   };
   // 🔮 Clear consumed prophecy buff so it only applies to the NEXT single deployment.
   if (s.player._prophecyBuff) {
@@ -178691,7 +178741,8 @@ function doAIStep() {
                 hand: (_apHand || s.ai.hand).filter(c => c.instanceId !== best.instanceId),
                 energy: s.ai.energy - getEffectiveCardCost(best, s, 'ai'),
               },
-              log: [...(_apLog || s.log), { msg: best.isSubterfuge ? `🃏 Enemy sets a unit face-down.` : `Enemy plays ${best.name}`, color: 'red' }],
+              log: [...(_apLog || s.log), { msg: best.isSubterfuge ? `🃏 Enemy sets a unit face-down.` : `Enemy plays ${best.name}`, color: 'red',
+                kind: 'play', cardId: best.id || null, cardType: 'unit', icon: best.icon || '⚔', hidden: !!best.isSubterfuge }],
             };
             // 🌌 Pay the vanishUnit extra cost — the player path has always
             // consumed it (three commit sites); the AI never did.
@@ -179147,7 +179198,8 @@ function doAIStep() {
             ...s,
             units: s.units.map(u => u.owner === 'ai' && u.alive ? applyStatusEffect(u, card.effect.status, card.effect.duration) : u),
             ai: { ...s.ai, hand: s.ai.hand.filter(c => c.instanceId !== card.instanceId), graveyard: [...s.ai.graveyard, card], energy: s.ai.energy - (aiCheapSpells ? 0 : getEffectiveCardCost(card, s, 'ai')) },
-            log: [...s.log, { msg: `Enemy casts ${card.name}`, color: 'red' }],
+            log: [...s.log, { msg: `Enemy casts ${card.name}`, color: 'red',
+              kind: 'play', cardId: card.id || null, cardType: card.type || 'spell', icon: card.icon || '✨' }],
           };
           setAIActor(null, `🛡 Enemy casts ${card.name}`);
         } else if (best.kind === 'draw') {
@@ -209625,7 +209677,15 @@ function _surfaceOpponentDeltaFeedback(prev, next) {
   try {
     const _oppName = (App.battlePrep && App.battlePrep.opponentName) || 'Opponent';
     const _q = [];
-    for (const u of newSpawns) { if (u && u.owner === 'ai') _q.push({ msg: '⚔ ' + _oppName + ' plays ' + (u.name || 'a unit'), color: 'red' }); }
+    for (const u of newSpawns) {
+      if (u && u.owner === 'ai') {
+        _q.push({ msg: '⚔ ' + _oppName + ' plays ' + (u.name || 'a unit'), color: 'red', kind: 'play',
+                  /* the ORIGINAL card id, not the battle instance — that is what
+                     _abilityCardArt looks the thumbnail up by. */
+                  cardId: u.originalCardId || u.cardId || null,
+                  cardType: u.isHero ? 'hero' : 'unit', icon: u.icon || '⚔', hidden: !!u.isFaceDown });
+      }
+    }
     for (const u of killed)    { _q.push({ msg: '☠ ' + (u.name || 'A unit') + ' fell' + (u.isHero ? '!' : '.'), color: 'red' }); }
     if (_q.length) App._mpOppLogAppend = (App._mpOppLogAppend || []).concat(_q);
   } catch (e) {}
@@ -266736,8 +266796,8 @@ try {
        that works everywhere except the one early path nobody tested. It is
        2KB with no dependencies. -->
 <script src="src/econ/peg.js?v=v121q51"></script>
-<script src="src/battle/effects.js?v=v121v128" defer></script>
-<script src="src/phone/handset.js?v=v121v128" defer></script>
+<script src="src/battle/effects.js?v=v121v129" defer></script>
+<script src="src/phone/handset.js?v=v121v129" defer></script>
 <script src="src/battle/combat.js?v=120m4" defer></script>
 <script src="src/battle/targeting.js?v=121e3hex" defer></script>
 <link rel="stylesheet" href="src/sprites/frames.css?v=120k3">

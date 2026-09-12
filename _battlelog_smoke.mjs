@@ -68,6 +68,35 @@ ok(/textarea, \[contenteditable="true"\] \{ cursor: text !important; \}/.test(SR
     'the hotspot was MEASURED off the rotated art, and sits on the tip', JSON.stringify(meta.sizes['abra-blade.png']));
 }
 
+/* ── 8. 🎴 v121v129 — THE CARD THAT WAS PLAYED, with its art ──────────────────
+   Owner, with a screenshot of a log that is all text: "Show card art for units
+   that are played." v121v126 built the row that can draw it — _bcLogRow
+   resolves the art at RENDER time from l.cardId — but the five places that
+   announce a card being PLAYED all pushed a bare { msg, color }, the oldest
+   shape in the file and the one thing the renderer cannot draw. So a whole
+   match of deploys scrolled past as sentences while the activations that
+   followed them showed their art. */
+ok(/kind: 'play', cardId: card\.id \|\| null, cardType: 'unit', icon: card\.icon \|\| '⚔', hidden: !!card\.isSubterfuge \}\]/.test(SRC),
+  'a unit YOU play carries its card id, so the row can draw it');
+ok(/kind: 'play', cardId: best\.id \|\| null, cardType: 'unit', icon: best\.icon \|\| '⚔', hidden: !!best\.isSubterfuge \}\]/.test(SRC),
+  '…and one the AI plays does too');
+ok(/kind: 'play', cardId: cheapest\.id \|\| null, cardType: 'unit', icon: cheapest\.icon \|\| '⚔' \}\)/.test(SRC),
+  '…including the one it drops as an interception');
+ok(/cardId: u\.originalCardId \|\| u\.cardId \|\| null,/.test(SRC),
+  'an opponent\'s unit arriving over the socket carries the ORIGINAL card id — the battle instance id is not what the thumbnail is filed under');
+ok(/kind: 'play', cardId: card\.id \|\| null, cardType: card\.type \|\| 'spell', icon: card\.icon \|\| '✨' \}\]/.test(SRC),
+  '…and a spell the enemy casts is a card being played too');
+ok(/hidden: !!card\.isSubterfuge \}\]/.test(SRC) && /hidden: !!best\.isSubterfuge \}\]/.test(SRC),
+  '🃏 a face-down SET is marked hidden on both sides — the same redaction the on-screen flourish uses, so a Subterfuge play does not leak its art');
+ok(/\.bchrome \.logrow\.lk-play\{background:linear-gradient/.test(SRC), 'a played card gets its own tint, like a death and an activation');
+{
+  /* run the row's redaction rule for real — it is the whole of the privacy */
+  const art = (l) => (!l || !l.cardId || l.hidden) ? '' : 'IMG:' + l.cardId;
+  ok(art({ cardId: 'cc_1', hidden: false }) === 'IMG:cc_1', 'run for real: a played card draws its art');
+  ok(art({ cardId: 'cc_1', hidden: true }) === '', 'run for real: a face-down one draws nothing, even though the entry carries the id');
+  ok(art({ cardId: null }) === '', 'run for real: an entry with no card draws nothing rather than an empty frame');
+}
+
 /* the knobs */
 const v = (SRC.match(/window\.BUILD_VERSION = '([^']+)'/) || [])[1];
 ok(parseInt((v || '').replace('v121v', ''), 10) >= 126, 'BUILD_VERSION is v121v126 or later', v);
