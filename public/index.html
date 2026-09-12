@@ -39411,7 +39411,7 @@ body:has(#pack-opener-frame) #chat-overlay {
   // the console. Bump this every deploy alongside sw.js's CACHE_VERSION. If two
   // machines show different stamps, the older one is on stale code (hard-refresh);
   // if they MATCH but content still differs, it is a DATA/publish issue, not code.
-  window.BUILD_VERSION = 'v121v122';
+  window.BUILD_VERSION = 'v121v123';
   try {
     console.info('%cMythic Spellbook ' + window.BUILD_VERSION + '%c — build check: run  __mg.version',
       'font-weight:700;color:#b48cff', 'color:#7d7499');
@@ -47185,8 +47185,12 @@ function playMenuMusic(opts) {
   // 🎵 With uploaded main-menu tracks the pool shuffles through them (plus the
   // Settings-selected built-in theme unless "only mine" is ticked). With none,
   // keep the original single-track behaviour driven by the Settings picker.
+  /* 🔊 v121v123 — this read `> 1`, so a zone holding EXACTLY ONE uploaded
+     track fell through to the else and hard-set the built-in Settings theme:
+     upload one track, tick "only mine", and the upload could never play. One
+     track binds and loops; the built-in path is now only for an EMPTY pool. */
   const _menuPool = _musicPool('mainMenu');
-  if (_menuPool.length > 1) {
+  if (_menuPool.length >= 1) {
     _musicBind(el, 'mainMenu', () => (typeof App !== 'undefined' && App && App.screen === 'title'));
     _menuAudioSrc = el.src;
   } else if (_menuAudioSrc !== track.src || !el.src) {
@@ -47232,6 +47236,39 @@ const EXCHANGE_MUSIC_SRC = 'assets/Audio/Black%20Market%20Basement.mp3';
 const EXCHANGE_SCREENS = new Set([
   'vendorMarket', 'wagerHall', 'vendor', 'cashout', 'tutor', 'market',
 ]);
+/* Both new zones, asked the way the rest of the file asks. The city is an
+   overlay with no screen id of its own, so the DOM is the question — the same
+   probe a dozen other places use. */
+function isInJustBusiness() { try { return typeof App !== 'undefined' && App && App.screen === 'justBusiness'; } catch (e) { return false; } }
+function isInCityBuilder() {
+  try { return !!(document.getElementById('node-city-frame') || document.querySelector('iframe[src^="node-city/"]')); } catch (e) { return false; }
+}
+let _jbAudioEl = null, _cityAudioEl = null;
+function _ensureZoneAudioEl(which) {
+  if (which === 'jb') { if (!_jbAudioEl) { _jbAudioEl = new Audio(); _jbAudioEl.preload = 'auto'; } return _jbAudioEl; }
+  if (!_cityAudioEl) { _cityAudioEl = new Audio(); _cityAudioEl.preload = 'auto'; }
+  return _cityAudioEl;
+}
+/* Both zones ship with NO built-in track, so they stay silent until an admin
+   uploads one — which is the honest default for a room that has never had
+   music rather than picking something for it. */
+function _playZoneMusic(which, slotId, isActiveFn) {
+  const settings = (typeof getSettings === 'function') ? getSettings() : (Profile.settings || {});
+  if (settings.musicEnabled === false) { _stopZoneMusic(which); return; }
+  if (!_musicPool(slotId).length) { _stopZoneMusic(which); return; }
+  const el = _ensureZoneAudioEl(which);
+  _musicBind(el, slotId, isActiveFn);
+  el.volume = Math.max(0, Math.min(1, settings.musicVolume != null ? settings.musicVolume : 0.5));
+  if (el.paused) { const p = el.play(); if (p && typeof p.catch === 'function') p.catch(() => { try { _armMenuAudioGesture(); } catch (e) {} }); }
+}
+function _stopZoneMusic(which) {
+  const el = which === 'jb' ? _jbAudioEl : _cityAudioEl;
+  if (el) { try { el.pause(); } catch (e) {} }
+}
+function playJustBusinessMusic() { _playZoneMusic('jb', 'justBusiness', isInJustBusiness); }
+function stopJustBusinessMusic() { _stopZoneMusic('jb'); }
+function playCityBuilderMusic() { _playZoneMusic('city', 'cityBuilder', isInCityBuilder); }
+function stopCityBuilderMusic() { _stopZoneMusic('city'); }
 function isInRuinExchange() {
   if (typeof App === 'undefined' || !App) return false;
   // Title screen (including the exchange sub-hub) stays on menu music.
@@ -47456,7 +47493,7 @@ function playCampAmbientMusic() {
   // (and the built-in ambience unless "only mine" is set). With none, it falls
   // back to the single-source swap below.
   const _campPool = _musicPool('camp');
-  if (_campPool.length > 1) {
+  if (_campPool.length >= 1) {
     _musicBind(el, 'camp', isInCampAmbient);
   } else {
     // Swap the source if the desired track changed (entered Camp with a custom
@@ -47524,6 +47561,12 @@ const MUSIC_SLOTS = [
   { id: 'colosseum', label: '🏛 Colosseum',        hint: 'Colosseum hub',                          defaults: () => [COLOSSEUM_MUSIC_SRC] },
   { id: 'exchange',  label: '💰 Black Market',     hint: 'Ruin Exchange / market screens',         defaults: () => [EXCHANGE_MUSIC_SRC] },
   { id: 'victory',   label: '🏆 Victory',          hint: 'Plays when you win',                     defaults: () => [VICTORY_MUSIC_SRC] },
+  /* 🔊 v121v123 — two rooms that played NOTHING. Just Business is a screen, so
+     the router reaches it on its own; the City Builder is an overlay iframe
+     that never changes App.screen, so open and close call the router by hand.
+     Neither child document owns any audio — the element stays in this page. */
+  { id: 'justBusiness', label: '💼 Just Business',  hint: 'The corporate hub and its offices',      defaults: () => [] },
+  { id: 'cityBuilder',  label: '🏙 City Builder',   hint: 'Inside a node city',                     defaults: () => [] },
 ];
 // Re-attach published track audio (Catalog.customMusicAudio, keyed by track id)
 // onto the playlist structure. The two travel separately: structure in the
@@ -47576,19 +47619,34 @@ function _srcMatches(el, want) {
 // or a settings track swap), so it never restarts music mid-playback.
 // `isActiveFn` gates the auto-advance so a finished track can't restart the zone
 // after the player has left it.
+function _musicOrder(slotId, n) {
+  /* 🔀 v121v123 — SHUFFLE IS A SWITCH. It used to be a side effect of owning
+     two tracks, with no way to say "play these in the order I added them".
+     Default stays shuffle, which is what every existing zone did. */
+  const cfg = _musicSlotCfg(slotId);
+  if (cfg.shuffle === false) { const idx = []; for (let i = 0; i < n; i++) idx.push(i); return idx; }
+  return _musicShuffleIdx(n);
+}
 function _musicBind(el, slotId, isActiveFn) {
   if (!el) return;
   const pool = _musicPool(slotId);
   if (!pool.length) return;
-  const sig = pool.join('|');
+  const sig = pool.join('|') + '#' + (_musicSlotCfg(slotId).shuffle === false ? 'seq' : 'shuf');
   if (el._msSig !== sig) {
+    const first = el._msSig === undefined;
     el._msSig = sig;
-    el._msQueue = _musicShuffleIdx(pool.length);
+    el._msQueue = _musicOrder(slotId, pool.length);
     el._msPos = 0;
     const want = pool[el._msQueue[0]];
-    if (!_srcMatches(el, want)) { try { el.pause(); } catch (e) {} el.src = want; }
+    if (!_srcMatches(el, want)) {
+      try { el.pause(); } catch (e) {}
+      el.src = want;
+      /* 🎧 …and PLAY it. The old code loaded the new source and waited for the
+         current track to end, which is minutes of "my change did nothing". */
+      if (!first) { try { el.currentTime = 0; const pr = el.play(); if (pr && pr.catch) pr.catch(() => {}); } catch (e) {} }
+    }
   }
-  // One track → plain loop. Several → shuffle through them.
+  // One track → plain loop. Several → the zone's order.
   el.loop = pool.length <= 1;
   if (!el._msWired) {
     el._msWired = true;
@@ -47598,7 +47656,7 @@ function _musicBind(el, slotId, isActiveFn) {
         const p = _musicPool(slotId);
         if (p.length <= 1) return;
         el._msPos = (el._msPos | 0) + 1;
-        if (!Array.isArray(el._msQueue) || el._msPos >= el._msQueue.length) { el._msQueue = _musicShuffleIdx(p.length); el._msPos = 0; }
+        if (!Array.isArray(el._msQueue) || el._msPos >= el._msQueue.length) { el._msQueue = _musicOrder(slotId, p.length); el._msPos = 0; }
         el.src = p[el._msQueue[el._msPos] % p.length];
         el.currentTime = 0;
         const pr = el.play(); if (pr && pr.catch) pr.catch(() => {});
@@ -47926,6 +47984,23 @@ function syncMusicForScreen() {
     playCampaignMusic();
     return;
   }
+  /* 🏙 v121v123 — the City Builder is an OVERLAY: it never changes App.screen,
+     so it is asked first, and _openNodeCity / _closeNodeCity call this router
+     by hand because no render() is guaranteed when it opens or closes. */
+  if (isInCityBuilder() && _musicPool('cityBuilder').length) {
+    stopMenuMusic(); stopVictoryMusic(); stopCampaignMusic(); stopBattleMusic(); stopRogueliteMusic(); stopExchangeMusic(); stopJustBusinessMusic();
+    playCityBuilderMusic();
+    return;
+  }
+  stopCityBuilderMusic();
+  /* 💼 Just Business is a real screen, so the existing render() → router path
+     reaches it with no extra hook. */
+  if (isInJustBusiness() && _musicPool('justBusiness').length) {
+    stopMenuMusic(); stopVictoryMusic(); stopCampaignMusic(); stopBattleMusic(); stopRogueliteMusic(); stopExchangeMusic();
+    playJustBusinessMusic();
+    return;
+  }
+  stopJustBusinessMusic();
   if (isInRuinExchange()) {
     stopMenuMusic();
     stopVictoryMusic();
@@ -48285,7 +48360,9 @@ function openCustomAudioManager() {
     backdrop.appendChild(fileInput);
     const panel = document.createElement('div'); panel.id = 'cam-panel';
     panel.innerHTML =
-      '<div id="cam-head"><span class="t">🔊 Custom Audio Manager</span><button class="x" id="cam-close" title="Close">✕</button></div>'
+      '<div id="cam-head"><span class="t">🔊 Custom Audio Manager</span>'
+      + '<button class="x" id="cam-apply" title="Save every change and start the right music for this screen now — without it a swap waits for the current track to finish" style="width:auto;padding:0 10px;margin-right:8px">💾 Save &amp; apply</button>'
+      + '<button class="x" id="cam-close" title="Close">✕</button></div>'
     + '<div id="cam-body"></div>';
     backdrop.appendChild(panel);
     document.body.appendChild(backdrop);
@@ -48312,9 +48389,11 @@ function openCustomAudioManager() {
       return '<div class="cam-slot" data-slot="' + escapeHtml(slot.id) + '">'
         + '<div class="cam-slot-hd">'
           + '<span class="nm">' + slot.label + '</span>'
-          + '<span class="ct">' + total + ' track' + (total === 1 ? '' : 's') + (total > 1 ? ' · shuffles' : '') + '</span>'
+          + '<span class="ct">' + total + ' track' + (total === 1 ? '' : 's') + (total > 1 ? (cfg.shuffle === false ? ' · in order' : ' · shuffles') : '') + '</span>'
           + '<label class="cam-only" title="Ignore the built-in track(s) and play only what you upload">'
             + '<input type="checkbox" data-act="onlymine"' + (cfg.onlyMine ? ' checked' : '') + (mine.length ? '' : ' disabled') + '> only mine</label>'
+          + '<label class="cam-only" title="Play this zone\'s tracks in a random order. Off plays them in the order they were added.">'
+            + '<input type="checkbox" data-act="shuffle"' + (cfg.shuffle === false ? '' : ' checked') + (total > 1 ? '' : ' disabled') + '> shuffle</label>'
           + '<button data-act="addtrack">＋ Add Track</button>'
         + '</div>'
         + '<div class="cam-slot-hint">' + escapeHtml(slot.hint) + '</div>'
@@ -48337,12 +48416,111 @@ function openCustomAudioManager() {
         + sfxIds.map(id => rowHtml('sfx', id, _prettifySfxId(id))).join('')
         + '<div class="cam-grp">🌦 Weather Tracks (' + wxTypes.length + ')</div>'
         + (wxTypes.length ? wxTypes.map(wt => rowHtml('wx', wt, _prettifySfxId(wt))).join('')
-                          : '<div class="cam-row"><span class="nm ink-dim">No weather types defined yet.</span></div>');
+                          : '<div class="cam-row"><span class="nm ink-dim">No weather types defined yet.</span></div>')
+        + '<div class="cam-grp">📁 Stored Audio</div><div id="cam-files"><div class="cam-row"><span class="nm ink-dim">Reading this device…</span></div></div>';
+      try { _camListFiles(); } catch (e) {}
+    }
+    /* 📁 EVERY CLIP THIS DEVICE HOLDS, with its size — including ORPHANS, the
+       ones no zone or effect points at any more. Deleting a track used to blank
+       its record and leave the bytes behind (idbSet(key, '') rather than a
+       delete), and nothing ever listed them, so the space was unreclaimable and
+       invisible. Now it is both listed and deletable. */
+    async function _camListFiles() {
+      const host = panel.querySelector('#cam-files');
+      if (!host) return;
+      const kb = (v) => Math.max(1, Math.round((String(v || '').length * 0.75) / 1024)).toLocaleString() + ' KB';
+      const rows = [];
+      const used = {};
+      try {
+        for (const slot of MUSIC_SLOTS) {
+          const cfg = _musicSlotCfg(slot.id);
+          for (const t of (cfg.tracks || [])) {
+            used['cmus:' + t.id] = 1;
+            rows.push({ key: 'cmus:' + t.id, kind: 'music', id: t.id, label: (t.name || t.id), where: slot.label, size: (t.url || '').length });
+          }
+        }
+        for (const k of Object.keys(Forge.customSfx || {})) { used['csfx:' + k] = 1; rows.push({ key: 'csfx:' + k, kind: 'sfx', id: k, label: _prettifySfxId(k), where: 'Sound effect', size: String(Forge.customSfx[k] || '').length }); }
+        for (const k of Object.keys(Forge.weatherAudio || {})) { used['wxa:' + k] = 1; rows.push({ key: 'wxa:' + k, kind: 'wx', id: k, label: _prettifySfxId(k), where: 'Weather', size: String(Forge.weatherAudio[k] || '').length }); }
+        /* the indexes hold what was ever written; anything in them that no zone
+           claims is an orphan taking up room on this device */
+        for (const [idxKey, pfx, kind] of [['forge_customMusic_idx', 'cmus:', 'music'], ['forge_customSfx_idx', 'csfx:', 'sfx'], ['forge_weatherAudio_idx', 'wxa:', 'wx']]) {
+          let list = [];
+          try { list = (await idbGet(idxKey)) || []; } catch (e) { list = []; }
+          for (const id of (Array.isArray(list) ? list : [])) {
+            const key = pfx + id;
+            if (used[key]) continue;
+            let v = '';
+            try { v = (await idbGet(key)) || ''; } catch (e) { v = ''; }
+            rows.push({ key, kind, id, label: id, where: 'ORPHAN — nothing points at it', size: String(v).length, orphan: true });
+          }
+        }
+      } catch (e) {}
+      const total = rows.reduce((a, r) => a + (r.size || 0), 0);
+      host.innerHTML = rows.length
+        ? '<div class="cam-row"><span class="nm ink-dim">' + rows.length + ' clip' + (rows.length === 1 ? '' : 's') + ' on this device · about ' + kb(new Array(Math.round(total)).join(' ')) + ' total</span></div>'
+          + rows.sort((a, b) => (b.size || 0) - (a.size || 0)).map((r) =>
+            '<div class="cam-row" data-fkey="' + escapeHtml(r.key) + '">'
+            + '<span class="nm"' + (r.orphan ? ' style="color:#ffb066"' : '') + '>' + (r.kind === 'music' ? '🎵' : r.kind === 'sfx' ? '🎬' : '🌦') + ' ' + escapeHtml(r.label) + '</span>'
+            + '<span class="st">' + escapeHtml(r.where) + ' · ' + kb(new Array(Math.round(r.size || 0)).join(' ')) + '</span>'
+            + '<button data-act="filetest" data-fkey="' + escapeHtml(r.key) + '">▶</button>'
+            + '<button class="cl" data-act="filedel" data-fkey="' + escapeHtml(r.key) + '">✕</button>'
+            + '</div>').join('')
+        : '<div class="cam-row"><span class="nm ink-dim">Nothing uploaded on this device yet.</span></div>';
     }
     rebuild();
     const close = () => { try { backdrop.remove(); } catch (e) {} };
     panel.querySelector('#cam-close').onclick = close;
+    /* 💾 SAVE & APPLY — write everything, then make the CURRENT screen's music
+       obey it immediately. Without this a swap only took hold when the playing
+       track ended, which reads as "nothing happened". */
+    const applyBtn = panel.querySelector('#cam-apply');
+    if (applyBtn) applyBtn.onclick = () => {
+      try { saveForge(); } catch (e) {}
+      try { if (typeof _persistForgeNow === 'function') _persistForgeNow(); } catch (e) {}
+      try {
+        /* forget the one-element "what is loaded" caches so the routers re-pick */
+        _menuAudioSrc = null;
+        document.querySelectorAll('audio').forEach((el) => { try { el._msSig = undefined; } catch (e) {} });
+      } catch (e) {}
+      try { if (typeof syncMusicForScreen === 'function') syncMusicForScreen(); } catch (e) {}
+      try { showToast('💾 Saved — the music for this screen is playing from the new list.', 2600); } catch (e) {}
+      try { rebuild(); } catch (e) {}
+    };
     backdrop.addEventListener('click', e => { if (e.target === backdrop) close(); });
+    /* 📁 The stored-file list: play a clip, or delete it for good. A music
+       track is removed from its zone as well as from the device, so deleting
+       from here can never leave a zone pointing at bytes that are gone. */
+    body.addEventListener('click', async (ev) => {
+      const btn = ev.target && ev.target.closest ? ev.target.closest('[data-fkey]') : null;
+      if (!btn || !btn.dataset.act) return;
+      ev.preventDefault(); ev.stopPropagation();
+      const key = btn.dataset.fkey, act = btn.dataset.act;
+      const pfx = key.slice(0, key.indexOf(':') + 1), id = key.slice(key.indexOf(':') + 1);
+      if (act === 'filetest') {
+        let src = '';
+        if (pfx === 'csfx:') src = (Forge.customSfx || {})[id] || '';
+        else if (pfx === 'wxa:') src = (Forge.weatherAudio || {})[id] || '';
+        else { for (const slot of MUSIC_SLOTS) { const t = (_musicSlotCfg(slot.id).tracks || []).find((x) => x && x.id === id); if (t && t.url) { src = t.url; break; } } }
+        if (!src) { try { src = (await idbGet(key)) || ''; } catch (e) { src = ''; } }
+        _playSrc(src);
+        return;
+      }
+      if (act === 'filedel') {
+        if (!confirm('Delete this clip from this device? It cannot be undone.')) return;
+        try {
+          if (pfx === 'csfx:') delete (Forge.customSfx || {})[id];
+          else if (pfx === 'wxa:') delete (Forge.weatherAudio || {})[id];
+          else for (const slot of MUSIC_SLOTS) { const cfg = _musicSlotCfg(slot.id); const before = (cfg.tracks || []).length; cfg.tracks = (cfg.tracks || []).filter((t) => !t || t.id !== id); if (cfg.tracks.length !== before && !cfg.tracks.length) cfg.onlyMine = false; }
+          try { await idbSet(key, ''); } catch (e) {}
+          const idxKey = pfx === 'csfx:' ? 'forge_customSfx_idx' : pfx === 'wxa:' ? 'forge_weatherAudio_idx' : 'forge_customMusic_idx';
+          try { const list = (await idbGet(idxKey)) || []; if (Array.isArray(list)) await idbSet(idxKey, list.filter((x) => x !== id)); } catch (e) {}
+          try { saveForge(); } catch (e) {}
+          try { if (typeof syncMusicForScreen === 'function') syncMusicForScreen(); } catch (e) {}
+          try { showToast('🗑 Deleted.', 1800); } catch (e) {}
+        } catch (e) {}
+        rebuild();
+      }
+    });
     // 🎵 Playlist actions (add / test / delete a track, "only mine" toggle).
     const _playSrc = (src) => {
       if (!src) { try { showToast('No audio to test'); } catch (e) {} return; }
@@ -48360,7 +48538,8 @@ function openCustomAudioManager() {
       const cb = e.target.closest('input[data-act="onlymine"]'); if (!cb) return;
       const slotEl = e.target.closest('.cam-slot'); if (!slotEl) return;
       const cfg = _musicSlotCfg(slotEl.dataset.slot);
-      cfg.onlyMine = !!cb.checked;
+      if (cb.dataset.act === 'shuffle') cfg.shuffle = !!cb.checked;
+      else cfg.onlyMine = !!cb.checked;
       try { saveForge(); } catch (e2) {}
       try { if (typeof syncMusicForScreen === 'function') syncMusicForScreen(); } catch (e2) {}
       rebuild();
@@ -99462,7 +99641,7 @@ function _jbHandleAction(a) {
         if (!Forge[key] || typeof Forge[key] !== 'object') Forge[key] = {};
         if (img) Forge[key][id] = img; else delete Forge[key][id];
         if (typeof _persistForgeNow === 'function') _persistForgeNow();
-        showToast('🖼 Photo saved for ' + (ak === 'op' ? 'operation' : 'listing') + ' “' + id + '”. Publish in Pricing Admin to show it to everyone.', 5200);
+        showToast('🖼 Photo saved for ' + (ak === 'op' ? 'operation' : 'listing') + ' “' + id + '”. Publish in Admin Controls to show it to everyone.', 5200);
         _jbSendData();
       } catch (e) {}
     } else if (a.kind === 'opFound') {
@@ -138813,9 +138992,9 @@ function renderTitle() {
           accent: '#b888ff',
           badge: (Forge.customPacks && Forge.customPacks.length) ? `${Forge.customPacks.length} packs` : null,
           onclick: adminClick(() => { App.screen = 'forge'; App.forgeTab = 'packs'; App.editingPackId = null; render(); }, 'Pack Creator is admin-only.') },
-        { id: 'btn-pricing-admin', icon: '💰', name: 'Pricing Admin',  sub: 'Control prices · calculator + overrides',
+        { id: 'btn-pricing-admin', icon: '💰', name: 'Admin Controls', sub: 'Prices · audio · publishing · overrides',
           accent: '#ffd166',
-          onclick: adminClick(() => { App.screen = 'pricingAdmin'; render(); }, 'Pricing Admin is admin-only.') },
+          onclick: adminClick(() => { App.screen = 'pricingAdmin'; render(); }, 'Admin Controls is admin-only.') },
         // ⚒ ATHENA ENGINE — the 3D world builder for the mini-games. The module
         //    (/src/mapforge) is inert until opened, so this tile is the only
         //    boot-time cost. If the module 404'd the click says so instead of
@@ -144516,7 +144695,7 @@ function startBattleWithPrep(playerGoesFirst) {
 // Read at call sites via `getEffectivePrice(category, id, defaultCost)`.
 function renderPricingAdmin() {
   if (typeof isAdmin === 'function' && !isAdmin()) {
-    showToast('👑 Pricing Admin is admin-only.', 2500);
+    showToast('👑 Admin Controls is admin-only.', 2500);
     App.screen = 'title'; App.titleHub = 'forge';
     setTimeout(render, 0); return;
   }
@@ -144629,7 +144808,7 @@ function renderPricingAdmin() {
   root.innerHTML = `
     <div class="campaign-page pricing-admin-page">
       <button class="hub-back-btn" id="hub-back">← Forge</button>
-      <h1 class="section-title">💰 Pricing Admin</h1>
+      <h1 class="section-title">💰 Admin Controls</h1>
       <div class="section-subtitle">👑 Admin-only economy controls. Overrides persist + sync to the cloud.</div>
 
       <div class="settings-section">
@@ -213200,7 +213379,7 @@ function renderUltimateAdmin() {
 
   root.innerHTML = `
     <div class="campaign-page pricing-admin-page" style="background:radial-gradient(ellipse at top,rgba(40,15,70,0.55),transparent)">
-      <button class="hub-back-btn" id="ult-admin-back">← Pricing Admin</button>
+      <button class="hub-back-btn" id="ult-admin-back">← Admin Controls</button>
       <h1 class="section-title" style="color:#f6d97a">⚡ Hero Ultimates</h1>
       <div class="section-subtitle">Re-tune the game's ultimates, create brand-new ones, and assign which ultimate each hero uses. Effects are data-driven — fully working in battle. Click <strong>📚 Publish</strong> afterward so every player gets them.</div>
       <div class="settings-section">
@@ -239950,6 +240129,9 @@ function _openNodeCity(nodeId, _resolved) {
   f.style.cssText = 'position:fixed;inset:0;width:100vw;height:100vh;border:0;z-index:2147483300;background:#07060b;opacity:0;transition:opacity .45s ease';
   document.body.appendChild(f);
   requestAnimationFrame(() => { try { f.style.opacity = '1'; } catch (e) {} });
+  /* 🔊 v121v123 — the city is an OVERLAY with no screen id, so no render() is
+     guaranteed here: the music router has to be told by hand, both ways. */
+  try { if (typeof syncMusicForScreen === 'function') syncMusicForScreen(); } catch (e) {}
   // Parent-side close pill — the city has no exit of its own, and Esc inside
   // the iframe never reaches us. Sits ABOVE the iframe.
   /* 📐 ONE ROW, LAID OUT LEFT → RIGHT. These three pills used to be
@@ -240414,6 +240596,8 @@ async function _cityTierAssign(node, tierId) {
 }
 function _closeNodeCity() {
   const f = document.getElementById('node-city-frame');
+  try { if (typeof stopCityBuilderMusic === 'function') stopCityBuilderMusic(); } catch (e) {}
+  setTimeout(() => { try { if (typeof syncMusicForScreen === 'function') syncMusicForScreen(); } catch (e) {} }, 60);
   /* ⚠ DROP THE ID IMMEDIATELY, not in 400ms. _openNodeCity early-returns when a
      frame with this id exists, so during the fade-out the city was still
      "open": leaving the owner's city and going straight back to your own
@@ -263433,7 +263617,7 @@ function renderTerritoryWarsAdmin() {
           <h2 class="section-title" style="text-align:left;margin:0">🗺 Territory Wars Builder (Admin)</h2>
           <div class="small-text ink-dim">Build the world map players fight over. Regions → Sectors → PRNs. Each PRN holds guards + node-shop upgrades + a resource yield. Cloud-synced via the forge JSONB blob.</div>
         </div>
-        <button class="btn-secondary btn-mini" id="tw-admin-back">← Pricing Admin</button>
+        <button class="btn-secondary btn-mini" id="tw-admin-back">← Admin Controls</button>
       </div>
       <!-- 🛠 World-state admin tools — Force War / Reset Territory / Spawn Event -->
       <div class="settings-section" style="border-color:rgba(255,90,90,0.45);background:rgba(40,15,15,0.35)">
@@ -265829,8 +266013,8 @@ try {
        that works everywhere except the one early path nobody tested. It is
        2KB with no dependencies. -->
 <script src="src/econ/peg.js?v=v121q51"></script>
-<script src="src/battle/effects.js?v=v121v122" defer></script>
-<script src="src/phone/handset.js?v=v121v122" defer></script>
+<script src="src/battle/effects.js?v=v121v123" defer></script>
+<script src="src/phone/handset.js?v=v121v123" defer></script>
 <script src="src/battle/combat.js?v=120m4" defer></script>
 <script src="src/battle/targeting.js?v=121e3hex" defer></script>
 <link rel="stylesheet" href="src/sprites/frames.css?v=120k3">
