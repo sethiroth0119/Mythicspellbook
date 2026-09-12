@@ -5977,6 +5977,14 @@
   .bchrome .logrow{display:flex;align-items:flex-start;gap:10px;padding:11px 16px;border-bottom:1px solid rgba(255,255,255,.04);font-size:13px;color:var(--bc-ink);line-height:1.35}
   .bchrome .logrow:last-child{border-bottom:none}
   .bchrome .logrow .em{width:18px;text-align:center;flex:none}
+  /* 🎴 the card that spoke, beside what it did */
+  .bchrome .logrow .logart{width:34px;height:46px;flex:none;object-fit:cover;border-radius:3px;
+    border:1px solid rgba(255,255,255,.14);box-shadow:0 2px 6px rgba(0,0,0,.5);background:#0d0d14}
+  .bchrome .logrow .txt{display:block;min-width:0}
+  .bchrome .logrow .sub{display:block;margin-top:2px;font-size:11.5px;opacity:.72}
+  .bchrome .logrow.lk-death{background:linear-gradient(90deg,rgba(255,70,70,.10),transparent 60%)}
+  .bchrome .logrow.lk-activate{background:linear-gradient(90deg,rgba(150,110,255,.10),transparent 60%)}
+  .bchrome .logrow.lk-status{background:linear-gradient(90deg,rgba(120,200,255,.08),transparent 60%)}
   .bchrome .logrow .txt{color:#e9e2d4;min-width:0;word-break:break-word}
   .bchrome .logrow.log-red .txt{color:#ffb0a2}
   .bchrome .logrow.log-green .txt{color:#b7f0c4}
@@ -16934,6 +16942,33 @@
   }
   @keyframes cur-settle-pulse { 0%, 100% { opacity: 0.28; } 50% { opacity: 0.7; } }
 
+  /* 🗡 THE ABRA BLADE — the pointer, tip-first. The hotspot (3,3 / 8,2) is the
+     tip pixel, found by scanning the rotated art, so the blade points at
+     whatever it is about to click. Browsers cap a cursor at 128px and fall back
+     to the system arrow above it, which is why these are 40 and 56.
+     ⚠ Keep the comma-separated fallback: a cursor file that 404s with no
+       fallback leaves the player with NO pointer at all. */
+  /* 🔴 !important, and that is not laziness. This file declares cursor:pointer
+     863 times, a great many of them as INLINE styles — and an inline style beats
+     any stylesheet rule, so the blade was being replaced by the system hand the
+     moment it crossed anything clickable. The only way a custom pointer holds
+     over markup like this is to outrank it. */
+  *, *::before, *::after { cursor: url('assets/cursors/abra-blade.png') 3 3, default !important; }
+  /* ✨ …and over anything that can be clicked, the blade LIGHTS UP: the same
+     sword over its own blurred silhouette. A 40px cursor cannot change shape
+     legibly, so it says "you can click this" with light instead. */
+  a, button, .btn, .btn-primary, .btn-secondary, .btn-mini, [role="button"], [onclick], [data-act],
+  .tile, .hub-tile, .card, .cardface, .forge-tab, .cx-nav-btn, .cx-tab, .logrow, summary, select,
+  label.clickable, .clickable, [style*="cursor:pointer"], [style*="cursor: pointer"],
+  a *, button *, .btn *, .tile *, .hub-tile *, [role="button"] *, [onclick] * {
+    cursor: url('assets/cursors/abra-blade-glow.png') 5 4, pointer !important;
+  }
+  /* a sword over a text box helps nobody */
+  input[type="text"], input[type="number"], input[type="search"], input[type="password"],
+  input[type="email"], input[type="url"], input[type="datetime-local"], input[type="date"],
+  textarea, [contenteditable="true"] { cursor: text !important; }
+  input[type="range"] { cursor: ew-resize !important; }
+  button:disabled, .btn:disabled, [disabled], .is-disabled { cursor: not-allowed !important; }
   /* ===== 🏕️ v118g0 — CAMP CONSOLE top resource bar (gold, matches mockup) ===== */
   .chud-topbar {
     display: flex; align-items: center; justify-content: space-between; gap: 1rem;
@@ -39411,7 +39446,7 @@ body:has(#pack-opener-frame) #chat-overlay {
   // the console. Bump this every deploy alongside sw.js's CACHE_VERSION. If two
   // machines show different stamps, the older one is on stale code (hard-refresh);
   // if they MATCH but content still differs, it is a DATA/publish issue, not code.
-  window.BUILD_VERSION = 'v121v123';
+  window.BUILD_VERSION = 'v121v127';
   try {
     console.info('%cMythic Spellbook ' + window.BUILD_VERSION + '%c — build check: run  __mg.version',
       'font-weight:700;color:#b48cff', 'color:#7d7499');
@@ -50127,7 +50162,12 @@ function _onColyseusLogEntries(data) {
   try {
     if (App && App.state && Array.isArray(App.state.log)) {
       for (const entry of data.entries) {
-        App.state.log.push({ msg: entry.msg, color: entry.color || 'amber' });
+        /* 📜 v121v126 — carry the identity too, or an opponent's activation
+           arrives as a bare sentence while yours shows the card. The ART is
+           still resolved locally from the id, never sent. */
+        App.state.log.push({ msg: entry.msg, color: entry.color || 'amber',
+          sub: entry.sub || '', kind: entry.kind || '', cardId: entry.cardId || null,
+          cardType: entry.cardType || null, icon: entry.icon || '', hidden: !!entry.hidden });
       }
     }
   } catch (e) {}
@@ -51838,6 +51878,9 @@ async function cloudSyncProfile() {
       // 👕 Player Closet — bought clothing + the worn outfit ride the forge JSONB like every cosmetic above
       __closet__:           (Profile.closet && typeof Profile.closet === 'object') ? Profile.closet : { outfit: null, owned: [] },
       __equippedSleeve__:   (typeof Profile.equippedSleeve === 'string') ? Profile.equippedSleeve : null,
+      // 🎯 Daily / weekly mission progress. Saved since forever, read back by nothing —
+      //    so every reload rerolled the week and zeroed it (owner report, v121v126).
+      __missions__:         (Profile.missions && typeof Profile.missions === 'object') ? Profile.missions : null,
       // 🦸 Chosen Camp Heights survivor id (set once on first entry; sticks).
       __campSurvivorId__:    (typeof Profile.campSurvivorId === 'string') ? Profile.campSurvivorId : null,
       // 🏳 District Node the camp is registered to (Reconstruction Network).
@@ -53658,6 +53701,12 @@ async function cloudFetchProfile() {
         Profile.closet = { outfit: (f.__closet__.outfit && typeof f.__closet__.outfit === 'object') ? f.__closet__.outfit : (cur.outfit || null), owned: Object.keys(cset) };
       }
       // 🦸 Camp Heights survivor pick — restored last-writer-wins.
+      // 🎯 Mission progress — the newer roll wins, so a device that rolled this week's set keeps it.
+      if (f.__missions__ && typeof f.__missions__ === 'object') {
+        const _cur = (Profile.missions && typeof Profile.missions === 'object') ? Profile.missions : null;
+        const _rolled = (x) => Math.max((x && x.weeklyRolledAt) | 0, (x && x.dailyRolledAt) | 0);
+        if (!_cur || _rolled(f.__missions__) >= _rolled(_cur)) Profile.missions = f.__missions__;
+      }
       if (typeof f.__campSurvivorId__ === 'string') Profile.campSurvivorId = f.__campSurvivorId__;
       // 🏳 Camp's registered District Node + Reconstruction Network state.
       if (typeof f.__campNodeId__ === 'string') Profile.campNodeId = f.__campNodeId__;
@@ -56159,6 +56208,7 @@ function _applyCatalogRow(data) {
   if (rawMoves.__cinder_shop__       && typeof rawMoves.__cinder_shop__       === 'object') Catalog.cinderShop       = rawMoves.__cinder_shop__;
   if (Array.isArray(rawMoves.__crafting_recipes__))  Catalog.craftingRecipes  = rawMoves.__crafting_recipes__;
   if (rawMoves.__obtainability__     && typeof rawMoves.__obtainability__     === 'object') Catalog.obtainability    = rawMoves.__obtainability__;
+  if (Array.isArray(rawMoves.__card_sets__)) Catalog.cardSets = rawMoves.__card_sets__;   // 🗓 v121v124
   if (rawMoves.__onboarding__        && typeof rawMoves.__onboarding__        === 'object') Catalog.onboarding       = rawMoves.__onboarding__;
   if (rawMoves.__maintenance__       && typeof rawMoves.__maintenance__       === 'object') Catalog.maintenance      = rawMoves.__maintenance__;
   if (rawMoves.__territory_wars__    && typeof rawMoves.__territory_wars__    === 'object') Catalog.territoryWars    = rawMoves.__territory_wars__;
@@ -56230,6 +56280,7 @@ function _applyCatalogRow(data) {
   delete cleanMoves.__cinder_shop__;
   delete cleanMoves.__crafting_recipes__;
   delete cleanMoves.__obtainability__;
+  delete cleanMoves.__card_sets__;
   delete cleanMoves.__territory_wars__;
   delete cleanMoves.__dark_events__;
   delete cleanMoves.__vip_pool__;
@@ -56785,6 +56836,10 @@ async function cloudPublishCatalog(opts) {
       __cinder_shop__:       (Forge.cinderShop       && typeof Forge.cinderShop       === 'object') ? Forge.cinderShop       : { inventory: [] },
       __crafting_recipes__:  Array.isArray(Forge.craftingRecipes)  ? Forge.craftingRecipes  : [],
       __obtainability__:     (Forge.obtainability    && typeof Forge.obtainability    === 'object') ? Forge.obtainability    : {},
+      /* 🗓 v121v124 — the card SETS (a set's release instant is what holds its
+         cards back). This was briefly a top-level column of the upsert, which
+         card_catalog does not have, and it took every publish down with it. */
+      __card_sets__:         (Forge.cardSets || []).filter(st => st && st.id).map(st => ({ id: st.id, name: st.name, icon: st.icon, releaseAt: st.releaseAt | 0, cardIds: Array.isArray(st.cardIds) ? st.cardIds.slice(0, 2000) : [], packId: st.packId || '' })),
       // 🎓 New-player onboarding config (welcome image / narration / enable) so
       // every player gets the admin's onboarding, not the engine default. The
       // welcome image / narrator portrait / narration audio are data: URLs that
@@ -56939,7 +56994,6 @@ async function cloudPublishCatalog(opts) {
       cards:      stripBig(slim((Forge.customCards || []).filter(c => c && !c.draft))),
       /* 🗓 v121v122 — the sets ride along so a scheduled release reaches every
        player: they hold the cards back until the instant, then let them go. */
-      cardSets: (Forge.cardSets || []).filter(st => st && st.id).map(st => ({ id: st.id, name: st.name, icon: st.icon, releaseAt: st.releaseAt | 0, cardIds: Array.isArray(st.cardIds) ? st.cardIds.slice(0, 2000) : [], packId: st.packId || '' })),
       moves:      stripBig(movesWithAi),
       items:      stripBig(Forge.customItems || []),
       packs:      stripBig(Forge.customPacks || []),
@@ -63974,7 +64028,15 @@ async function walletFetchProgress() {
     if (typeof r.data.sovereigns === 'number') {
       const _srvAza = Math.max(0, Math.round(r.data.sovereigns));
       const _locAza = Math.max(0, Math.round(Number(Profile.sovereigns) || 0));
-      if (_srvAza > 0 || _locAza === 0) {
+      if (_locAza > _srvAza && _srvAza > 0) {
+        /* 🩹 v121v126 — keep the LARGER, exactly as Cinder does four lines up,
+           and push the difference back so the row catches up. A LUNI sale pays
+           Aza through the client wallet; adopting the server verbatim deleted
+           it on the next read (owner: "Received 20 Aza… next time I looked the
+           20 Aza was gone"). */
+        Profile.sovereigns = _locAza;
+        try { console.info('👑 Local Aza ' + _locAza + ' > canonical ' + _srvAza + ' — keeping local (a LUNI sale pays Aza through this wallet).'); } catch (e) {}
+      } else if (_srvAza > 0 || _locAza === 0) {
         Profile.sovereigns = _srvAza;
       } else {
         try { console.warn('👑 Canonical Aza reads 0 but this device holds ' + _locAza + ' — keeping local. This account predates the sql/024 seed; banking Aza will refuse until it is seeded.'); } catch (e) {}
@@ -70820,7 +70882,7 @@ function openFoundationReserve() {
             return '<div style="padding:9px 11px;border:1px solid ' + (risk ? (risk.lock ? 'rgba(255,107,107,0.4)' : 'rgba(224,184,74,0.38)') : 'rgba(208,189,167,0.2)') + ';border-radius:9px;background:rgba(111,87,59,0.10);margin-bottom:7px">' +
               '<div style="display:flex;align-items:center;gap:9px"><span style="font-size:1.3rem">' + ((_nodeType(n.node_type) || {}).icon || '🔌') + '</span>' +
                 '<div style="flex:1;min-width:0"><div style="color:#f3eee8;font-weight:800">' + esc(n.name || 'PRN') + (risk ? ' <span class="small-text" style="color:' + (risk.lock ? '#ff8a8a' : '#e8cf94') + '">' + risk.icon + '</span>' : '') + '</div>' +
-                '<div class="small-text" style="color:#cfbca6">' + esc(n.resource || '') + ' · LV ' + (n.level | 0) + ' · eff ' + eff + '%</div></div>' +
+                '<div class="small-text" style="color:#cfbca6">' + esc(n.resource || '') + ' · LV ' + Math.max(1, (n.meta && n.meta.level | 0) || (n.level | 0) || 1) + ' · eff ' + eff + '%</div></div>' +
                 '<div style="text-align:right">' + status + '<div class="small-text" style="color:#cdb9a2">claimable: ' + numF(claim) + ' 🔥</div></div></div>' +
               riskBox +
               '<div style="display:flex;gap:6px;margin-top:8px">' +
@@ -74062,6 +74124,12 @@ const CAMP_UNLOCK_LEVEL = 3;
 // Tutor Shop unlocks at this ACCOUNT level (long-term meta progression).
 const TUTOR_UNLOCK_ACCOUNT_LEVEL = 5;
 // Player Market unlocks once the player has at least N heroes at this hero level.
+/* 🖤 The Black Market opens on ACCOUNT level, not on a mission (owner,
+   v121v125: "Open Black market to players who are profile level 3 and higher
+   only it shouldn't be locked to a mission"). The route to the Bazaar still
+   exists — it is how a haul is carried home — but it is no longer the toll on
+   the door. */
+const BLACKMKT_UNLOCK_ACCOUNT_LEVEL = 3;
 const MARKET_UNLOCK_HERO_LEVEL = 15;
 const MARKET_UNLOCK_HERO_COUNT = 2;
 // Cashout Vault unlocks when the player has at least one hero at this hero level.
@@ -77697,6 +77765,7 @@ function loadForge() {
       if (p.princePortfolios && typeof p.princePortfolios === 'object') Profile.princePortfolios = _mergePrincePortfolios(p.princePortfolios, Profile.princePortfolios); // 🚗 car co (merged by id)
       if (p.blackRiver      && typeof p.blackRiver      === 'object') Profile.blackRiver      = p.blackRiver;       // ⛽ oil co
       if (p.fuelCommand     && typeof p.fuelCommand     === 'object') Profile.fuelCommand     = p.fuelCommand;      // ⛽ fuel co
+      if (p.missions        && typeof p.missions        === 'object') Profile.missions        = p.missions;         // 🎯 daily/weekly progress — IN ALL THREE LISTS (v121v126)
       if (p.closet          && typeof p.closet          === 'object') Profile.closet          = { outfit: (p.closet.outfit && typeof p.closet.outfit === 'object') ? p.closet.outfit : null, owned: Array.isArray(p.closet.owned) ? p.closet.owned.filter(x => typeof x === 'string') : [] };   // 👕 player closet
       // 🦸 Starter-deck state — restore so the new-player gate never re-fires.
       if (p.starterPicked === true) Profile.starterPicked = true;
@@ -93488,6 +93557,26 @@ window.cityWagePoolPeek = () => { try { return Object.assign({ leak: WAGE_POOL_L
 /* WAGEPOOL:END */
 // Settle an op: pay salaries from Treasury, bank net revenue to Treasury,
 // reset the clock. Returns a summary for the toast. Unpaid wages → 50% hit.
+/* 🔒 THE CLAIM. Moves meta.lastCollect FIRST and demands the row back: a
+   policy that refuses the write answers 204 with no error, so without
+   .select('id') the refusal is indistinguishable from success — which is
+   exactly how the same accrual was paid out over and over. Returns false when
+   the claim did not land, and the caller then pays NOTHING. */
+async function _opClaimCollect(o) {
+  try {
+    if (!o) return false;
+    const meta = Object.assign({}, o.meta || {}, { lastCollect: Date.now() });
+    if (o.meta && o.meta.localOnly) { o.meta = meta; try { const pr = _jbLocalOpsList().find((x) => x && x.id === o.id); if (pr) pr.meta = meta; saveProfile(); } catch (e) {} return true; }
+    if (!(typeof Cloud !== 'undefined' && Cloud.client)) return false;
+    const up = await Cloud.client.from('corp_operations')
+      .update({ meta: meta, updated_at: new Date().toISOString() })
+      .eq('id', o.id).select('id');
+    if (up && up.error) return false;
+    if (!up || !Array.isArray(up.data) || up.data.length === 0) return false;   // refused by policy — say so
+    o.meta = meta;
+    return true;
+  } catch (e) { return false; }
+}
 async function _opSettle(o) {
   const c = _opComputed(o);
   if (c.gross <= 0 && c.salary <= 0) { return { net: 0, salary: 0, gross: 0, wagesShort: false }; }
@@ -93584,12 +93673,6 @@ async function _opSettle(o) {
       // 🏭 Same supply pressure as the personally-funded path above.
       try { if (typeof cxProduce === 'function') cxProduce(yielded, 'op:' + (o.op_type || 'business')); } catch (e2) {}
     }
-  } catch (e) {}
-  const meta = Object.assign({}, o.meta || {}, { lastCollect: Date.now() });
-  try {
-    const up = await Cloud.client.from('corp_operations').update({ meta: meta, updated_at: new Date().toISOString() }).eq('id', o.id);
-    if (up && up.error) throw up.error;
-    o.meta = meta;
   } catch (e) {}
   return { net: net, salary: salaryPay, gross: gross, wagesShort: wagesShort, yielded: yielded };
 }
@@ -93838,7 +93921,10 @@ function corpLawsPanelHtml(owner) {
             const col = dead ? '#8a7a4a' : pos ? '#9fe0b0' : '#ff9a6b';
             const bd  = dead ? 'rgba(140,125,80,0.28)' : pos ? 'rgba(127,224,160,0.3)' : 'rgba(255,154,107,0.35)';
             const bg  = dead ? 'rgba(50,44,20,0.18)' : pos ? 'rgba(40,80,50,0.22)' : 'rgba(80,40,30,0.22)';
-            return '<span class="small-text" style="white-space:nowrap;padding:1px 7px;border-radius:999px;border:1px solid ' + bd + ';background:' + bg + ';color:' + col + '">' + esc(t) + (neutralText ? '' : ' ' + ((v | 0) >= 0 ? '+' : '') + (v | 0)) + '</span>';
+            /* 🩹 v121v126 — was white-space:nowrap: a sentence-length pill could
+               not wrap and spilled out of a 1/5-width card (owner: the levy
+               bubbles "don't fit inside the containers"). */
+            return '<span class="small-text" style="padding:1px 7px;border-radius:999px;border:1px solid ' + bd + ';background:' + bg + ';color:' + col + '">' + esc(t) + (neutralText ? '' : ' ' + ((v | 0) >= 0 ? '+' : '') + (v | 0)) + '</span>';
           };
           // ⭐ Each chip names the EXACT existing term the option moves.
           const fx = function (k, o) {
@@ -98099,6 +98185,7 @@ function _jbDropFrame() {
   } catch (e) {}
 }
 
+let _jbOpBusy = {};   // 🔒 opId → in flight, so one collect cannot be paid twice
 function _jbHandleAction(a) {
   /* 🔴 HOISTED OUT OF THE corpKick BRANCH (2026-08-30). It was declared
      inside `else if (a.kind === 'corpKick')`, so corpSend, corpClaim and
@@ -99966,7 +100053,8 @@ function _jbHandleAction(a) {
             if (pr) { pr.workers = w; pr.meta = o.meta; }
             try { saveProfile(); } catch (_) {}
           } else {
-            const up = await Cloud.client.from('corp_operations').update({ workers: w, meta: Object.assign({}, o.meta || {}, { lastCollect: Date.now() }), updated_at: new Date().toISOString() }).eq('id', o.id);
+            /* the same silent-refusal shape as the collect above: ask for the row */
+      const up = await Cloud.client.from('corp_operations').update({ workers: w, meta: Object.assign({}, o.meta || {}, { lastCollect: Date.now() }), updated_at: new Date().toISOString() }).eq('id', o.id);
             if (up && up.error) { showToast('⚠ Staffing update failed.', 3600); _jbSendData(); return; }
             o.workers = w;
           }
@@ -100163,6 +100251,24 @@ function _jbHandleAction(a) {
           const c = _opComputed(o);
           if (c.cdLeft > 0) { showToast('⏳ Production settles every 6h — ' + Math.ceil(c.cdLeft / 3600000) + 'h left.', 3600); _jbSendData(); return; }
           if (c.gross <= 0) { showToast('No production yet — hire workers into this operation.', 4200); _jbSendData(); return; }
+          /* 🔒 ONE COLLECT PER OPERATION AT A TIME. A settle is five to seven
+             round trips long with the button still enabled, so click-spam
+             re-entered here and paid the same accrual again before the first
+             had recorded anything. The payroll sweep next door has carried
+             exactly this guard for months; this path never did. */
+          if (_jbOpBusy[a.opId]) { try { showToast('⏳ Still collecting…', 1800); } catch (e2) {} return; }
+          _jbOpBusy[a.opId] = true;
+          /* 🔴 CLAIM BEFORE PAYING. The old order paid the resources and the
+             Cinder and THEN tried to record the collection — so when the write
+             was refused (silently, see _opClaimCollect) the player kept
+             everything and the accrual was still there to collect again. */
+          const _claimed = await _opClaimCollect(o);
+          try { delete _jbOpBusy[a.opId]; } catch (e2) {}
+          if (!_claimed) {
+            try { showToast('⚠ Could not record the collection — nothing was paid. Ask the founder to collect this operation.', 5200); } catch (e2) {}
+            try { await opFetch(); _jbSendData(); } catch (e2) {}
+            return;
+          }
           const s = await _opSettle(o);
           const yStr = Object.keys(s.yielded || {}).map(function (rid) { return '+' + s.yielded[rid].toLocaleString() + ' ' + ((_meta(rid).icon) || '') + ' ' + ((_meta(rid).name) || rid); }).join(' · ');
           showToast('⚙️ ' + o.op_type + ' produced — Treasury +' + s.net.toLocaleString() + ' 🔥' + (yStr ? ' · ' + yStr + ' to your stores' : '') + ' (gross ' + s.gross.toLocaleString() + ' − wages ' + s.salary.toLocaleString() + ')' + (s.wagesShort ? ' ⚠ wages short: output halved.' : ''), 6800);
@@ -100259,6 +100365,9 @@ function mountJustBusiness() {
       App._jbMsgHandler = function (e) {
         const d = e && e.data;
         if (!d || typeof d !== 'object') return;
+        /* 🔒 v121v127 — this checked d.type and nothing else, so ANY frame that
+           could reach this window could drive a collect. Our own origin only. */
+        try { if (e.origin && e.origin !== window.location.origin) return; } catch (e2) { return; }
         if (d.type === 'jb:ready') {
           // App is up — push real economy now, and again once the corp
           // (auto-created on first open) has resolved.
@@ -102889,8 +102998,8 @@ const ONPLAY_TYPES = [
   // permanents you control (your Location, your Enchantments, the Weather) are
   // included when the side is 'ally' — "location cards can have counters" is
   // this line.
-  { id: 'addCounters',    label: '🔵 Add Counters (place counters — named below, or this card\'s own — on units / locations)', needs: ['amount', 'radius', 'tSide', 'counterName'] },
-  { id: 'removeCounters', label: '🔴 Remove Counters (strip counters — named below, or this card\'s own — off targets)', needs: ['amount', 'radius', 'tSide', 'counterName'] },
+  { id: 'addCounters',    label: '🔵 Add Counters (place counters — named below, or this card\'s own — on units / locations)', needs: ['amount', 'radius', 'counterSide', 'counterName'] },
+  { id: 'removeCounters', label: '🔴 Remove Counters (strip counters — named below, or this card\'s own — off targets)', needs: ['amount', 'radius', 'counterSide', 'counterName'] },
   { id: 'grantPassive',   label: '🧬 Grant Passive (give a passive to this unit, your units, or the units, fusions and archons called this turn — for N turns or for good)', needs: ['grantPassive'] },
   // 🗑 Discard — force the OPPONENT to drop N random cards from their hand.
   // This used to be welded onto the Panicked status (a unit panicking would
@@ -103190,6 +103299,22 @@ function _onplayTypeOptgroups(selectedId, exclude) {
 // editor, so a Field / Grave / Kalon ability using "Summon From Zone" (or
 // "Sacrifice → Summon") silently fell back to the deck and could never be
 // authored to pull from the HAND. Rendered in every effect editor now.
+/* 🔵 WHO GETS THE COUNTERS. Its own control, because the card's token config
+   ("gives counters to: itself only") is read by the end-of-turn grant tick,
+   NOT by the Add Counters effect — so it never answered this question. */
+const COUNTER_SIDES = [
+  { id: 'self',  label: 'Itself — the card that played this' },
+  { id: 'ally',  label: 'Your units in radius (and your permanents)' },
+  { id: 'enemy', label: 'Enemy units in radius' },
+  { id: 'all',   label: 'Every unit in radius, both sides' },
+];
+function _counterSideFieldHtml(prefix, eff) {
+  const cur = (eff && eff.counterSide) || 'self';
+  return '<label class="small-text">🔵 Counters go to</label>'
+    + '<select id="' + prefix + '-counterside" style="width:100%">'
+    + COUNTER_SIDES.map((z) => '<option value="' + z.id + '"' + (cur === z.id ? ' selected' : '') + '>' + z.label + '</option>').join('')
+    + '</select>';
+}
 function _summonZoneFieldHtml(prefix, eff) {
   eff = eff || {};
   const cur = eff.summonZone || 'deck';
@@ -103262,7 +103387,7 @@ const FX_GATE_FIELDS = {
   // not the whole Search-Deck row.
   'searchtype': ['searchDeckType'], 'searchcards': ['searchDeckType', 'searchDeckCardIds'],
   'searchcostdelta': ['searchDeckType'], 'costdelta': ['searchDeckType'],
-  'summonzone': ['summonZone'], 'summoncards': ['summonCardIds'],
+  'summonzone': ['summonZone'], 'summoncards': ['summonCardIds'], 'counterside': ['counterSide'],
   'surface': ['surfaceType'],
   // the 🎴 Card Filter, whichever editor drew it and whichever half the
   // completion pass appended at runtime
@@ -103373,6 +103498,8 @@ function _fxNeedTokens(effectId) {
 }
 // Apply the gate everywhere, in place. Cheap enough to run on every keystroke
 // that lands on an effect picker: ~60 controls per block, one class toggle each.
+/* exposed so the ➕ that reveals an extra slot can re-gate it (v121v125) */
+window._fxApplyEffectGate = _fxApplyEffectGate;
 function _fxApplyEffectGate() {
   const host = document.querySelector('.card-editor');
   if (!host) return;
@@ -110947,6 +111074,30 @@ const _AFX_KIND = {
 // labelled LINK 1/2.
 let _afxChainCtx = null;
 // The one call. `before`/`after` bracket the reducer so the hit line is real.
+/* 📜 An activation, as a log row. Face-down cards stay face-down: `hidden`
+   is the same flag the on-screen flourish uses to avoid leaking a Subterfuge
+   play, and it suppresses the art here too. */
+function _afxLogEntry(spec, state) {
+  try {
+    if (!spec) return;
+    const st = state || (typeof App !== 'undefined' && App.state) || null;
+    if (!st || !Array.isArray(st.log)) return;
+    const who = spec.owner === 'ai' ? 'Enemy' : 'Your';
+    const name = spec.hidden ? 'a face-down card' : (spec.name || 'A card');
+    const lines = Array.isArray(spec.effects) ? spec.effects.filter(Boolean) : [];
+    const hit = (spec.hit && spec.hit.text) ? String(spec.hit.text).replace(/^➜\s*/, '') : '';
+    st.log.push({
+      msg: '✴ ' + who + ' ' + name + (spec.kindLabel ? ' — ' + String(spec.kindLabel).toLowerCase() : ' activates'),
+      sub: [lines.join(' · '), hit].filter(Boolean).join('   ➜ ') || '',
+      color: spec.owner === 'ai' ? 'red' : 'purple',
+      kind: 'activate',
+      cardId: spec.hidden ? null : (spec.cardId || null),
+      cardType: spec.cardType || null,
+      icon: spec.icon || '✴',
+      hidden: !!spec.hidden,
+    });
+  } catch (e) {}
+}
 function _afxAnnounce(before, after, unit, card, opts) {
   try {
     if (typeof window === 'undefined' || !window.ActivateFX || !card) return;
@@ -111015,6 +111166,10 @@ function _afxAnnounce(before, after, unit, card, opts) {
       forceTier: o.forceTier || null,
     };
     window.ActivateFX.announce(_spec);
+    /* 📜 …and the same record goes to the log. It already knows the card, the
+       owner, one line per effect and a diff of what changed on the board; the
+       log used to get a hand-written sentence from somewhere else, or nothing. */
+    try { _afxLogEntry(_spec, state); } catch (e) {}
     // 🌐 …and show it on the OPPONENT'S screen too. See _afxRelay.
     try { _afxRelay(_spec); } catch (e) {}
   } catch (e) { try { console.warn('[afx]', e); } catch (_) {} }
@@ -114432,7 +114587,13 @@ function _applyOnPlayOneRaw(state, unit, card) {
   if (eff.type === 'addCounters' || eff.type === 'removeCounters') {
     const _sign = eff.type === 'addCounters' ? 1 : -1;
     const _n = Math.max(1, eff.amount | 0) * _sign;
-    const _side = eff.tSide || 'ally';
+    /* 🔵 v121v125 — counters have their own side, and it defaults to the card
+       that played the effect. It used to read tSide, the Target Strike damage
+       dropdown, which every on-play effect writes and whose default is
+       'enemy' — so "On Play: gain 2 Ualti Counters" put them on an enemy unit
+       or on nothing. An older card that really did aim counters at a side
+       still says so in tSide, and that is honoured below. */
+    const _side = eff.counterSide || 'self';
     let tok = null, touched = 0, moved = 0;
     try {
       if (window.MythicCounters) {
@@ -114442,6 +114603,7 @@ function _applyOnPlayOneRaw(state, unit, card) {
         const _tid = tok ? tok.id : null;
         (state.units || []).forEach(u => {
           if (!u || !u.alive || !u.pos) return;
+          if (_side === 'self' && u !== unit) return;          // 🔵 itself only — the common case
           if (_side === 'ally' && u.owner !== owner) return;
           if (_side === 'enemy' && u.owner === owner) return;
           if (Math.max(Math.abs(u.pos.x - unit.pos.x), Math.abs(u.pos.y - unit.pos.y)) > radius) return;
@@ -114450,7 +114612,7 @@ function _applyOnPlayOneRaw(state, unit, card) {
         });
         // 🌋 Card-shaped permanents you control take counters too — this is the
         // "not just units, location cards can have counters" half of the spec.
-        if (_side !== 'enemy') {
+        if (_side === 'ally' || _side === 'all') {
           window.MythicCounters.permanentsFor(state, owner).forEach(pm => {
             const d = window.MythicCounters.add(state, pm.card, _n, _tid, pm.kind);
             if (d) { touched++; moved += Math.abs(d); }
@@ -118502,6 +118664,25 @@ const applyDamageTriggers = (unit, incomingDmg, damageType) => {
   if (nu.isHero && !nu.alive && _oldHp > 0) {
     _recordHeroDeath(nu.owner, nu.name, _deathCauseLabel(damageType, _pendingDmgSource, _dmgIn), _dmgIn, _oldHp);
   }
+  /* 💀 v121v126 — the cause of death was computed for HEROES ONLY and spent on
+     a toast. Every unit gets it now, in the log, naming what did it: the
+     attacker and the move when the caller supplied them, else the kind of
+     damage (poison, a trap, the terrain…). This is the one place that sees the
+     alive→dead transition for all 36 damage sources. */
+  try {
+    if (!nu.alive && _oldHp > 0 && Array.isArray((typeof App !== 'undefined' && App.state && App.state.log) || null)) {
+      const _cause = _deathCauseLabel(damageType, _pendingDmgSource, _dmgIn);
+      App.state.log.push({
+        msg: '💀 ' + (nu.name || 'A unit') + ' is destroyed',
+        sub: (_cause ? 'by ' + _cause : '') + (_dmgIn ? ' · ' + _dmgIn + ' damage taken at ' + _oldHp + ' HP' : ''),
+        color: nu.owner === 'player' ? 'red' : 'green',
+        kind: 'death',
+        cardId: nu.originalCardId || nu.cardId || null,
+        cardType: nu.isHero ? 'hero' : 'unit',
+        icon: '💀',
+      });
+    }
+  } catch (e) {}
   _pendingDmgSource = null;   // consume attribution — never leak to the next hit
   // ⚔ RECKONING (cosmic keystone, Aegis) — each hit the hero SURVIVES builds Wrath;
   // it discharges as a stunning shockwave at the start of their next turn (see startTurn).
@@ -122014,6 +122195,13 @@ const startTurn = (state, who) => {
         const nextEntry = { ...e, turns: e.turns - 1 };
         if (eff && eff.escalating) nextEntry.tickCount = (e.tickCount || 0) + 1;
         newEffects.push(nextEntry);
+      } else {
+        /* ✨ v121v126 — expiry was silent for every status but stun: a poison
+           simply vanished from the array and the player was left guessing. */
+        try {
+          log.push({ msg: ((eff && eff.icon) ? eff.icon + ' ' : '✨ ') + (u.name || 'A unit') + ' — ' + ((eff && eff.name) || e.type) + ' wears off',
+                     color: 'amber', kind: 'status', cardId: u.originalCardId || u.cardId || null, cardType: u.isHero ? 'hero' : 'unit', icon: (eff && eff.icon) || '✨' });
+        } catch (e2) {}
       }
     });
     nu.statusEffects = newEffects;
@@ -138941,10 +139129,23 @@ function renderTitle() {
       //    Athena hub draws you as, shop clothing by brand. Lives in /src/closet
       //    (window.MythicCloset); this tile is the only thing index.html knows.
       //    Same null-when-unloaded contract as Mercenaries below.
+      /* 🔒 CLOSED UNTIL IT IS STOCKED (owner, v121v124: "Grey out player closet
+         and Closet studio from players do not give them access to it").
+         The repo ships no character and no clothing — models/manifest.json is
+         empty — so the door opens onto an empty room for a player. It keeps
+         the game's own LOCKED tile shape (🔒, a badge, a toast that says why)
+         and an admin still gets the working tile, because the wardrobe has to
+         be built and checked through it before anyone else is let in. The
+         Closet Studio beside it needs no such treatment: it lives in
+         adminTiles, which is empty for a player. */
       ((typeof window !== 'undefined' && window.MythicCloset)
-        ? { id: 'btn-closet', icon: '<span style="font-size:3rem;line-height:1;filter:drop-shadow(0 4px 14px rgba(0,0,0,0.7))">👕</span>', name: 'Player Closet', sub: 'Dress your character · shop by brand', accent: '#f4d06f',
-            badge: (() => { try { const c = Profile.closet; const n = (c && c.outfit && c.outfit.wear) ? Object.keys(c.outfit.wear).length : 0; return n ? n + ' worn' : null; } catch (e) { return null; } })(),
-            onclick: () => { try { window.MythicCloset.open(); } catch (e) { showToast('⚠ The Player Closet did not load.', 3200); } } }
+        ? (_isAdmin
+          ? { id: 'btn-closet', icon: '<span style="font-size:3rem;line-height:1;filter:drop-shadow(0 4px 14px rgba(0,0,0,0.7))">👕</span>', name: 'Player Closet', sub: 'Dress your character · shop by brand', accent: '#f4d06f',
+              badge: (() => { try { const c = Profile.closet; const n = (c && c.outfit && c.outfit.wear) ? Object.keys(c.outfit.wear).length : 0; return n ? n + ' worn' : null; } catch (e) { return null; } })(),
+              onclick: () => { try { window.MythicCloset.open(); } catch (e) { showToast('⚠ The Player Closet did not load.', 3200); } } }
+          : { id: 'btn-closet', icon: '🔒', name: 'Player Closet', sub: 'Opens when the wardrobe is stocked', accent: '#6a6250',
+              badge: 'Coming soon', locked: true,
+              onclick: () => { showToast('🔒 The Player Closet is not open yet — the wardrobe is still being built.', 3200); } })
         : null),
       // ⚔ MERCENARIES — the escrow job board. Sits directly under Emergency
       // Broadcast because that is where it LIVES: posting a contract puts a
@@ -139106,16 +139307,21 @@ function renderTitle() {
           return activeBets > 0;
         })(),
         onclick: () => { App.screen = 'wagerHall'; App.wagerTab = 'live'; render(); } },
-      { id: 'btn-vendor',  icon: '<img src="assets/artwork/Blackmarket%20icon.png" alt="Black Market" style="width:3.1rem;height:3.1rem;object-fit:contain;vertical-align:middle;transform:scale(1.9);transform-origin:center;filter:drop-shadow(0 4px 14px rgba(0,0,0,0.7))">', name: 'Black Market',
+      ((acctLevel >= BLACKMKT_UNLOCK_ACCOUNT_LEVEL || _hubIsAdmin) ? null
+        : { id: 'btn-vendor', icon: '🔒', name: 'Black Market', sub: `Reach Account Lv ${BLACKMKT_UNLOCK_ACCOUNT_LEVEL}`, accent: '#7a5a7a',
+            badge: `Lv ${acctLevel} / ${BLACKMKT_UNLOCK_ACCOUNT_LEVEL}`, locked: true,
+            onclick: () => { showToast(`🔒 The Black Market opens at Account Lv ${BLACKMKT_UNLOCK_ACCOUNT_LEVEL} — you are Lv ${acctLevel}. Earn XP from battles and dailies.`, 4200); } }),
+      ((acctLevel < BLACKMKT_UNLOCK_ACCOUNT_LEVEL && !_hubIsAdmin) ? null
+        : { id: 'btn-vendor',  icon: '<img src="assets/artwork/Blackmarket%20icon.png" alt="Black Market" style="width:3.1rem;height:3.1rem;object-fit:contain;vertical-align:middle;transform:scale(1.9);transform-origin:center;filter:drop-shadow(0 4px 14px rgba(0,0,0,0.7))">', name: 'Black Market',
         sub: (App._bmInHall) ? 'You\'re at The Hollow Bazaar — chat, trade, then travel home' : 'Survive the route to reach The Hollow Bazaar',
         badge: (App._bmInHall) ? '🖤 At the Bazaar' : '🗺 Run the route',
         accent: '#b070b0',
         onclick: () => {
+          /* 🖤 v121v125 — Lv 3 walks in. The route is still there for carrying a
+             haul home; it is simply not the price of admission any more. */
           if (App._bmInHall && typeof openBlackMarketHall === 'function') { openBlackMarketHall(); }
-          else if (typeof _adminBypass === 'function' && _adminBypass()) { App.screen = 'vendor'; render(); }
-          else if (typeof _startBlackMarketRun === 'function') { _startBlackMarketRun(); }
           else { App.screen = 'vendor'; render(); }
-        } },
+        } }),
       // Cashout Vault — gated behind hero progression. Encourages players to actually
       // play the game before the money-out feature unlocks.
       cashoutUnlocked
@@ -149332,7 +149538,7 @@ function renderCardEditor() {
            one template string and a listener registry for one button would be
            more machinery than the button. */
         + `<button type="button" id="ed-onplayx-add" style="margin-top:0.5rem;padding:0.35rem 0.8rem;border-radius:6px;cursor:pointer;border:1px solid rgba(158,118,230,0.6);background:rgba(126,84,206,0.18);color:#d8c4ff;font-weight:700"`
-        + ` onclick="(function(b){var n=b.parentNode.querySelector('[data-xslot]:not([style*=&quot;display:none&quot;])~[data-xslot][style*=&quot;display:none&quot;]')||b.parentNode.querySelector('[data-xslot][style*=&quot;display:none&quot;]');if(n){n.style.display='';}if(!b.parentNode.querySelector('[data-xslot][style*=&quot;display:none&quot;]'))b.style.display='none';})(this)">`
+        + ` onclick="(function(b){var n=b.parentNode.querySelector('[data-xslot]:not([style*=&quot;display:none&quot;])~[data-xslot][style*=&quot;display:none&quot;]')||b.parentNode.querySelector('[data-xslot][style*=&quot;display:none&quot;]');if(n){n.style.display='';}if(!b.parentNode.querySelector('[data-xslot][style*=&quot;display:none&quot;]'))b.style.display='none';try{window._fxCompleteEffectFields&amp;&amp;window._fxCompleteEffectFields();}catch(e){}try{window._fxApplyEffectGate&amp;&amp;window._fxApplyEffectGate();}catch(e){}})(this)">`
         + `➕ Add another effect</button>`
         + `</div>`;
     })()}
@@ -152483,6 +152689,63 @@ function bindCardEditor() {
     document.querySelectorAll('#traitpool-backdrop').forEach(n => n.remove());
   }
 
+  /* 🌟 COMPLETE EVERY SUMMON ZONE. `summonFromZone` and `sacrificeToSummon`
+     both carry a source zone — hand, deck, graveyard or Void — and the picker
+     was written into six of the eleven editors that can hold those effects.
+     On-Grave, Hand Ability and the six extra On-Play slots had none, so the
+     zone could not be chosen there at all; _summonZone(undefined) then reads
+     `deck`, so an On-Grave "raise it from the Void" summoned from the deck and
+     said so in the card text. Injected here, in place, exactly as the Card
+     Filter pass below does it — and BEFORE _fxApplyEffectGate() runs, so the
+     new field is hidden and shown with the rest for whichever effect is
+     chosen (FX_GATE_FIELDS already maps the 'summonzone' suffix). */
+  window._fxCompleteEffectFields = function () {
+    const PRE = ['ed-onplay', 'ed-ongrave', 'ed-ig', 'ed-grave', 'ed-field', 'ed-hand',
+                 'ed-onatk', 'ed-onkill', 'ed-milled', 'ed-aura', 'ed-kalon-onx',
+                 'ed-onplayx-0', 'ed-onplayx-1', 'ed-onplayx-2', 'ed-onplayx-3', 'ed-onplayx-4', 'ed-onplayx-5'];
+    PRE.forEach((pre) => {
+      if (document.getElementById(pre + '-summonzone')) return;      // already has one
+      const typeSel = document.getElementById(pre + '-type') || document.getElementById(pre + '-effect');
+      if (!typeSel) return;                                          // editor not on screen
+      /* Land it beside the effect's own fields: after the Card Filter box when
+         there is one (it is the last thing in the block), else after the type
+         select's field. */
+      let anchor = document.querySelector('#' + CSS.escape(pre) + '-filter-element')
+                || document.getElementById(pre + '-filter-cards') || typeSel;
+      let box = anchor.closest('.editor-field') || anchor.parentElement;
+      while (box && box.parentElement && !box.parentElement.classList.contains('editor-grid')
+             && box.parentElement !== document.body) box = box.parentElement;
+      if (!box || !box.parentElement) return;
+      let saved = null;
+      try {
+        const id = App.editingCardId;
+        const card = (id === 'NEW') ? App._newCardDraft : (Forge.customCards || []).find((c) => c && c.id === id);
+        const eff = _fxZonePathFor(pre, card);
+        saved = (eff && typeof eff.summonZone === 'string') ? eff.summonZone : null;
+      } catch (e) {}
+      const wrap = document.createElement('div');
+      wrap.className = 'editor-field full';
+      wrap.style.cssText = 'min-width:0';
+      try { wrap.innerHTML = _summonZoneFieldHtml(pre, { summonZone: saved || 'deck' }); } catch (e) { return; }
+      box.parentElement.insertBefore(wrap, box.nextSibling);
+      /* 🔵 …and the counter side, the same way, for the same reason. */
+      if (!document.getElementById(pre + '-counterside')) {
+        let cs = null;
+        try {
+          const id2 = App.editingCardId;
+          const card2 = (id2 === 'NEW') ? App._newCardDraft : (Forge.customCards || []).find((c) => c && c.id === id2);
+          const eff2 = _fxZonePathFor(pre, card2);
+          cs = (eff2 && typeof eff2.counterSide === 'string') ? eff2.counterSide : null;
+        } catch (e) {}
+        const w2 = document.createElement('div');
+        w2.className = 'editor-field full';
+        w2.style.cssText = 'min-width:0';
+        try { w2.innerHTML = _counterSideFieldHtml(pre, { counterSide: cs || 'self' }); box.parentElement.insertBefore(w2, wrap.nextSibling); } catch (e) {}
+      }
+    });
+  };
+  try { window._fxCompleteEffectFields(); } catch (e) {}
+
   // 🎴 COMPLETE EVERY CARD FILTER. Three editors shipped the full widget, five
   // had only name/element/faction/type, and three had none at all — so the same
   // effect could be filtered precisely on a unit's on-play and not at all on its
@@ -154222,6 +154485,7 @@ function captureEditorIntoCard(card) {
   // effect object, including the editors whose filter block is generated at
   // runtime (see the completion pass in bindCardEditor).
   try { _fxCaptureAllFilters(card); } catch (e) { console.warn('[filter-sweep]', e); }
+  try { _fxCaptureAllSummonZones(card); } catch (e) { console.warn('[zone-sweep]', e); }
 
   /* 🔄 ON-RESURRECT MIRROR — LAST, after card.onPlay has been read and after the
      filter sweep has landed onPlay.filter, so the copy is of the block this save
@@ -164730,6 +164994,45 @@ function _fxSavedFilterFor(prefix) {
 // Save-side sweep: write every on-screen filter back onto its effect object.
 // Runs AFTER the per-editor captures, so it fills the gaps they leave without
 // disturbing anything they already set correctly.
+/* 🌟 Which effect object each editor's zone picker belongs to. The filter
+   sweep's map plus the two blocks that hold an effect of their own: the extra
+   On-Play slots (an array) and the Kalon transform. */
+function _fxZonePathFor(prefix, card) {
+  if (!card) return null;
+  const m = /^ed-onplayx-(\d)$/.exec(prefix);
+  if (m) { try { return (Array.isArray(card.onPlayExtra) ? card.onPlayExtra[+m[1]] : null) || null; } catch (e) { return null; } }
+  if (prefix === 'ed-kalon-onx') { try { return (card.kalonForm && card.kalonForm.onTransform) || null; } catch (e) { return null; } }
+  try { return _fxFilterPathFor(prefix, card); } catch (e) { return null; }
+}
+/* Save-side sweep for the zone, the twin of _fxCaptureAllFilters: write every
+   on-screen picker back onto its own effect. Only when the effect actually
+   takes a zone, so an editor whose type has moved on cannot stamp a stray
+   `summonZone` onto an unrelated effect. */
+function _fxCaptureAllSummonZones(card) {
+  if (!card) return;
+  const TAKES_ZONE = { summonFromZone: 1, sacrificeToSummon: 1 };
+  ['ed-onplay', 'ed-ongrave', 'ed-ig', 'ed-grave', 'ed-field', 'ed-hand',
+   'ed-onatk', 'ed-onkill', 'ed-milled', 'ed-aura', 'ed-kalon-onx',
+   'ed-onplayx-0', 'ed-onplayx-1', 'ed-onplayx-2', 'ed-onplayx-3', 'ed-onplayx-4', 'ed-onplayx-5'].forEach((pre) => {
+    const el = document.getElementById(pre + '-summonzone');
+    if (!el || !el.value) return;
+    const eff = _fxZonePathFor(pre, card);
+    if (!eff || typeof eff !== 'object') return;
+    if (!TAKES_ZONE[eff.type]) return;
+    eff.summonZone = el.value;
+  });
+  /* 🔵 the counter side, for the two effects that place or strip counters */
+  ['ed-onplay', 'ed-ongrave', 'ed-ig', 'ed-grave', 'ed-field', 'ed-hand',
+   'ed-onatk', 'ed-onkill', 'ed-milled', 'ed-aura', 'ed-kalon-onx',
+   'ed-onplayx-0', 'ed-onplayx-1', 'ed-onplayx-2', 'ed-onplayx-3', 'ed-onplayx-4', 'ed-onplayx-5'].forEach((pre) => {
+    const el = document.getElementById(pre + '-counterside');
+    if (!el || !el.value) return;
+    const eff = _fxZonePathFor(pre, card);
+    if (!eff || typeof eff !== 'object') return;
+    if (eff.type !== 'addCounters' && eff.type !== 'removeCounters') return;
+    eff.counterSide = el.value;
+  });
+}
 function _fxCaptureAllFilters(card) {
   if (!card) return;
   ['ed-onplay', 'ed-ongrave', 'ed-ig', 'ed-grave', 'ed-field', 'ed-hand',
@@ -167370,6 +167673,30 @@ function _bcLogButton(s) {
       <span class="lb-arrow" aria-hidden="true">›</span>
     </button>`;
 }
+/* 🎴 ONE ROW. The art is resolved HERE, never stored on the entry: the log is
+   copied into every replay snapshot and sent whole over the socket, so a data:
+   URL on an entry would be paid for a thousand times over. _abilityCardArt
+   prefers the durable thumbnail over a revocable blob: URL, and the frame is
+   the fallback because an empty square reads worse than a generic card back. */
+function _bcLogArt(l) {
+  try {
+    if (!l || !l.cardId || l.hidden) return '';
+    let art = (typeof _abilityCardArt === 'function') ? _abilityCardArt(l.cardId) : null;
+    if (!art && typeof _abilityFrameUrl === 'function') art = _abilityFrameUrl(l.cardType || 'unit');
+    if (!art) return '';
+    return '<img class="logart" src="' + escapeHtml(art) + '" alt="" loading="lazy" decoding="async" onerror="this.style.display=\'none\'">';
+  } catch (e) { return ''; }
+}
+function _bcLogRow(l) {
+  if (!l) return '';
+  const art = _bcLogArt(l);
+  const em = art ? '' : '<span class="em">' + escapeHtml(l.icon || (l.kind === 'death' ? '💀' : l.kind === 'status' ? '✨' : '')) + '</span>';
+  return '<div class="logrow log-' + (l.color || 'ink') + (l.kind ? ' lk-' + l.kind : '') + '">'
+    + art + em
+    + '<span class="txt">' + escapeHtml(l.msg || '')
+    + (l.sub ? '<span class="sub">' + escapeHtml(l.sub) + '</span>' : '')
+    + '</span></div>';
+}
 function _bcLogModal(s) {
   if (!App.ui || !App.ui.battleLogOpen) return '';
   const log = (s.log || []);
@@ -167383,7 +167710,7 @@ function _bcLogModal(s) {
     ? `<div class="logrow"><span class="txt">No entries yet.</span></div>`
     : (visible.length === 0
         ? `<div class="logrow"><span class="txt">No entries match your filters.</span></div>`
-        : visible.slice(-400).reverse().map(l => `<div class="logrow log-${(l && l.color) || 'ink'}"><span class="txt">${escapeHtml((l && l.msg) || '')}</span></div>`).join(''));
+        : visible.slice(-400).reverse().map(l => _bcLogRow(l)).join(''));
   const hiddenNote = hiddenCount > 0 ? `<span class="bc-log-hidden">${hiddenCount} hidden</span>` : '';
   return `
     <div class="bchrome bc-modal-backdrop" id="battle-log-backdrop" onclick="try{if(event.target===this)_closeBattleLog()}catch(e){}">
@@ -181291,7 +181618,10 @@ function renderMarket() {
   const _resMineTiles = (_cmOn && typeof ResMarket !== 'undefined' && Array.isArray(ResMarket.mine))
     ? ResMarket.mine.filter(_resPricedSale).map(_resListingToTile)
     : [];
-  const myListings = _cmReady ? CardMarket.mine : Market.listings.filter(l => l.sellerId === 'player');
+  /* 🩹 v121v126 — the resource listings belong on the Mine tab too. They were
+     kept out on purpose (their Cancel goes through a different call), so they
+     are added here and the tile carries the flag the renderer routes on. */
+  const myListings = (_cmReady ? CardMarket.mine : Market.listings.filter(l => l.sellerId === 'player')).concat(_resMineTiles || []);
   const otherListings = (_cmReady ? CardMarket.open.slice() : Market.listings.filter(l => l.sellerId !== 'player')).concat(_resTiles);
   // 🪪 Browse now shows the player's OWN listings ALONGSIDE everyone else's —
   // not one tab or the other. Deduped by id (own first so they win). Own tiles
@@ -181358,7 +181688,7 @@ function renderMarket() {
         <div style="display:flex;gap:0.6rem;align-items:center">
           <span class="result-stat-pill" style="background:rgba(212,175,55,0.18);border-color:rgba(212,175,55,0.5);color:#ffd166;font-size:0.95rem;padding:0.3rem 0.8rem"><span class="cinder-icon"></span> ${Profile.gems || 0}</span>
           <button class="btn-mini" id="btn-market-reseed">🔄 Refresh Listings</button>
-          <button class="btn-secondary keep-tab" id="btn-back-market">← Back to Menu</button>
+          <button class="btn-secondary keep-tab" id="btn-back-market">← ${(App._marketReturn === 'camp' || App._marketReturn === 'campOps') ? 'Back to the Bunker' : 'Back to Menu'}</button>
         </div>
       </div>
       <div class="luni-intro">
@@ -181389,7 +181719,7 @@ function renderMarket() {
   `;
   // Keep the resource realtime sub alive on Browse too (resources show there now).
   if (tab !== 'resources' && tab !== 'browse' && typeof resMarketUnsubscribe === 'function') resMarketUnsubscribe();
-  const _backBtn = document.getElementById('btn-back-market'); if (_backBtn) _backBtn.onclick = () => { if (typeof resMarketUnsubscribe === 'function') resMarketUnsubscribe(); if (typeof cardMarketUnsubscribe === 'function') cardMarketUnsubscribe(); App.screen = 'title'; render(); };
+  const _backBtn = document.getElementById('btn-back-market'); if (_backBtn) _backBtn.onclick = () => { if (typeof resMarketUnsubscribe === 'function') resMarketUnsubscribe(); if (typeof cardMarketUnsubscribe === 'function') cardMarketUnsubscribe(); App.screen = App._marketReturn || 'title'; App._marketReturn = null; render(); };
   // 🔄 Refresh — pull the latest cross-player listings (and sweep stale NPC rows).
   const _reseedBtn = document.getElementById('btn-market-reseed'); if (_reseedBtn) _reseedBtn.onclick = () => {
     reseedNpcListingsIfStale(true);
@@ -184797,7 +185127,16 @@ function _campHudTopBar() {
   const def = (() => { try { return (Profile.campDefense | 0) + ((typeof researchBonus === 'function') ? researchBonus('defense') : 0); } catch (e) { return 0; } })();
   const power = (() => { try { const s = (typeof _campFacState === 'function') ? _campFacState('powerRelay') : null; return s ? (s.level | 0) : 0; } catch (e) { return 0; } })();
   const units = (() => { try { return (typeof _totalOwnedCards === 'function') ? _totalOwnedCards() : 0; } catch (e) { return 0; } })();
-  const day = (() => { try { const f = (Profile.createdAt || Profile.firstSeen || 0); return f ? (Math.floor((Date.now() - f) / 86400000) + 1) : ((Profile.stats && Profile.stats.daysActive) || 1); } catch (e) { return 1; } })();
+  /* 🩹 v121v126 — read the stamp that EXISTS. Profile.createdAt / firstSeen /
+     stats.daysActive are written nowhere in this file, so the day was always
+     the fallback 1 (owner: "Camp clock is stuck on Day 1"). The city's own
+     counter is preferred when it is open, so the two agree. */
+  const day = (() => {
+    try {
+      const f = (Profile.account && Profile.account.createdAt) || 0;
+      return f ? (Math.floor((Date.now() - f) / 86400000) + 1) : 1;
+    } catch (e) { return 1; }
+  })();
   const clock = (() => { try { const d = new Date(); return String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0'); } catch (e) { return ''; } })();
   const items = [
     ['Gold', '<span class="cinder-icon"></span>', (Profile.gems | 0), '#ffd166'],
@@ -185503,7 +185842,7 @@ function renderCamp() {
   const _cvBtn = document.getElementById('btn-camp-vault');
   if (_cvBtn) _cvBtn.onclick = () => { App.vaultReturnScreen = _campBackTarget(); App.screen = 'baseVault'; render(); };
   const _tpBtn = document.getElementById('btn-camp-trading-post');
-  if (_tpBtn) _tpBtn.onclick = () => { App.screen = 'market'; App.marketTab = App.marketTab || 'browse'; render(); };
+  if (_tpBtn) _tpBtn.onclick = () => { App._marketReturn = _campBackTarget(); App.screen = 'market'; App.marketTab = App.marketTab || 'browse'; render(); };
   // 🥋 Dojo Shop — visit player dojos to buy moves (or manage your own).
   const _djBtn = document.getElementById('btn-camp-dojo');
   if (_djBtn) _djBtn.onclick = () => {
@@ -241545,7 +241884,10 @@ function _twMyMayorNodes() {
       const m = _twMayors[id];
       if (!m || m.mayor_id !== me) continue;
       if (typeof _twIsNodePlayerOwner === 'function' && _twIsNodePlayerOwner(id)) continue;
-      out.push({ id: id, ownerName: m.owner_name || m.ownerName || 'the owner' });
+      let _nm = '', _own = m.owner_name || m.ownerName || '';
+      try { const _nd = (_twForge().nodes || []).find(x => x && x.id === id); if (_nd && _nd.name) _nm = _nd.name; } catch (e) {}
+      try { if (!_own && App._twNodeOwners && App._twNodeOwners.byNode && App._twNodeOwners.byNode[id]) _own = App._twNodeOwners.byNode[id].display_name || ''; } catch (e) {}
+      out.push({ id: id, name: _nm, ownerName: _own || 'the owner' });
     }
     return out;
   } catch (e) { return []; }
@@ -266013,8 +266355,8 @@ try {
        that works everywhere except the one early path nobody tested. It is
        2KB with no dependencies. -->
 <script src="src/econ/peg.js?v=v121q51"></script>
-<script src="src/battle/effects.js?v=v121v123" defer></script>
-<script src="src/phone/handset.js?v=v121v123" defer></script>
+<script src="src/battle/effects.js?v=v121v127" defer></script>
+<script src="src/phone/handset.js?v=v121v127" defer></script>
 <script src="src/battle/combat.js?v=120m4" defer></script>
 <script src="src/battle/targeting.js?v=121e3hex" defer></script>
 <link rel="stylesheet" href="src/sprites/frames.css?v=120k3">

@@ -55,7 +55,7 @@ function TopBar({ day = "DAY 047", clock = "02:14:32", threat = 38 }) {
         </button>
         <div className="brand-mark" />
         <div>
-          <div className="brand-name">CAMP</div>
+          <div className="brand-name">BUNKER</div>
           <div className="brand-sub">SECTOR-7 ▾ depth -72m</div>
         </div>
       </div>

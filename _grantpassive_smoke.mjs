@@ -18,7 +18,7 @@ ok(/^function _fxExtraFieldsHtml\(prefix, eff\) \{/m.test(SRC), 'one field build
 for (const p of ['ed-onplay', 'ed-grave', 'ed-ongrave', 'ed-field', 'ed-hand', 'ed-kalon-onx']) ok(SRC.includes("_fxExtraFieldsHtml('" + p + "'"), 'rendered in ' + p);
 for (const p of ['ed-onplay', 'ed-grave', 'ed-ongrave', 'ed-field', 'ed-hand']) ok(new RegExp("grantPassiveId: v\\('" + p + "-gpassive'\\) \\|\\| '', grantTarget: v\\('" + p + "-gtarget'\\) \\|\\| 'self', grantTurns: num\\('" + p + "-gturns', 0, 99, 1\\), counterName: \\(v\\('" + p + "-ctrname'\\) \\|\\| ''\\)\\.trim\\(\\),").test(SRC), 'saved from ' + p);
 ok(/if \(t === 'grantPassive'\) \{ e\.grantPassiveId = v\('ed-kalon-onx-gpassive'\)/.test(SRC) && /e\.counterName = \(v\('ed-kalon-onx-ctrname'\) \|\| ''\)\.trim\(\);/.test(SRC), 'saved from the Kalon on-x chain');
-ok(/needs: \['amount', 'radius', 'tSide', 'counterName'\] \},\n\s*\{ id: 'removeCounters'/.test(SRC), 'Add / Remove Counters take a counter name');
+ok(/needs: \['amount', 'radius', 'counterSide', 'counterName'\] \},\n\s*\{ id: 'removeCounters'/.test(SRC), 'Add / Remove Counters take a counter name and their OWN side (v121v125: they read tSide, the Target Strike damage dropdown, and its "enemy" default sent the counters to the wrong card)');
 
 /* ── 2. the battle ── */
 ok(/if \(eff\.type === 'grantPassive'\) \{\n\s*const pid = String\(eff\.grantPassiveId \|\| ''\)\.trim\(\);/.test(SRC), 'the resolver case');

@@ -665,3 +665,34 @@ Owner: "I just changed the music to the main menu it have not changed and I want
 - **Two silent rooms.** Just Business (a real screen) and the City Builder (an overlay that never changes App.screen, so _openNodeCity / _closeNodeCity call the router by hand). Neither child document owns any audio, so the element stays in the parent - no cross-frame plumbing. Both ship with no built-in track and stay silent until something is uploaded.
 - **Admin Controls**: the tile, the heading, both back buttons and the admin-gate toast. The screen id `pricingAdmin` and the tile id `btn-pricing-admin` are untouched - 13 places route on the id, mapforge.pill.js hides itself on it, and the tile id keys the uploaded tile art.
 - Suite: `_audiozones_smoke.mjs` (26), the ordering run for real. Knobs -> v121v123-audio.
+
+## v121v127 — the Just Business collect exploit, and the blade that glows
+Deployed 2026-09-12, edge-verified (v121v127, `_opClaimCollect` present, glow rule present).
+Full gate: 127 suites, all at or below baseline.
+
+**bug-mtxzznni (high, live) — "Just collecting wages from just business and it would
+not stop coming up… I amassed a ton of food, metal and other resources."**
+A collect pays a pure function of `now − meta.lastCollect`, capped at 36 h. Nothing is
+spent and no counter decrements, so that one timestamp is the ONLY thing that ends the
+accrual. Three failures compounded:
+1. The client admits founder / owner / CEO / Corp CEO as an officer; the
+   `corp_operations` UPDATE policy admitted the FOUNDER only — and PostgREST answers a
+   row filtered out by a `USING` clause with **204 and no error**, so the throw never
+   fired, `o.meta` was set in memory only, and the very next `opFetch()` re-read the
+   stale row and offered the full 36 hours again. Forever.
+2. The payout came FIRST and the marker was written after, so a refused write cost the
+   game everything and recorded nothing.
+3. No in-flight lock on a settle that is five to seven round trips long with the button
+   still enabled, so click-spam paid the same accrual several times even for a founder.
+
+Fixed: the policy now matches the client's roles (applied live); the collection is
+CLAIMED before a single resource moves and the row is demanded back (`.select('id')`) so
+a refusal is loud; a per-operation lock covers the in-flight window; and the Just
+Business `postMessage` handler takes messages from its own origin only (it checked the
+message *type* and nothing else). No player data was altered — that is the owner's call.
+
+**The Abra Blade glows.** The pointer was reverting to the system hand over anything
+clickable. There are 863 `cursor:pointer` declarations in index.html, many of them inline
+styles that beat any stylesheet rule, so the fix is `!important` plus a
+`[style*="cursor:pointer"]` selector, pointing at a purple-aura variant of the blade.
+Verified in-browser: plain → blade, button → glow, inline-pointer → glow, text box → I-beam.

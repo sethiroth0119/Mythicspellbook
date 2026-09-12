@@ -29,6 +29,10 @@ import * as acorn from 'acorn';
 
 const ROOT = process.cwd();
 const OUT = join(ROOT, 'Content', 'BrucePrints');
+/* Deployed copy: public/ is the site root, so this is the one the engine's
+   Content Browser fetches (/bruce-prints/manifest.json). Same bytes, two
+   places - the repo folder is for reading, this one is for the game. */
+const OUT_WEB = join(ROOT, 'public', 'bruce-prints');
 
 /* ── 1. WHAT COUNTS AS A SYSTEM ────────────────────────────────────────────
    A system is a name pattern plus a set of entry points. The patterns are
@@ -261,4 +265,15 @@ for (const sys of SYSTEMS) {
   console.log('  ' + sys.icon + ' ' + sys.label.padEnd(32) + members.length + ' functions → ' + prints.length + ' print(s)');
 }
 writeFileSync(join(OUT, 'manifest.json'), JSON.stringify(manifest, null, 1));
-console.log('wrote ' + relative(ROOT, OUT));
+/* mirror everything to public/ */
+mkdirSync(OUT_WEB, { recursive: true });
+const copyTree = (from, to) => {
+  mkdirSync(to, { recursive: true });
+  for (const name of readdirSync(from)) {
+    const a = join(from, name), b = join(to, name);
+    if (statSync(a).isDirectory()) copyTree(a, b);
+    else writeFileSync(b, readFileSync(a));
+  }
+};
+copyTree(OUT, OUT_WEB);
+console.log('wrote ' + relative(ROOT, OUT) + '  and  ' + relative(ROOT, OUT_WEB));

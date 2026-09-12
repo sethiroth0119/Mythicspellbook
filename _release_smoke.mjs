@@ -21,7 +21,8 @@ ok(/function _newCardSet\(\)/.test(SRC) && /releaseAt: at\.getTime\(\), cardIds:
 ok(/function _dtLocalValue\(ms\)/.test(SRC) && /type="datetime-local"/.test(SRC), 'the date is picked in local time and stored as a real instant');
 ok(/data-set-act="now"/.test(SRC) && /🚀 Release now/.test(SRC), 'a scheduled set can be released early by hand');
 ok(/function packReleaseAt\(p\)/.test(SRC) && /\.filter\(d => \{ try \{ return isPackReleased\(d\); \} catch \(e\) \{ return true; \} \}\);/.test(SRC), 'the vendor does not stock a pack whose set has not arrived');
-ok(/cardSets: \(Forge\.cardSets \|\| \[\]\)\.filter\(st => st && st\.id\)/.test(SRC), 'sets travel with the published catalogue, so the date reaches every player');
+ok(/__card_sets__:         \(Forge\.cardSets \|\| \[\]\)\.filter\(st => st && st\.id\)/.test(SRC) && /if \(Array\.isArray\(rawMoves\.__card_sets__\)\) Catalog\.cardSets = rawMoves\.__card_sets__;/.test(SRC) && /delete cleanMoves\.__card_sets__;/.test(SRC),
+  'sets travel INSIDE the catalogue blob, where obtainability and the structure decks ride — card_catalog has no column of its own, and asking for one took every publish down (v121v124)');
 ok(/function _setsOfCard\(id\)/.test(SRC) && /Catalog\.cardSets/.test(SRC), '…and a player\'s copy of the sets is read back');
 
 /* ── 3. the closet arrived ── */

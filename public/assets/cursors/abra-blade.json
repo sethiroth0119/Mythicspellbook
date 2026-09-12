@@ -1,0 +1,33 @@
+{
+ "source": "public/assets/cursors/abra-blade-source.png",
+ "angle": -45,
+ "sizes": {
+  "abra-blade.png": {
+   "w": 40,
+   "h": 40,
+   "hotspot": {
+    "x": 3,
+    "y": 3
+   },
+   "bytes": 2127
+  },
+  "abra-blade-lg.png": {
+   "w": 56,
+   "h": 56,
+   "hotspot": {
+    "x": 8,
+    "y": 2
+   },
+   "bytes": 3791
+  },
+  "abra-blade-glow.png": {
+   "w": 56,
+   "h": 56,
+   "hotspot": {
+    "x": 5,
+    "y": 4
+   },
+   "bytes": 4051
+  }
+ }
+}

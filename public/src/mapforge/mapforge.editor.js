@@ -1536,13 +1536,38 @@ async function askText(msg, def) {
     return { icon: e.icon };
   }
   function invalidatePrefabThumb(id) { const th = thumbsRenderer(); if (!th) return; Array.from(th.cache.keys()).filter(k => k.startsWith('prefab:' + id + ':') || k.startsWith('shelf:' + id + ':')).forEach(k => th.invalidate(k)); }
+  /* 🧩 BRUCE PRINTS — the code graphs, read once from /bruce-prints/manifest.json
+     (written by tools/bruceprints/build.mjs and deployed with the game). A miss
+     leaves the folder out and nothing else changes; the engine never depends on
+     it being there. */
+  let printList = null, printsLoading = false;
+  function loadPrints() {
+    if (printList !== null || printsLoading) return;
+    printsLoading = true;
+    fetch('/bruce-prints/manifest.json?v=' + (window.BUILD_VERSION || 'dev'))
+      .then((r) => (r.ok ? r.json() : null))
+      .then((m) => {
+        const out = [];
+        for (const sys of ((m && m.systems) || [])) {
+          for (const pr of (sys.prints || [])) {
+            out.push({ system: sys.id, label: sys.label, icon: sys.icon, print: pr.name, nodes: pr.nodes,
+                       url: '/bruce-prints/index.html#' + encodeURIComponent(sys.id) + '/' + encodeURIComponent(pr.name) });
+          }
+        }
+        printList = out;
+        printsLoading = false;
+        if (out.length) { rebuildIndex(); try { renderLibrary(); } catch (e) {} }
+      })
+      .catch(() => { printList = []; printsLoading = false; });
+  }
   function rebuildIndex() {
-    libIndex = assetsMod.buildIndex({ props: PROP_CATALOG, assets: S.map.assets, project: projectLib || [], cloud: cloudFiles || [], cloudSounds: cloudSounds || [], prefabs: S.map.prefabs || [], shelf: shelfList(), sounds: S.map.sounds || [], projectSounds: projectSounds || [], splines: SPLINE_PRESETS });
+    loadPrints();
+    libIndex = assetsMod.buildIndex({ props: PROP_CATALOG, assets: S.map.assets, project: projectLib || [], cloud: cloudFiles || [], cloudSounds: cloudSounds || [], prefabs: S.map.prefabs || [], prints: printList || [], shelf: shelfList(), sounds: S.map.sounds || [], projectSounds: projectSounds || [], splines: SPLINE_PRESETS });
     if (cloudFiles === null && !cloudLoading) loadCloud();
     return libIndex;
   }
   function entryByKey(k) { return libIndex.find(e => e.key === k) || null; }
-  const KIND_CATS = { Models: ['model', 'project', 'cloud'], Prefabs: ['prefab', 'shelf'], Sounds: ['sound', 'psound', 'csound'], Splines: ['spline'] };
+  const KIND_CATS = { Models: ['model', 'project', 'cloud'], Prefabs: ['prefab', 'shelf'], Sounds: ['sound', 'psound', 'csound'], Splines: ['spline'], 'Bruce Prints': ['print'] };
   function libFilters() {
     const f = {};
     if (libCat === '★') f.fav = prefs.favs;
@@ -1566,6 +1591,9 @@ async function askText(msg, def) {
     else if (e.kind === 'project') { const inMap = S.map.assets.find(a => a.url === e.url); if (inMap) { S.propId = 'glb'; S.assetId = inMap.id; } else addAsset(e.url, e.label || e.id, { anims: e.ref.anims }); if (S.assetId) { libSel = 'model:' + S.assetId; prefs.touch(libSel); S.lastSrc = { t: 'glb', a: S.assetId }; } wantPlace(); }
     else if (e.kind === 'prefab') { S.propId = 'prefab'; S.prefabId = e.id; wantPlace(); }
     else if (e.kind === 'shelf') { shelfImport(e.id); return; }
+    /* 🧩 A print is not placed — it is READ. Opens the graph in its own tab so
+       the map being edited is left exactly as it is. */
+    else if (e.kind === 'print') { try { window.open(e.url, '_blank', 'noopener'); } catch (x) {} }
     else if (e.kind === 'sound') previewSound(e.url);
     else if (e.kind === 'psound') { if (!S.map.sounds.find(s => s.url === e.url)) addSound(e.url, e.label); else previewSound(e.url); const snd = S.map.sounds.find(s => s.url === e.url); if (snd) { libSel = 'sound:' + snd.id; prefs.touch(libSel); } }
     renderLibrary(); refreshGhost(); renderHud();

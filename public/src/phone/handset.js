@@ -917,7 +917,11 @@
     if (luniTab === 'mine') { renderLuniMine(box, pane, L); return; }
     if (luniPick) { renderLuniTicket(box, pane, L); return; }
     /* the board */
-    const rows = L.browse().filter((r) => !luniQuery || (r.name + ' ' + r.seller + ' ' + r.kind).toLowerCase().indexOf(luniQuery) >= 0);
+    /* 🩹 v121v126 — Browse deliberately hides your OWN rows, and this search only
+     searched Browse, so searching "water" could never find your own water
+     listing (owner report). It searches both now, and a row of yours is marked. */
+  const _mine = (typeof L.mine === 'function') ? (L.mine() || []).map((r) => Object.assign({}, r, { mine: true })) : [];
+  const rows = L.browse().concat(luniQuery ? _mine : []).filter((r) => !luniQuery || (r.name + ' ' + r.seller + ' ' + r.kind).toLowerCase().indexOf(luniQuery) >= 0);
     box.innerHTML =
       '<div class="mgp-cx-search"><input type="search" id="mgp-luni-q" placeholder="Search the market" value="' + esc(luniQuery) + '"></div>' +
       (rows.length
@@ -1029,7 +1033,8 @@
     box.innerHTML = rows.length
       ? '<div class="mgp-ldg">' + rows.map((r) => '<div class="mgp-ldr out"><span class="ic">' + esc(r.icon) + '</span>' +
           '<div class="mgp-ldb"><b>' + esc(r.name) + (r.kind === 'res' && r.lotSize ? ' <i class="mgp-n">×' + fmt(r.lotSize) + '</i>' : '') + '</b>' +
-          '<small>' + fmt(r.price) + ' 🔥' + (r.kind === 'res' && r.lots > 1 ? ' a lot · ' + r.lots + ' left' : '') + '</small></div>' +
+          /* 🩹 v121v126 — the flame was hard-coded, so a 25 AZA listing read "25 🔥" on this tab and nowhere else (owner report). */
+          '<small>' + fmt(r.price) + ' ' + (r.currency === 'aza' ? '👑' : '🔥') + (r.kind === 'res' && r.lots > 1 ? ' a lot · ' + r.lots + ' left' : '') + '</small></div>' +
           '<button type="button" class="mgp-btn" data-luni-cancel="' + esc(r.id) + '" style="padding:4px 9px;font-size:11px">Pull</button></div>').join('') + '</div>'
       : '<div class="mgp-empty">📄<br>You have nothing listed.<br><small>Put something up from the Sell tab.</small></div>';
     box.querySelectorAll('[data-luni-cancel]').forEach((b) => {

@@ -2928,7 +2928,7 @@ async function _selfCheck() {
       + ' the truth is ' + dupId.truth + '  → openCardEditor threw=' + (!!dupErr));
     if (dupErr) console.log('    ' + dupErr.message.replace(/\s+/g, ' ').slice(0, 260));
     ok(dupId.editors === 1 && dupId.outside === 0 && dupId.hosts === 0
-       && dupId.byIdFields === 0 && dupId.truth === 88 && !!dupErr
+       && dupId.byIdFields === 0 && dupId.truth === 106 && !!dupErr
        && /DUPLICATED/.test(dupErr.message) && /fx-onplay/.test(dupErr.message)
        && /getElementById/.test(dupErr.message),
        'a duplicate of an id the editor uses is REFUSED by name, even though editors=1,'

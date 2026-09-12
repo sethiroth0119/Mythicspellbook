@@ -58,6 +58,10 @@ export const KINDS = {
   spline:  { label: 'Spline',     icon: '〰️', source: 'built-in' },
   cloud:   { label: 'Model',      icon: '☁', source: 'cloud' },
   csound:  { label: 'Sound',      icon: '☁', source: 'cloud' },
+  /* 🧩 A BRUCE PRINT — one system of the game's own code, drawn as a Blueprint
+     graph by tools/bruceprints/build.mjs from the shipped source. It is not
+     placeable: picking one opens the graph. */
+  print:   { label: 'Bruce Print', icon: '🧩', source: 'code' },
 };
 
 const words = (s) => String(s || '').toLowerCase().split(/[^a-z0-9]+/).filter(Boolean);
@@ -90,6 +94,11 @@ export function buildIndex(src) {
   (src.shelf || []).forEach(e => { if ((src.prefabs || []).find(p => p.id === e.id)) return; push('shelf', e.id, e.name, e.icon || '🧱', 'Prefabs', [...(e.tags || []), 'shelf'], e, { parts: (e.objects || []).length }); });
   (src.sounds || []).forEach(s => push('sound', s.id, s.label, '🔊', 'Sounds', s.tags || [], s, { url: s.url }));
   (src.projectSounds || []).forEach((m, i) => push('psound', m.id || String(i), m.label || m.url, '🗂', 'Sounds', m.tags || [], m, { url: m.url, inMap: !!(src.sounds || []).find(s => s.url === m.url) }));
+  /* 🧩 One entry per print, filed under Bruce Prints. The tags carry the system
+     and its size so the browser's own search finds "economy", "haul", "corp"
+     without a second index. */
+  (src.prints || []).forEach(p => push('print', p.system + '/' + p.print, (p.icon ? p.icon + ' ' : '') + p.label + ' — ' + p.print, '🧩', 'Bruce Prints',
+    ['code', 'blueprint', String(p.system).toLowerCase(), String(p.print).toLowerCase(), p.nodes + ' nodes'], p, { url: p.url, nodes: p.nodes }));
   return out;
 }
 
