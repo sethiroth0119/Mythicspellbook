@@ -954,3 +954,73 @@ which keeps its own zone. The hub view already did; walking into a tile changed
 it — Black Market Basement on five, Camp music on `vendorMarket` (which sits in
 both sets) — so one building had three tracks. ⚠ The 💰 Black Market music slot
 is now unrouted.
+
+## v121v132 — bug-mtsq62mg: the NPCs were never allowed to take the jobs
+
+Grimalkin Lord: "Out of Cash — Limited by Business 0% impacting many businesses
+throughout the city… I've had buildings stuck on it for days and it results in
+the businesses going bankrupt… Nothing James or myself do seems to move the
+needle, so I am raising this as a bug as something either hasn't been built yet
+or hasn't been plugged in yet." Owner, clarifying: "the businesses are not
+making money and the npcs are not going to the businesses for jobs and working
+in them like they are supposed to."
+
+**THE DEADLOCK.** `citQualifies()` refuses to seat anyone in an ECONOMIC
+building until the economy has banded the tile — correct on its own terms,
+because a freshly built Clinic was otherwise crewed by whoever stood nearest and
+tenure then locked them in permanently. Its comment says *"the wait is one sync
+at most."* That holds only when the economy goes on to band the tile, and
+`tileBands()` answers ONLY for a tile carrying a live firm with a headcount band:
+
+    for (const f of Firms.alive()) { if (!f.tileKey) continue;
+      const hc = Firms.headcountFor(f); if (hc && hc.band) out[f.tileKey] = hc.band; }
+
+A building the economy never founded a firm on — or founded one without a
+`tileKey`, or whose headcount yields no band — is never in that map. It then
+fails the test on every 2-second citizen beat FOREVER: never staffed, earns
+nothing, reaches zero cash, and is reported as **"Out of cash"** — the symptom,
+not the cause. Which is exactly why the advice it printed (go to the bank, add
+housing) could never move the needle, and why the reporter's instinct that
+something "hasn't been plugged in" was right.
+
+**THE FIX.** The guard stays — an economic building still should not be crewed
+before the economy says what the work demands — but the wait now EXPIRES after
+30 s (~8 syncs of the 4-second adopt beat). Past it the tile is treated as
+unbanded-and-free, which is the same answer `citQualifies` already gives a
+school or a barracks. A crew that can be replaced when the band arrives (tenure
+only protects a seat that still exists) is far cheaper than a building that can
+never open its doors. The stopwatch clears per tile the moment a real band
+arrives, so a later rebuild on that key waits afresh.
+
+## v121v133 — enchantments out of any zone, onto the board; the camp back button
+
+**🔮 ENCHANTMENTS ARE SUMMONABLE** (owner): "Enchantments need to be able to be
+summoned from the deck, hand, void, or graveyard. As they stay on the field
+until destroyed" — and, clarifying, "enchantments get placed on the board like
+units do". That clarification picked the design, and it is the simpler one.
+
+🌟 Summon From Zone already reached all four piles with the Card Filter, the id
+list, the picker modal and the placement search. The ONLY thing stopping it
+carrying an enchantment was the type test — `t === 'unit' || t === 'summon'` —
+so the test is widened rather than a parallel effect built. A permanent summoned
+this way takes a tile exactly as a unit does, stays until destroyed (which is
+what a permanent IS), and projects its auras from its OWN tile, because
+`_auraSources` walks every entry in `state.units`. That is a real position,
+unlike the hand-cast path's synthetic source anchored on the owner's hero.
+
+The spawned token is marked `isEnchantment` because `buildUnit` carries no card
+type onto a unit — and because `_zcCheck`'s "while you control an enchantment"
+condition was ALREADY testing board units for exactly that flag. The engine
+expected one to be able to stand there; nothing could put one there.
+
+⚠ The cast-from-hand path is deliberately untouched: `playSpell` still pushes
+onto `state.enchantments`, so every card authored against it behaves identically.
+
+**🧭 bug-mtxkwv4m** — the camp's back button sat top-RIGHT because
+`.forge-header` is `space-between` with two children, so a button in the
+right-hand group is pinned right by the LAYOUT rather than by any decision about
+that screen. It moves into a left group beside the title; the Cinder pill stays
+right. `.forge-header` itself is NOT re-laid-out — it is shared by many screens,
+and changing it globally to move one button is how a header regression reaches
+pages nobody tested. (I had this filed as blocked on "which screen"; the repro
+was in the report and I had not read it carefully enough.)

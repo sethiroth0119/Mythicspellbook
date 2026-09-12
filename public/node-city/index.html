@@ -9,7 +9,7 @@
      believed the file was already live. Only a CONTENT change moves the hash
      and forces a re-upload, so bump this stamp whenever the city 404s, and
      probe it (grep NC_BUILD on the served page) to prove the deploy landed. -->
-<script>window.NC_BUILD = "v121v131-aitrade";</script>
+<script>window.NC_BUILD = "v121v133-enchzone";</script>
 <!-- ════════════════════════════════════════════════════════════════════════
      NODE CITY — SimCity-style settlement layer for Mythic Spellbook.
      Three.js WebGPU (auto-falls back to WebGL2). Realistic sun/moon cycle.
@@ -47316,6 +47316,14 @@ function citTileBands() {
 /* High to low, the same order ECON.labor.fillOrder spends graduates in: a
    university graduate can take a skilled job, never the other way round. */
 const CIT_BAND_ORDER = ['advanced', 'technical', 'skilled', 'unskilled'];
+/* ⏳ How long a new economic building waits for the economy to say what its
+   work demands before the city will crew it anyway. syncBuildings adopts a
+   tile on a 4-second beat, so this is ~8 syncs of slack — long enough that the
+   ordinary hand-off is never cut short, short enough that a building the
+   economy never bands still opens within a minute instead of never
+   (bug-mtsq62mg). Cleared per tile the moment a band does arrive. */
+const CIT_BAND_WAIT_MS = 30000;
+let _citBandWaitAt = null;
 function citQualifies(c, tileKey) {
   const bands = citTileBands();
   /* The economy is not answering at all — standalone, or not yet mounted. It
@@ -47342,10 +47350,46 @@ function citQualifies(c, tileKey) {
          band that is never coming would leave them permanently empty. */
     try {
       const t = game.tiles[tileKey];
-      if (t && typeof ECO_BUILDING_MAP !== 'undefined' && ECO_BUILDING_MAP[t.type]) return false;
+      if (t && typeof ECO_BUILDING_MAP !== 'undefined' && ECO_BUILDING_MAP[t.type]) {
+        /* 🔴 …BUT THE WAIT HAS A DEADLINE NOW (bug-mtsq62mg).
+           The paragraph above says "the wait is one sync at most". That is true
+           only when the economy goes on to BAND the tile, and tileBands() only
+           answers for a tile that has a LIVE FIRM with a headcount band on it:
+
+               for (const f of Firms.alive()) { if (!f.tileKey) continue;
+                 const hc = Firms.headcountFor(f); if (hc && hc.band) out[f.tileKey] = hc.band; }
+
+           A building the economy has not founded a firm on — or has founded
+           one on that carries no tileKey, or whose headcount yields no band —
+           is never in that map. It then fails this test on every 2-second
+           citizen beat FOREVER: nobody is ever seated, the building runs at
+           zero staff, it earns nothing, its cash reaches zero and the
+           bottleneck reports "Out of cash" — the symptom, not the cause. That
+           is the reported deadlock, in the reporter's own words: "I've had
+           buildings stuck on it for days and it results in the businesses
+           going bankrupt… nothing James or myself do seems to move the needle,
+           so I am raising this as a bug as something either hasn't been built
+           yet or hasn't been plugged in yet." They were right.
+
+           So the wait stays — an economic building genuinely should not be
+           crewed before the economy has said what the work demands — but it
+           expires. Past the grace the tile is treated as unbanded-and-free,
+           which is the pre-schooling behaviour and the same answer this
+           function already gives a school or a barracks. A wrong crew that can
+           be replaced when the band arrives (tenure only protects a seat that
+           still exists) is enormously cheaper than a building that can never
+           open its doors. */
+        const nowB = Date.now();
+        if (!_citBandWaitAt) _citBandWaitAt = Object.create(null);
+        if (!_citBandWaitAt[tileKey]) _citBandWaitAt[tileKey] = nowB;
+        if (nowB - _citBandWaitAt[tileKey] < CIT_BAND_WAIT_MS) return false;
+      } else if (_citBandWaitAt) {
+        delete _citBandWaitAt[tileKey];
+      }
     } catch (e) {}
     return true;
   }
+  if (_citBandWaitAt && _citBandWaitAt[tileKey]) delete _citBandWaitAt[tileKey];
   const have = citBandOf(c);
   const hi = CIT_BAND_ORDER.indexOf(have), lo = CIT_BAND_ORDER.indexOf(need);
   if (hi < 0 || lo < 0) return true;

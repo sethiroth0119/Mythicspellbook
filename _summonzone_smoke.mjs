@@ -30,7 +30,14 @@ ok(/function _fxCaptureAllSummonZones\(card\) \{/.test(SRC) && /const TAKES_ZONE
 ok(/try \{ _fxCaptureAllSummonZones\(card\); \} catch \(e\) \{ console\.warn\('\[zone-sweep\]', e\); \}/.test(SRC), '…and it runs on save, beside the filter sweep');
 
 /* ── 4. the effects and the runtime are untouched ── */
-ok(/\{ id: 'summonFromZone', label: '🌟 Summon From Zone \(hand\/deck\/grave\/void → field — by Card Filter or id list\)', needs: \['summonZone','amount','summonCardIds','filter'\] \}/.test(SRC), 'the effect still declares that it needs a zone');
+/* ⚠ THIS PIN CARRIED THE LABEL PROSE VERBATIM, and that is not what it is for:
+   its own message says "declares that it needs a ZONE", and the needs list is
+   the whole of that claim. v121v133 widened the label to say the effect also
+   carries enchantments now, and the pin failed over a sentence it was never
+   testing. The needs list — which IS the contract the zone picker reads — is
+   asserted exactly as before, and the label is still required to be the Summon
+   From Zone one, so a rename that changed the EFFECT is still caught. */
+ok(/\{ id: 'summonFromZone', label: '🌟 Summon From Zone \([^']*\)', needs: \['summonZone','amount','summonCardIds','filter'\] \}/.test(SRC), 'the effect still declares that it needs a zone');
 ok(/const SUMMON_ZONES = \[\n\s*\{ id: 'deck',  key: 'deck',      label: 'deck' \},\n\s*\{ id: 'hand',  key: 'hand',      label: 'hand' \},\n\s*\{ id: 'grave', key: 'graveyard', label: 'graveyard' \},\n\s*\{ id: 'void',  key: 'void',      label: 'Void' \},\n\s*\];/.test(SRC), 'the four zones are unchanged');
 ok(/function _summonZone\(id\) \{ return SUMMON_ZONES\.find\(z => z\.id === id\) \|\| SUMMON_ZONES\[0\]; \}/.test(SRC), 'a card saved before today, with no zone, still reads as the deck — nothing already built changes behaviour');
 

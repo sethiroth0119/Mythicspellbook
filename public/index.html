@@ -39453,7 +39453,7 @@ body:has(#pack-opener-frame) #chat-overlay {
   // the console. Bump this every deploy alongside sw.js's CACHE_VERSION. If two
   // machines show different stamps, the older one is on stale code (hard-refresh);
   // if they MATCH but content still differs, it is a DATA/publish issue, not code.
-  window.BUILD_VERSION = 'v121v131';
+  window.BUILD_VERSION = 'v121v133';
   try {
     console.info('%cMythic Spellbook ' + window.BUILD_VERSION + '%c — build check: run  __mg.version',
       'font-weight:700;color:#b48cff', 'color:#7d7499');
@@ -103342,7 +103342,7 @@ const ONPLAY_TYPES = [
   { id: 'delayedBlast',  label: '💣 Delayed Blast (plant a bomb, detonates in N turns)',   needs: ['amount','radius','statusDuration'] },
   { id: 'rewind',        label: '⏪ Rewind (restore HP to what it was this turn)',           needs: ['radius','tSide'] },
   { id: 'copyLastMove',  label: '🎭 Copy Last Move (reuse the enemy\'s last move)',         needs: [] },
-  { id: 'summonFromZone', label: '🌟 Summon From Zone (hand/deck/grave/void → field — by Card Filter or id list)', needs: ['summonZone','amount','summonCardIds','filter'] },
+  { id: 'summonFromZone', label: '🌟 Summon From Zone (hand/deck/grave/void → field — units, summons AND enchantments, by Card Filter or id list)', needs: ['summonZone','amount','summonCardIds','filter'] },
   // 🌦 Any card can now shift the weather or flip day↔night on play / trigger / activate.
   { id: 'setWeather',    label: '🌦 Change Weather (set the battlefield weather + duration)', needs: ['weatherType','duration'] },
   { id: 'setTimeOfDay',  label: '🌙 Set Day / Night (make it night, day, or toggle)',         needs: ['timeOfDay'] },
@@ -104036,10 +104036,20 @@ function _summonZone(id) { return SUMMON_ZONES.find(z => z.id === id) || SUMMON_
 // Only unit-like cards may be put on the board. HEROES are deliberately excluded:
 // the win condition ends the game when a unit with `isHero` dies, so deploying a
 // second friendly hero would make "your hero died" ambiguous.
+/* 🔮 ENCHANTMENTS AND CURSES ARE SUMMONABLE (owner, v121v133): "enchantments
+   need to be able to be summoned from the deck, hand, void, or graveyard — as
+   they stay on the field until destroyed", and "enchantments get placed on the
+   board like units do". They take a tile like a unit, stay until destroyed —
+   which is what a permanent is — and project their auras from that tile,
+   because _auraSources walks every entry in state.units. That is a REAL
+   position, unlike the hand-cast path's synthetic source anchored on the hero.
+   ⚠ _zcCheck's controlEnchantment condition already tests board units for
+     `isEnchantment`, so the engine expected one to be able to stand there;
+     nothing could put one there until now. */
 function _isSummonableCard(c) {
   if (!c) return false;              // a hole in a pile is not a summonable card
   const t = c.type || 'unit';        // …but a real card with no type IS a unit
-  return t === 'unit' || t === 'summon';
+  return t === 'unit' || t === 'summon' || t === 'enchantment' || t === 'curse';
 }
 // Rough power score — used only to decide which unit the AI deploys first.
 function _summonCardPower(c) {
@@ -112658,7 +112668,7 @@ function _applyOnPlayOneRaw(state, unit, card) {
     } catch (e) {}
     const legal = (c) => c && _isSummonableCard(c) && (!ids || ids.indexOf(c.id) !== -1);
     if (!pile.some(legal)) {
-      log.push({ msg: `🌟 ${unit.name} finds no unit in ${owner === 'player' ? 'your' : 'their'} ${zone.label} to summon.`, color: 'amber' });
+      log.push({ msg: `🌟 ${unit.name} finds nothing in ${owner === 'player' ? 'your' : 'their'} ${zone.label} to summon.`, color: 'amber' });
       return { ...state, log };
     }
     // `_autoPick` forces the deterministic path even for the player — an off-turn
@@ -115402,6 +115412,15 @@ function _battleSpawnSummonByCardId(state, caster, summonCardId, requestedCount)
         u.hasMoved = true; u.hasAttacked = true;
         if (typeof hasPassive === 'function' && hasPassive(u, 'speed')) { u.hasMoved = false; u.hasAttacked = hasPassive(u, 'defender'); }
         u._summoned = true;
+        /* 🔮 v121v133 — a permanent put on the board announces itself, so the
+           "while you control an enchantment" zone condition (_zcCheck) answers
+           true for one summoned out of a pile exactly as it does for any other
+           route. buildUnit carries no card type onto the unit, so the flag is
+           the only thing that can say so. */
+        try {
+          const _ct = cardDef && cardDef.type;
+          if (_ct === 'enchantment' || _ct === 'curse') { u.isEnchantment = true; u.cardType = _ct; }
+        } catch (e) {}
         units.push(u);
         // 👀 SENTINEL WAKE — note the arrival so the caller can wake watchers.
         try { if (!state._sentinelSpots) state._sentinelSpots = []; state._sentinelSpots.push({ owner: u.owner, pos: { x: spot.x, y: spot.y } }); } catch (e) {}
@@ -186069,10 +186088,21 @@ function renderCamp() {
     <div class="forge-page camp-hud">
       ${_campHudTopBar()}
       <div class="forge-header">
-        <h2 class="section-title" style="position:relative;padding-left:3.2em"><img src="assets/artwork/gameicons/camp%20icon.png" alt="" style="position:absolute;left:0;top:50%;transform:translateY(-50%);width:2.8em;height:2.8em;object-fit:contain;filter:drop-shadow(0 4px 12px rgba(0,0,0,0.7));pointer-events:none"> Camp</h2>
+        <!-- 🧭 v121v133 (bug-mtxkwv4m) — THE BACK BUTTON IS TOP-LEFT, like every
+             other screen's. .forge-header is space-between with two children, so
+             a button in the right-hand group is pinned to the far right by the
+             LAYOUT rather than by any decision about this screen. Grouping it
+             with the title puts it where the reporter expects it and leaves the
+             Cinder pill on the right, where a resource readout belongs.
+             ⚠ .forge-header itself is deliberately NOT re-laid-out: it is shared
+               by many screens, and changing it globally to move one button is
+               how a header regression reaches pages nobody tested. -->
+        <div style="display:flex;gap:0.75rem;align-items:center;min-width:0">
+          <button class="btn-secondary keep-tab" id="btn-back-camp">${App.screen === 'campOps' ? '← Bunker' : '← Back to Menu'}</button>
+          <h2 class="section-title" style="position:relative;padding-left:3.2em"><img src="assets/artwork/gameicons/camp%20icon.png" alt="" style="position:absolute;left:0;top:50%;transform:translateY(-50%);width:2.8em;height:2.8em;object-fit:contain;filter:drop-shadow(0 4px 12px rgba(0,0,0,0.7));pointer-events:none"> Camp</h2>
+        </div>
         <div style="display:flex;gap:0.6rem;align-items:center">
           <span class="result-stat-pill" style="background:rgba(212,175,55,0.18);border-color:rgba(212,175,55,0.5);color:#ffd166;font-size:0.95rem;padding:0.3rem 0.8rem"><span class="cinder-icon"></span> ${Profile.gems || 0}</span>
-          <button class="btn-secondary keep-tab" id="btn-back-camp">${App.screen === 'campOps' ? '← Bunker' : '← Back to Menu'}</button>
         </div>
       </div>
       ${_campCommandBarHtml()}
@@ -267150,8 +267180,8 @@ try {
        that works everywhere except the one early path nobody tested. It is
        2KB with no dependencies. -->
 <script src="src/econ/peg.js?v=v121q51"></script>
-<script src="src/battle/effects.js?v=v121v131" defer></script>
-<script src="src/phone/handset.js?v=v121v131" defer></script>
+<script src="src/battle/effects.js?v=v121v133" defer></script>
+<script src="src/phone/handset.js?v=v121v133" defer></script>
 <script src="src/battle/combat.js?v=120m4" defer></script>
 <script src="src/battle/targeting.js?v=121e3hex" defer></script>
 <link rel="stylesheet" href="src/sprites/frames.css?v=120k3">
