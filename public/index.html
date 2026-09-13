@@ -39507,7 +39507,7 @@ body:has(#pack-opener-frame) #chat-overlay {
   // the console. Bump this every deploy alongside sw.js's CACHE_VERSION. If two
   // machines show different stamps, the older one is on stale code (hard-refresh);
   // if they MATCH but content still differs, it is a DATA/publish issue, not code.
-  window.BUILD_VERSION = 'v121v146';
+  window.BUILD_VERSION = 'v121v147';
   try {
     console.info('%cMythic Spellbook ' + window.BUILD_VERSION + '%c — build check: run  __mg.version',
       'font-weight:700;color:#b48cff', 'color:#7d7499');
@@ -163508,6 +163508,56 @@ function _counterPayableWithTokens(state, owner, card, trigger) {
     return !!(window.MythicCounters && window.MythicCounters.canPayWithCounters(state, owner, card, trigger));
   } catch (e) { return false; }
 }
+/* 🔵 v121v147 — CARDS ALREADY ON THE FIELD THAT CAN SPEND COUNTERS TO NEGATE.
+
+   Owner: "no modal appears to ask do the player want to negate when something
+   happens." It never could: tryPromptCounter gathered from the HAND (filtered to
+   counter-type cards carrying a a counterTriggers array) and from the GRAVEYARD,
+   and a unit sitting on the board with a 🔵 Counters block is neither — its
+   permission lives in counterTargets, a different field entirely.
+
+   canPayWithCounters already answers the whole question (declared canCounter,
+   this trigger is in counterTargets or the list is empty, and the owner holds
+   counterCost). It was only ever reached as an alternative way to AFFORD a card
+   that had already passed the hand filter, so a field card could never get here.
+
+   ⚠ Board units AND card-shaped permanents. Counters.permanentsFor is the
+     engine's own answer to "what else can hold counters" (the location, the
+     enchantments, the weather) — asking it rather than re-deriving the list
+     keeps this from drifting away from where counters can actually sit. */
+function _fieldCounterHolders(state, trigger) {
+  const out = [];
+  try {
+    const seen = Object.create(null);
+    const add = (card, label, refId) => {
+      if (!card || !refId || seen[refId]) return;
+      if (!_counterPayableWithTokens(state, 'player', card, trigger)) return;
+      let tok = null;
+      try { tok = window.MythicCounters && window.MythicCounters.tokenOf(card); } catch (e) {}
+      seen[refId] = 1;
+      out.push({
+        ref: refId,
+        name: card.name || label || 'A card',
+        icon: (tok && tok.icon) || card.icon || '🔵',
+        cost: (tok && tok.counterCost) || 1,
+        tokenName: (tok && tok.name) || 'counter',
+        where: label,
+      });
+    };
+    for (const u of ((state && state.units) || [])) {
+      if (!u || !u.alive || u.owner !== 'player') continue;
+      add(u, 'on the field', 'unit:' + u.id);
+    }
+    let perms = [];
+    try { perms = (window.MythicCounters && window.MythicCounters.permanentsFor(state, 'player')) || []; } catch (e) {}
+    for (let i = 0; i < perms.length; i++) {
+      const p = perms[i];
+      if (!p || !p.card) continue;
+      add(p.card, p.kind || 'permanent', 'perm:' + (p.kind || 'p') + ':' + i);
+    }
+  } catch (e) {}
+  return out;
+}
 async function tryPromptCounter(state, opts) {
   if (!opts || !opts.trigger || !state) return false;
   if (_battleIsLocked(state, 'player', 'counter')) return false;   // 🔒 you're locked out of playing counters
@@ -163553,7 +163603,11 @@ async function tryPromptCounter(state, opts) {
       });
     }
   });
-  if (candidates.length === 0 && graveReactions.length === 0) return false;
+  /* 🔵 v121v147 — the THIRD source: cards already on the field whose counters
+     can pay for this trigger. Gathered here so the window offers every legal
+     response at once rather than only the ones that happen to be in hand. */
+  const tokenHolders = _fieldCounterHolders(state, opts.trigger);
+  if (candidates.length === 0 && graveReactions.length === 0 && tokenHolders.length === 0) return false;
   // Window length from the cheapest hand counter (or a sane default for grave-only).
   const cheapest = candidates.length ? candidates.reduce((m, c) => (c.cost | 0) < (m.cost | 0) ? c : m, candidates[0]) : null;
   // Serialize — only one prompt at a time even if multiple events fire.
@@ -163608,6 +163662,7 @@ async function tryPromptCounter(state, opts) {
           _sourceIsHero: !!(opts.source && opts.source.isHero),
           candidateIds: candidates.map(c => c.instanceId).filter(Boolean),
           _graveReactions: graveReactions, // 🪦 reactive grave abilities offered this window
+          _tokenHolders: tokenHolders,     // 🔵 v121v147 — field cards paying with counters
           startedAt: Date.now(),
           windowMs: windowSec * 1000,
           resolve: _resolveSafely,
@@ -163695,11 +163750,68 @@ try {
   });
 } catch (e) {}
 // Called by the prompt UI when the player clicks a counter card to activate.
+/* 🔵 v121v147 — RESOLVE A FIELD CARD'S COUNTER NEGATION.
+
+   The ref is the one _fieldCounterHolders minted: "unit:<id>" for a board unit,
+   "perm:<kind>:<i>" for a card-shaped permanent (location / enchantment /
+   weather). Both are re-resolved from LIVE state rather than trusting a captured
+   object, because the prompt is a timed window and the board can change under
+   it — the unit may have died while the player was deciding.
+
+   ⚠ Payment goes through MythicCounters.payForCounter, the same call the hand
+     path uses, so the counters are spent by ONE piece of code and the log line
+     is identical however the negation was reached. No energy is touched: paying
+     with counters is the whole point of the mechanic. */
+function _battleActivateTokenCounter(ref) {
+  const s = App.state;
+  if (!s || !s.player) return;
+  const prompt = (App.ui && App.ui.counterPrompt) || null;
+  const trigger = (prompt && prompt.trigger) || null;
+  let card = null;
+  try {
+    if (String(ref).indexOf('unit:') === 0) {
+      const id = String(ref).slice(5);
+      card = (s.units || []).find(u => u && u.alive && u.owner === 'player' && String(u.id) === id) || null;
+    } else if (String(ref).indexOf('perm:') === 0) {
+      const i = parseInt(String(ref).split(':')[2], 10);
+      const perms = (window.MythicCounters && window.MythicCounters.permanentsFor(s, 'player')) || [];
+      card = (perms[i] && perms[i].card) || null;
+    }
+  } catch (e) {}
+  if (!card) { try { showToast('That card is no longer on the field.', 2200); } catch (e) {} return; }
+  /* Re-check affordability against LIVE state — the window is timed, and the
+     counters could have been spent elsewhere since the prompt was drawn. */
+  if (!_counterPayableWithTokens(s, 'player', card, trigger)) {
+    try { showToast('⚠ Not enough counters left to negate that.', 2600); } catch (e) {}
+    return;
+  }
+  let paid = false;
+  try { paid = !!(window.MythicCounters && window.MythicCounters.payForCounter(s, 'player', card)); } catch (e) {}
+  if (!paid) { try { showToast('⚠ Could not spend those counters.', 2400); } catch (e) {} return; }
+  /* Answer the open window the same way every other pick does: resolve TRUE so
+     the action being answered is negated, and clear the prompt. */
+  try {
+    if (prompt && typeof prompt.resolve === 'function') prompt.resolve(true);
+    else if (App.ui) App.ui.counterPrompt = null;
+  } catch (e) {}
+  /* ⚠ 'abilityCast' is a REAL id in the SFX table. 'counterFire' — the obvious
+     name — is not, and playSfx would have failed silently, which is how a
+     cinematic ends up with no sound and nobody can say why. */
+  try { if (typeof playSfx === 'function') playSfx('abilityCast'); } catch (e) {}
+  try { renderBattle(); } catch (e) {}
+}
+
 function _battleActivateCounter(cardInstanceId) {
   const s = App.state;
   if (!s || !s.player) return;
   // 🪦 Reactive grave ability picked from the prompt (data-counter-pick="grave:<ref>").
   if (String(cardInstanceId).indexOf('grave:') === 0) { _battleActivateGraveReaction(cardInstanceId.slice(6)); return; }
+  /* 🔵 v121v147 — a card ALREADY ON THE FIELD spending its counters to negate
+     (data-counter-pick="token:<ref>"). Owner: "no modal appears to ask do the
+     player want to negate when something happens." It could not: this function
+     only ever looked in the HAND, so even once such a card was offered there was
+     nothing here to resolve the pick. */
+  if (String(cardInstanceId).indexOf('token:') === 0) { _battleActivateTokenCounter(cardInstanceId.slice(6)); return; }
   const idx = (s.player.hand || []).findIndex(c => c && c.instanceId === cardInstanceId);
   if (idx < 0) return;
   const card = s.player.hand[idx];
@@ -163973,6 +164085,18 @@ function renderCounterPrompt() {
               <div class="counter-prompt-card-name">${escapeHtml(g.name)} <span style="font-size:0.7rem;color:#ffd166">(from grave)</span></div>
               <div class="counter-prompt-card-cost">${g.banish ? '🌌 Banish' : 'Free'}${g.negates ? ' · 🚫 negates' : ''}</div>
               ${g.effectDesc ? `<div class="counter-prompt-card-effect small-text ink-dim">${escapeHtml(g.effectDesc)}</div>` : ''}
+            </div>
+          </button>`).join('')}
+          ${/* 🔵 v121v147 — cards ALREADY ON THE FIELD paying with counters. The
+               owner's "no modal appears to ask do the player want to negate":
+               tryPromptCounter only ever gathered from the hand and the
+               graveyard, so a unit holding a 🔵 Counters block could never be
+               offered, however many counters it had. */ ''}
+          ${((cp._tokenHolders) || []).map(t => `<button class="counter-prompt-card" data-counter-pick="token:${escapeHtml(t.ref)}" title="Remove ${t.cost} ${escapeHtml(t.tokenName)} to negate this — no energy spent" style="border-color:rgba(120,180,255,0.7);background:rgba(120,180,255,0.08)">
+            <div class="counter-prompt-card-icon">${escapeHtml(t.icon || '🔵')}</div>
+            <div class="counter-prompt-card-body">
+              <div class="counter-prompt-card-name">${escapeHtml(t.name)} <span style="font-size:0.7rem;color:#8fc4ff">(${escapeHtml(t.where || 'on the field')})</span></div>
+              <div class="counter-prompt-card-cost">🚫 Remove ${t.cost} ${escapeHtml(t.icon || '🔵')} ${escapeHtml(t.tokenName)}${t.cost === 1 ? '' : 's'} — instead of energy</div>
             </div>
           </button>`).join('')}
         </div>
@@ -268610,8 +268734,8 @@ try {
        that works everywhere except the one early path nobody tested. It is
        2KB with no dependencies. -->
 <script src="src/econ/peg.js?v=v121q51"></script>
-<script src="src/battle/effects.js?v=v121v146" defer></script>
-<script src="src/phone/handset.js?v=v121v146" defer></script>
+<script src="src/battle/effects.js?v=v121v147" defer></script>
+<script src="src/phone/handset.js?v=v121v147" defer></script>
 <script src="src/battle/combat.js?v=120m4" defer></script>
 <script src="src/battle/targeting.js?v=121e3hex" defer></script>
 <link rel="stylesheet" href="src/sprites/frames.css?v=120k3">

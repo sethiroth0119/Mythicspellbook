@@ -1707,3 +1707,66 @@ the same silent miss in a new shape.
 Suite: `_mpdecks_smoke.mjs` (runs the key conversion, the resolver order and the
 pad for real — including that an opponent's short deck is never filled with my
 cards while my own still is).
+
+---
+
+## v121v147 — a card on the field can actually spend its counters to negate
+
+Owner: *"This do not work no modal appears to ask do the player want to negate
+when something happens. It should be a counter trigger type before the action
+happen if accurate ask player do they want to respond."*
+
+**Why no modal ever appeared.** `tryPromptCounter` gathered candidates from
+exactly two places:
+
+* `state.player.hand` — filtered to `type === 'counter' || isCounter ||
+  isCounterUnit` **and** requiring a `counterTriggers` array;
+* `state.player.graveyard` — reactive `graveActive` abilities.
+
+A card carrying a 🔵 Counters block with `canCounter: true` and
+`counterTargets: […]` is **neither**. Three separate things excluded it:
+
+1. it is on the **field**, not in hand;
+2. it is an ordinary unit, so the counter-type test rejects it;
+3. `counterTargets` is a **different field** from `counterTriggers`.
+
+⚠ **The engine half was already complete and correct.**
+`MythicCounters.canPayWithCounters(state, owner, card, trigger)` checks the flag,
+the target list and whether the owner holds `counterCost`; `payForCounter` spends
+them with a log line. But `canPayWithCounters` was only ever consulted as an
+*alternative way to afford* a card that had already passed the three hand tests —
+so for a field card it was unreachable. The feature had **no path to the prompt
+at all**.
+
+⚠ **The two vocabularies already match.** `counterTargets` and `counterTriggers`
+are both authored from the same `COUNTER_TRIGGERS` list, so the ids line up and
+no translation layer is needed — which is why this is a missing candidate source
+rather than a redesign. The prompt also already fires *before* the action
+resolves, which is the owner's "before the action happen" half.
+
+**What this adds:** a third candidate source — board units the player controls,
+plus the card-shaped permanents `Counters.permanentsFor` already enumerates
+(location, enchantments, weather) — each filtered by the engine's own
+`canPayWithCounters` rather than a re-derived copy of the rule, and offered in
+the same timed window as hand counters and grave reactions. **The window now
+opens for a field card alone**: before, a player whose only possible response was
+a fully-charged counter card on the board saw nothing whatsoever.
+
+The pick routes to `_battleActivateTokenCounter`, which:
+
+* re-resolves the card from **live** state — the window is timed and the unit may
+  have died while the player was deciding;
+* re-checks affordability — the counters could have been spent elsewhere since
+  the prompt was drawn;
+* pays through the **same** `payForCounter` the hand path uses, so counters are
+  spent by one piece of code and the log line is identical however the negation
+  was reached;
+* resolves the window `true`, so the action is negated like any other pick.
+
+⚠ The sound uses `abilityCast`, a **real** id in the SFX table. `counterFire` —
+the obvious name — is not, and `playSfx` fails silently on an unknown id, so that
+would have shipped as a negation with no sound and no way to tell why.
+
+Suite: `_tokencounter_smoke.mjs` (runs the engine's gating rule for real,
+including that an empty target list answers anything — the editor's "leave all
+unticked" case — and that a field card alone opens the window).
