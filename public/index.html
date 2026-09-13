@@ -39507,7 +39507,7 @@ body:has(#pack-opener-frame) #chat-overlay {
   // the console. Bump this every deploy alongside sw.js's CACHE_VERSION. If two
   // machines show different stamps, the older one is on stale code (hard-refresh);
   // if they MATCH but content still differs, it is a DATA/publish issue, not code.
-  window.BUILD_VERSION = 'v121v144';
+  window.BUILD_VERSION = 'v121v145';
   try {
     console.info('%cMythic Spellbook ' + window.BUILD_VERSION + '%c — build check: run  __mg.version',
       'font-weight:700;color:#b48cff', 'color:#7d7499');
@@ -103725,6 +103725,46 @@ function _summonZoneFieldHtml(prefix, eff) {
     + `<select id="${prefix}-summonzone" style="width:100%">${opts}</select></div>`;
 }
 
+/* 🎯 v121v145 — TARGET RANGE, for an effect that picks ONE unit.
+   Owner: "have it where it can be based on how far tiles are or Global."
+   ⚠ The ENGINE has understood this since v120c3 — _targetCandidates reads
+     `(eff.global === true) || ((eff.radius|0) >= 99)` — but nothing in the Forge
+     could SET it. The only route was typing 99 into a Radius box every editor
+     caps at 4, so "anywhere on the battlefield" was unauthorable in practice.
+     This is the missing control; the engine is untouched. */
+function _targetRangeFieldHtml(prefix, eff) {
+  eff = eff || {};
+  const glob = (eff.global === true) || ((eff.radius | 0) >= 99);
+  return '<div class="editor-field full" style="background:rgba(120,190,255,0.07);border:1px dashed rgba(120,190,255,0.4);border-radius:6px;padding:0.5rem 0.7rem;margin-top:0.35rem">'
+    + '<label class="small-text" style="font-weight:700;color:#8fc9ff">🎯 Target range <span class="ink-dim" style="font-weight:400">(for single-target effects)</span></label>'
+    + '<div class="small-text ink-dim" style="margin:0.2rem 0 0.35rem">How far this effect may reach to pick its one unit. <b>Within N tiles</b> uses the Radius box above (1-4). <b>Global</b> ignores distance entirely — anywhere on the battlefield.</div>'
+    + '<select id="' + prefix + '-tgtrange" style="width:100%">'
+    + '<option value="radius"' + (glob ? '' : ' selected') + '>📏 Within N tiles — use the Radius above</option>'
+    + '<option value="global"' + (glob ? ' selected' : '') + '>🌐 Global — anywhere on the battlefield</option>'
+    + '</select></div>';
+}
+
+/* ⚰️🎲 v121v145 — SACRIFICE MODE. Owner: "Allow where it can be random and
+   targeting where player target who they want to sacrifice."
+   ⚠ "Player picks" is labelled as single-victim only, and that is the truth
+     rather than a hedge: only the the Sacrifice Ally effect has a pick flow.
+     sacrificeNearby / tributeRite / tributeDraw take a SET of victims at once
+     and have no multi-pick UI, so the engine falls back to auto there. Saying so
+     on the option beats shipping a choice that silently does nothing. */
+function _sacPickFieldHtml(prefix, eff) {
+  eff = eff || {};
+  const cur = String(eff.sacPick || 'auto');
+  const opt = (v, label) => '<option value="' + v + '"' + (cur === v ? ' selected' : '') + '>' + label + '</option>';
+  return '<div class="editor-field full" style="background:rgba(255,140,140,0.07);border:1px dashed rgba(255,140,140,0.4);border-radius:6px;padding:0.5rem 0.7rem;margin-top:0.35rem">'
+    + '<label class="small-text" style="font-weight:700;color:#ff9b9b">⚰️ Who is sacrificed?</label>'
+    + '<div class="small-text ink-dim" style="margin:0.2rem 0 0.35rem">Which of your own units this effect takes. <b>Random</b> is seeded from the turn and the board, so both players in a match always see the same unit die.</div>'
+    + '<select id="' + prefix + '-sacpick" style="width:100%">'
+    + opt('auto', '⚖️ Automatic — the weakest goes first (default)')
+    + opt('random', '🎲 Random — a seeded roll, identical for both players')
+    + opt('player', '👉 Player picks — Sacrifice Ally only; the others use Automatic')
+    + '</select></div>';
+}
+
 // 🪤🎲 Shared "Set Face-Down" fields. Which pile to pull from, and whether the
 // hidden card is a tile TRAP or a face-down (Subterfuge) unit. The WHICH-card
 // choice reuses the existing Card Filter / Summon-card allow-list.
@@ -103798,6 +103838,8 @@ const FX_GATE_FIELDS = {
   'negate-scope': ['negateScope'], 'vanish-target': ['vanishTarget'], 'return-on': ['returnOn'],
   'wipe-target': ['wipeTarget'], 'wipe-sparehero': ['wipeSpareHero'],
   'sac-effect': ['sacrificeEffect'], 'buff-target': ['buffTarget'], 'locktype': ['callLockMode'],
+  // 🎯 v121v145 — the target-range picker and the sacrifice-mode picker
+  'tgtrange': ['tgtGlobal'], 'sacpick': ['sacPick'],
 };
 // Keys an entry's own `needs` omits. Every one of these is a field THE ENGINE
 // READS for that effect, so a missing entry HIDES A KNOB THE AUTHOR CANNOT
@@ -103846,8 +103888,20 @@ const FX_GATE_FIELDS = {
 //                     beside the picker).
 //   buffPerCard/stat  📈 Stat to raise; its label names the effect.
 const FX_GATE_NEEDS_PATCH = {
-  targetStrike: ['tSide'],
-  sacrifice: ['sacrificeEffect'],
+  /* 🎯 v121v145 — every effect that picks ONE unit gains the range dropdown, and
+     every effect that eats a friendly unit gains the mode dropdown. These are
+     the same six ids as _TARGETABLE_EFFECTS and the same four as the sacrifice
+     family, listed here because the needs list is a display hint the catalogue does not
+     maintain against the engine (see the header above). */
+  targetStrike: ['tSide', 'tgtGlobal'],
+  singleKill: ['tgtGlobal'],
+  bounceUnit: ['tgtGlobal'],
+  destroyTarget: ['tgtGlobal'],
+  transformAlly: ['tgtGlobal'],
+  vanishReturn: ['tgtGlobal'],
+  tributeRite: ['sacPick'],
+  tributeDraw: ['sacPick'],
+  sacrifice: ['sacrificeEffect', 'sacPick'],
   buffPerCard: ['stat', 'radius', 'statusDuration'],
   graveToHand: ['salvage', 'filter'],
   searchDeck: ['filter'],
@@ -103858,7 +103912,7 @@ const FX_GATE_NEEDS_PATCH = {
   stealCard: ['filter'],
   millSearch: ['filter', 'searchDeckCardIds'],
   reviveGrave: ['filter', 'searchDeckCardIds'],
-  sacrificeNearby: ['amount'],
+  sacrificeNearby: ['amount', 'sacPick'],
   sacrificeToSummon: ['sendZone'],
   setFromZone: ['summonCardIds'],
   copyLastMove: ['radius'],
@@ -111018,6 +111072,44 @@ try { window.__mg = window.__mg || {}; window.__mg.impact = _playImpactVfx; } ca
 // since they all route through applyOnPlayEffect.
 // ============================================================================
 const _TARGETABLE_EFFECTS = { singleKill: 1, bounceUnit: 1, destroyTarget: 1, transformAlly: 1, vanishReturn: 1, targetStrike: 1 };
+/* ⚰️🎲 v121v145 — THE SACRIFICE ORDER. Returns the candidate list arranged so
+   that taking from the front honours the authored mode:
+     auto   (default) — weakest first, with an id tiebreak. Unchanged behaviour.
+     random           — a SEEDED shuffle (see below).
+     player           — treated as auto here; only the single-victim the sacrifice
+                        effect has a pick flow, and it branches before calling
+                        this. Falling back to auto is what the author would have
+                        got anyway, and the dropdown label says so.
+
+   ⚠ THE RANDOM IS DETERMINISTIC ON PURPOSE. sacrificeNearby's own note says the
+     weakest go first "deterministically, so multiplayer stays in sync"; a live
+     Math.random() would have two clients kill different units from one board.
+     _bbRng is mulberry32 — pure uint32 arithmetic, so it yields the identical
+     stream on every JS engine, which is the whole point of seeding it. */
+function _sacOrder(list, eff, state, caster) {
+  const arr = (list || []).slice();
+  const mode = String((eff && eff.sacPick) || 'auto');
+  if (mode !== 'random') {
+    return arr.sort((a, b) => ((a.currentHp | 0) - (b.currentHp | 0)) || String(a.id).localeCompare(String(b.id)));
+  }
+  try {
+    const seed = _bbSeedFromString(
+      String((state && state.turnNumber) | 0) + ':' + String((caster && caster.id) || '') + ':' +
+      arr.map((u) => String(u && u.id)).sort().join(',')
+    );
+    const rnd = _bbRng(seed);
+    /* Fisher-Yates over an id-sorted copy, so the INPUT order (which can differ
+       between clients) cannot change the outcome — only the seed can. */
+    arr.sort((a, b) => String(a.id).localeCompare(String(b.id)));
+    for (let i = arr.length - 1; i > 0; i--) {
+      const j = Math.floor(rnd() * (i + 1));
+      const t = arr[i]; arr[i] = arr[j]; arr[j] = t;
+    }
+    return arr;
+  } catch (e) {
+    return arr.sort((a, b) => ((a.currentHp | 0) - (b.currentHp | 0)) || String(a.id).localeCompare(String(b.id)));
+  }
+}
 function _effectTargetable(eff) { return !!(eff && eff.targeted && _TARGETABLE_EFFECTS[eff.type]); }
 // Which side an effect wants to hit: ally-target effects vs enemy-target effects.
 function _effectWantsAlly(eff) {
@@ -113171,7 +113263,9 @@ function _applyOnPlayOneRaw(state, unit, card) {
     let victims = (state.units || []).filter(u =>
       u && u.alive && u.owner === owner && !u.isHero && !u.isWall && u.id !== unit.id && inRadius(u));
     if (cap > 0 && victims.length > cap) {
-      victims = victims.slice().sort((a, b) => ((a.currentHp | 0) - (b.currentHp | 0)) || String(a.id).localeCompare(String(b.id))).slice(0, cap);
+      /* ⚰️🎲 v121v145 — the authored order (auto = weakest first, as before;
+         random = a SEEDED shuffle, so two clients agree). */
+      victims = _sacOrder(victims, eff, state, unit).slice(0, cap);
     }
     if (!victims.length) {
       log.push({ msg: `🩸 ${unit.name} calls for offerings — none stand close enough.`, color: 'amber' });
@@ -115277,6 +115371,21 @@ function _applyOnPlayOneRaw(state, unit, card) {
     else       log.push({ msg: `⛽ ${unit.name} finds nothing to refuel.`, color: 'amber' });
     return { ...state, log };
   }
+  /* ⚰️🎲 v121v145 — WHICH FRIENDLY UNIT DIES? Owner: "Allow where it can be
+     random and targeting where player target who they want to sacrifice."
+
+     Four effects take a friendly unit and each hard-coded its own rule:
+     `sacrifice` lets the player pick (and the AI auto-takes its weakest), while
+     sacrificeNearby / tributeRite / tributeDraw always took the weakest. This
+     turns that into an authored choice.
+
+     ⚠ RANDOM IS SEEDED, NOT Math.random(). sacrificeNearby's own comment says
+       the weakest go first "deterministically, so multiplayer stays in sync" —
+       a live Math.random() would have two clients sacrificing DIFFERENT units
+       from one board. The seed is the turn, the caster and the candidate ids, so
+       both clients roll the same victim without talking to each other; _bbRng is
+       the mulberry32 this codebase already uses for that exact reason. */
+  // (defined at module scope below — see _sacOrder)
   // 🔵🔴 ===== ADD / REMOVE COUNTERS =====
   // The counter KIND comes from this card's own 🔵 Counters block. A card with
   // no block still works — it falls back to the generic 'charge' counter — so
@@ -115384,9 +115493,26 @@ function _applyOnPlayOneRaw(state, unit, card) {
   // actual removal + effect fires in _executeSacrifice() when the player
   // clicks a friendly. For AI: auto-removes the weakest ally.
   if (eff.type === 'sacrifice') {
-    if (owner === 'player') {
+    /* ⚰️🎲 v121v145 — the player only PICKS when the card says so. 'player' is
+       the default for this effect because it is what it has always done; an
+       author can now choose auto or random instead, and then the player's own
+       sacrifice resolves the same way the AI's always has. */
+    const _sacMode = String(eff.sacPick || 'player');
+    if (owner === 'player' && _sacMode === 'player') {
       App.ui.sacrificeTargeting = { unitId: unit.id, eff: { ...eff } };
       log.push({ msg: `⚔ ${unit.name} demands a sacrifice — pick a friendly unit!`, color: 'amber' });
+    } else if (owner === 'player') {
+      const _cands = _sacOrder(
+        (state.units || []).filter(u => u && u.alive && !u.isHero && u.owner === 'player' && u.id !== unit.id),
+        eff, state, unit);
+      if (_cands.length) {
+        const _v = _cands[0];
+        state.units = state.units.map(u => u.id === _v.id ? { ...u, currentHp: 0, alive: false } : u);
+        log.push({ msg: `⚔ ${unit.name} consumes ${_v.name} as a sacrifice${_sacMode === 'random' ? ' (at random)' : ''}!`, color: 'green' });
+        try { if (typeof _executeSacrifice === 'function') { _executeSacrifice({ unitId: unit.id, eff: { ...eff } }, _v); } } catch (e) {}
+      } else {
+        log.push({ msg: `⚔ ${unit.name} demands a sacrifice — but nothing can be offered.`, color: 'amber' });
+      }
     } else {
       // AI: pick the weakest non-hero ally (lowest HP ratio).
       const _candidates = (state.units || []).filter(u => u && u.alive && !u.isHero && u.owner === 'ai' && u.id !== unit.id);
@@ -153685,6 +153811,33 @@ function bindCardEditor() {
       wrap.style.cssText = 'min-width:0';
       try { wrap.innerHTML = _summonZoneFieldHtml(pre, { summonZone: saved || 'deck' }); } catch (e) { return; }
       box.parentElement.insertBefore(wrap, box.nextSibling);
+      /* 🎯⚰️ v121v145 — …and the target-range and sacrifice-mode pickers, the
+         same way, for the same reason: seventeen blocks can hold these effects,
+         and a field written into each template is a field six of them get. */
+      if (!document.getElementById(pre + '-tgtrange')) {
+        let tr = null;
+        try {
+          const id3 = App.editingCardId;
+          const card3 = (id3 === 'NEW') ? App._newCardDraft : (Forge.customCards || []).find((c) => c && c.id === id3);
+          tr = _fxZonePathFor(pre, card3);
+        } catch (e) {}
+        const w3 = document.createElement('div');
+        w3.className = 'editor-field full';
+        w3.style.cssText = 'min-width:0';
+        try { w3.innerHTML = _targetRangeFieldHtml(pre, tr || {}); box.parentElement.insertBefore(w3, wrap.nextSibling); } catch (e) {}
+      }
+      if (!document.getElementById(pre + '-sacpick')) {
+        let sp = null;
+        try {
+          const id4 = App.editingCardId;
+          const card4 = (id4 === 'NEW') ? App._newCardDraft : (Forge.customCards || []).find((c) => c && c.id === id4);
+          sp = _fxZonePathFor(pre, card4);
+        } catch (e) {}
+        const w4 = document.createElement('div');
+        w4.className = 'editor-field full';
+        w4.style.cssText = 'min-width:0';
+        try { w4.innerHTML = _sacPickFieldHtml(pre, sp || {}); box.parentElement.insertBefore(w4, wrap.nextSibling); } catch (e) {}
+      }
       /* 🔵 …and the counter side, the same way, for the same reason. */
       if (!document.getElementById(pre + '-counterside')) {
         let cs = null;
@@ -155468,6 +155621,7 @@ function captureEditorIntoCard(card) {
   // runtime (see the completion pass in bindCardEditor).
   try { _fxCaptureAllFilters(card); } catch (e) { console.warn('[filter-sweep]', e); }
   try { _fxCaptureAllSummonZones(card); } catch (e) { console.warn('[zone-sweep]', e); }
+  try { _fxCaptureAllTargetOpts(card); } catch (e) { console.warn('[target-sweep]', e); }
 
   /* 🔄 ON-RESURRECT MIRROR — LAST, after card.onPlay has been read and after the
      filter sweep has landed onPlay.filter, so the copy is of the block this save
@@ -166195,6 +166349,34 @@ function _fxZonePathFor(prefix, card) {
    on-screen picker back onto its own effect. Only when the effect actually
    takes a zone, so an editor whose type has moved on cannot stamp a stray
    `summonZone` onto an unrelated effect. */
+/* 🎯⚰️ v121v145 — WRITE THE TWO NEW PICKERS BACK, for every editor block that
+   has one. Mirrors _fxCaptureAllSummonZones exactly, including its reason for
+   existing: the fields are injected at runtime into seventeen blocks, so a
+   per-template save would miss most of them.
+   ⚠ Only effects that actually READ the value are written, so a "draw 2 cards"
+     does not acquire a stray global/sacPick key it will never use. */
+const _TAKES_TGT_RANGE = { singleKill: 1, bounceUnit: 1, destroyTarget: 1, transformAlly: 1, vanishReturn: 1, targetStrike: 1 };
+const _TAKES_SAC_PICK = { sacrifice: 1, sacrificeNearby: 1, tributeRite: 1, tributeDraw: 1 };
+function _fxCaptureAllTargetOpts(card) {
+  const PRE = ['ed-onplay', 'ed-ongrave', 'ed-ig', 'ed-grave', 'ed-field', 'ed-hand',
+               'ed-onatk', 'ed-onkill', 'ed-milled', 'ed-aura', 'ed-kalon-onx',
+               'ed-onplayx-0', 'ed-onplayx-1', 'ed-onplayx-2', 'ed-onplayx-3', 'ed-onplayx-4', 'ed-onplayx-5'];
+  PRE.forEach((pre) => {
+    let eff = null;
+    try { eff = _fxZonePathFor(pre, card); } catch (e) {}
+    if (!eff || !eff.type) return;
+    const rSel = document.getElementById(pre + '-tgtrange');
+    if (rSel && _TAKES_TGT_RANGE[eff.type]) {
+      if (rSel.value === 'global') eff.global = true; else delete eff.global;
+    }
+    const sSel = document.getElementById(pre + '-sacpick');
+    if (sSel && _TAKES_SAC_PICK[eff.type]) {
+      const v = String(sSel.value || 'auto');
+      if (v && v !== 'auto') eff.sacPick = v; else delete eff.sacPick;
+    }
+  });
+}
+
 function _fxCaptureAllSummonZones(card) {
   if (!card) return;
   const TAKES_ZONE = { summonFromZone: 1, sacrificeToSummon: 1 };
@@ -268262,8 +268444,8 @@ try {
        that works everywhere except the one early path nobody tested. It is
        2KB with no dependencies. -->
 <script src="src/econ/peg.js?v=v121q51"></script>
-<script src="src/battle/effects.js?v=v121v144" defer></script>
-<script src="src/phone/handset.js?v=v121v144" defer></script>
+<script src="src/battle/effects.js?v=v121v145" defer></script>
+<script src="src/phone/handset.js?v=v121v145" defer></script>
 <script src="src/battle/combat.js?v=120m4" defer></script>
 <script src="src/battle/targeting.js?v=121e3hex" defer></script>
 <link rel="stylesheet" href="src/sprites/frames.css?v=120k3">

@@ -2927,8 +2927,18 @@ async function _selfCheck() {
       + ' (' + dupId.byIdIsTheDiv + '), and reads ' + dupId.byIdFields + ' .editor-field where'
       + ' the truth is ' + dupId.truth + '  → openCardEditor threw=' + (!!dupErr));
     if (dupErr) console.log('    ' + dupErr.message.replace(/\s+/g, ' ').slice(0, 260));
+    /* ⚠ `truth` IS A STRUCTURAL COUNT, not the claim. It is how many
+       .editor-field elements live inside the real editor, and it moves whenever
+       a field is deliberately added — v121v145 injected the 🎯 target-range and
+       ⚰️ sacrifice-mode pickers into every block that can hold those effects,
+       taking it 106 → 130. What this pin is actually for is the line below it:
+       a duplicate id is REFUSED BY NAME, and getElementById reads 0 fields
+       against that truth while the editor itself is intact (editors=1,
+       outside=0, hosts=0). Those are the invariants; the absolute number is the
+       witness that the two readings disagree, and it has to follow real
+       additions or it would fail on every new field forever. */
     ok(dupId.editors === 1 && dupId.outside === 0 && dupId.hosts === 0
-       && dupId.byIdFields === 0 && dupId.truth === 106 && !!dupErr
+       && dupId.byIdFields === 0 && dupId.truth === 130 && !!dupErr
        && /DUPLICATED/.test(dupErr.message) && /fx-onplay/.test(dupErr.message)
        && /getElementById/.test(dupErr.message),
        'a duplicate of an id the editor uses is REFUSED by name, even though editors=1,'

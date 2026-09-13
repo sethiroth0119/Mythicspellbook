@@ -1579,3 +1579,61 @@ Suites: `_nodeinvfix_smoke.mjs`. `_nodeinv_smoke`'s collect pin required the uui
 RPC — the call that could never work from this screen — so it now asserts the TW
 one; the claim it was written to protect (hours claimed on the server, banked
 through `addRes`) is unchanged.
+
+---
+
+## v121v145 — target range and sacrifice mode are authorable
+
+Owner: *"Fix the targeting system where when a card effect has a target effect
+that target 1 unit have it where it can be based on how far tiles are or Global.
+Same as Sacrificing Allow where it can be random and targeting where player
+target who they want to sacerfice. add these to drop downs when these effects are
+selected."*
+
+⚠ **Global was never an engine limitation.** `_targetCandidates` has read
+`(eff.global === true) || ((eff.radius|0) >= 99)` since v120c3 — but nothing in
+the Forge could **set** it. The only route was typing 99 into a Radius box that
+every editor caps at 4, so "anywhere on the battlefield" was unauthorable in
+practice while the code to do it sat there working. This adds the control and
+changes nothing about how targeting resolves; a legacy radius-99 card still
+reads as Global.
+
+**The sacrifice half is a real engine change.** Four effects take a friendly unit
+and each hard-coded its own rule — `sacrifice` lets the player pick (AI
+auto-takes its weakest), while `sacrificeNearby` / `tributeRite` / `tributeDraw`
+always took the weakest. `sacPick` makes that an authored choice.
+
+⚠ **Random is seeded, not `Math.random()`.** `sacrificeNearby`'s own comment says
+the weakest go first *"deterministically, so multiplayer stays in sync"* — a live
+`Math.random()` would have two clients sacrificing **different** units from the
+same board. The roll derives from the turn, the caster and the **sorted**
+candidate ids through `_bbRng` / `_bbSeedFromString`, the mulberry32 pair this
+codebase already uses because it yields an identical stream on every JS engine;
+the shuffle runs over an id-sorted copy so a different input order on one client
+cannot change the outcome.
+
+⚠ **"Player picks" is labelled Sacrifice-Ally-only, and that is the truth rather
+than a hedge.** Only that effect has a pick flow; the other three take a *set* of
+victims at once and have no multi-pick UI, so the engine falls back to auto
+there. Saying so on the option beats shipping a choice that silently does nothing
+on three of four effects. Sacrifice Ally still defaults to `player`, so an
+unauthored card behaves exactly as before.
+
+Both pickers ride the **same completion pass** v121v124 built for the summon-zone
+field, for the reason its own comment gives: seventeen editor blocks can hold
+these effects, and a field written into each template is a field six of them get.
+The save sweep writes back only for effects that **read** the value and deletes
+the key for the default — so a "draw 2 cards" does not acquire a stray
+`global`/`sacPick`, and switching back to "within N tiles" really does switch
+back.
+
+`.gauntlet/_fx-gate-audit.mjs` prints **zero** after the change, as the gate
+table's own header requires.
+
+⚠ The forge harness pins `truth === 106` — how many `.editor-field` elements live
+inside the editor. Two new pickers took it to 130. That number is the *witness*
+that `getElementById` and the editor disagree, not the claim being tested, so it
+follows deliberate additions; updated with that reasoning recorded.
+
+Suite: `_targetsac_smoke.mjs` (runs the seeded order for real, including that two
+clients with **different input order** get the same victim).
