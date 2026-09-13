@@ -2230,3 +2230,67 @@ stronger rule: the still is served only when a person asked for less.
 
 Suite: `_cinemerge_smoke.mjs` (43 checks; runs the host's stamp rule for real,
 including that presence is not equality).
+
+---
+
+## v121v153 — 🧍 Cedric, much bigger
+
+> Owner, looking at the menu: *"Make him much bigger."*
+
+**+37% linear, +88% in area.** Head level with the top of the screen, boots
+running off under the button rail.
+
+### The asset had to grow first
+
+Cedric is 2:3 and `.char-img` is `object-fit: contain`, so the figure binds on
+whichever cap is **tighter** — which on any ordinary viewport is the **height**.
+At the old `86vh` he already rendered ~929px tall on a 1080p screen out of a
+640×960 source: a slight upscale before anything changed. Growing the box alone
+would have made him bigger **and softer**, which is not what bigger means.
+
+So the loop is re-encoded at the source's native **768×1152** (4.66MB at 9fps —
+still less than the 6.0MB whole-body loop that shipped before v152), and
+`cedric-still.webp` / `.png` re-cut from the same frame at the same size, so the
+two can never disagree about resolution.
+
+### 100vh is the ceiling, and that was only +16%
+
+Measured before deciding: raising the box to `100vh` bought **+16%**, because a
+head-to-toe figure caps out at exactly the viewport height. That is "a bit
+bigger", not "much bigger".
+
+Going further means part of him leaves the frame, and **which part is the whole
+decision**:
+
+* the **head** — never. It is the focal point and what the silhouette is read
+  from.
+* the **boots** — yes. Standard framing for menu hero art, and on this screen the
+  bottom strip already belongs to the banner and the button rail.
+
+So `118vh`, with the image pushed down `18vh`.
+
+⚠ **`height` and the image's `bottom` offset are one decision written twice.**
+The offset must equal the overflow (118 − 100 = 18) or he floats up and gets
+cropped **at the head** — the one outcome the whole arrangement exists to avoid.
+
+### Then it was looked at on a phone
+
+Which is how the second half was found. At 375×812 the new rules put his head
+**459px down the page** with most of him behind the nav column — **lower** than
+before, the exact opposite of the ask.
+
+`object-fit: contain` binds on the tighter cap, and on a narrow screen the
+**WIDTH** binds long before `118vh` is reached. The figure therefore never grows
+into the taller box, and the `-18vh` push is pure loss: it only shoves a
+width-limited figure below the fold.
+
+The narrow breakpoint now overrides **both halves** — `88vw` for the size, but
+`100vh` and `bottom:-2vh` restored — so he is still larger than the old `64vw`
+without leaving the screen.
+
+Verified in the browser at both sizes, not just on paper: desktop 708×1062 with
+the head at y=0; phone head at 333px (was 459px) and fully on screen.
+
+Suite: `_cedricsize_smoke.mjs` (22 checks; reads the VP8X canvas size out of the
+WebP itself and runs the contain rule for real at desktop and phone sizes,
+including which cap binds at each).

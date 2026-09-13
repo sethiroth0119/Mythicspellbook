@@ -675,15 +675,31 @@
      the ember canvas, so the motes drift in front of the character. Graded down
      to match the near-black ground: at full exposure a lit hero portrait is the
      brightest thing on the screen and steals the eye from the gold. */
+  /* 🧍 v121v153 — "Make him much bigger." HEIGHT is the knob that does the
+     work: Cedric is 2:3 and object-fit is contain, so in any box wider than 2:3
+     the figure is height-bound and the width cap is only there to stop a short,
+     wide window (a laptop at 16:10) becoming the constraint instead. Both were
+     raised together for that reason. He stays bottom-anchored, so the extra
+     size goes into the figure rather than floating him up the page. */
   .char-stage{
     position:fixed; left:50%; bottom:0; transform:translateX(-50%);
-    width:min(46vw, 760px); height:86vh;
+    /* 🧍 v121v153 — 118vh, i.e. TALLER THAN THE SCREEN on purpose. A
+       head-to-toe figure caps out at exactly 100vh (measured: only +16% over
+       the old 86vh), so "much bigger" has to overflow, and the boots are the
+       part to spend: the bottom strip already belongs to the banner and the
+       button rail. Paired with bottom:-18vh on .char-img below — the offset IS
+       the overflow, and the two are one decision written twice. */
+    width:min(86vw, 1420px); height:118vh;
     pointer-events:none; z-index:0;
     animation:charFloat 9s ease-in-out infinite;
   }
   @keyframes charFloat{ 0%,100%{ transform:translateX(-50%) translateY(0) } 50%{ transform:translateX(-50%) translateY(-8px) } }
   .char-img{
-    position:absolute; left:0; right:0; bottom:-2vh; margin:0 auto;
+    /* 🧍 v121v153 — -18vh matches .char-stage's 118vh overflow exactly, which
+       is what puts the top of his head level with the top of the screen and
+       sends his boots off under the rail. Move one of these without the other
+       and he floats up and gets cropped at the head instead. */
+    position:absolute; left:0; right:0; bottom:-18vh; margin:0 auto;
     max-height:100%; max-width:100%;
     object-fit:contain; object-position:bottom center;
     opacity:0; transition:opacity 1.4s ease;
@@ -837,7 +853,15 @@
     .plaque-player{ height:58px; }
     .event-pill{ margin-top:18px; }
     .banner-wrap{ bottom:24px; }
-    .char-stage{ width:64vw; opacity:.55; }
+    /* 🧍 v121v153 — BIGGER HERE TOO, BUT NOT PUSHED OFF THE BOTTOM.
+       On a narrow screen the WIDTH is the binding cap (object-fit: contain), so
+       the figure never grows into the 118vh box and the -18vh push that pairs
+       with it would only drop a width-limited Cedric below the fold — measured
+       at 375x812: head 459px down the page, most of him behind the nav. The
+       pair is restored to its bottom-anchored form here and only the width is
+       raised, so he is larger than before without leaving the screen. */
+    .char-stage{ width:88vw; height:100vh; opacity:.55; }
+    .char-img{ bottom:-2vh; }
     .corner{ width:64px; height:64px; }
   }
   /* 📱 At 900px the bar is only ~528px wide and the HUD's one-line min-content
