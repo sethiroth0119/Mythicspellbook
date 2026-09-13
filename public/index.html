@@ -39507,7 +39507,7 @@ body:has(#pack-opener-frame) #chat-overlay {
   // the console. Bump this every deploy alongside sw.js's CACHE_VERSION. If two
   // machines show different stamps, the older one is on stale code (hard-refresh);
   // if they MATCH but content still differs, it is a DATA/publish issue, not code.
-  window.BUILD_VERSION = 'v121v149';
+  window.BUILD_VERSION = 'v121v150';
   try {
     console.info('%cMythic Spellbook ' + window.BUILD_VERSION + '%c — build check: run  __mg.version',
       'font-weight:700;color:#b48cff', 'color:#7d7499');
@@ -112457,21 +112457,39 @@ let _afxDepth = 0;
 function _afxPendingCount(st) {
   try { return ((st && st._pendingTargets) || []).length | 0; } catch (e) { return 0; }
 }
+/* ✨ v121v150 — activation depth for the effectActivated trigger event. See the
+   patch note: _afxDepth cannot serve, because it is only counted on the
+   announced branch and the passthrough would then fire once per nested effect. */
+let _fxActDepth = 0;
 function _applyOnPlayOne(state, unit, card) {
   // No module, or already inside an announced beat ⇒ pure passthrough.
   if (_afxDepth > 0 || typeof window === 'undefined' || !window.ActivateFX) {
-    return _applyOnPlayOneRaw(state, unit, card);
+    _fxActDepth++;
+    let r;
+    try { r = _applyOnPlayOneRaw(state, unit, card); }
+    finally { _fxActDepth--; }
+    return _fxActAnnounce(r, unit, card);
   }
   const _before = _afxSnapshot(state);
   const _pend0 = _afxPendingCount(state);
   let s;
-  _afxDepth++;
+  _afxDepth++; _fxActDepth++;
   try { s = _applyOnPlayOneRaw(state, unit, card); }
-  finally { _afxDepth--; }
+  finally { _afxDepth--; _fxActDepth--; }
   try {
     if (_afxPendingCount(s) <= _pend0) _afxAnnounce(_before, s, unit, card, null);
   } catch (e) {}
-  return s;
+  return _fxActAnnounce(s, unit, card);
+}
+/* ✨ Announce the OUTERMOST activation only — the one the player performed. */
+function _fxActAnnounce(state, unit, card) {
+  if (_fxActDepth > 0) return state;
+  try {
+    if (typeof _fireEffectActivated === 'function') {
+      return _fireEffectActivated(state, unit, (card && card.onPlay) || null);
+    }
+  } catch (e) {}
+  return state;
 }
 function _applyOnPlayOneRaw(state, unit, card) {
   try { if (state) state.spellTurn = true; } catch (e) {}
@@ -112706,7 +112724,12 @@ function _applyOnPlayOneRaw(state, unit, card) {
     const cur  = (state.timeOfDay === 'night') ? 'night' : 'day';
     const want = (eff.timeOfDay === 'toggle') ? (cur === 'night' ? 'day' : 'night')
                : (eff.timeOfDay === 'day') ? 'day' : 'night';
+    const _dnChanged = (want !== cur);
     state.timeOfDay = want;
+    // 🌗 v121v150 — mutation point TWO. Only when it ACTUALLY changed: 'make it
+    // night' played at night is not a flip, and firing there would let a card
+    // be replayed to farm counters.
+    if (_dnChanged) { try { if (typeof _fireDayNight === 'function') state = _fireDayNight(state); log = [...(state.log || log)]; } catch (e) {} }
     log.push({ msg: (want === 'night')
       ? `🌙 ${unit.name} pulls night across the field — Shadow empowered.`
       : `☀️ ${unit.name} breaks the dawn — Light empowered.`, color: 'amber' });
@@ -113362,6 +113385,20 @@ function _applyOnPlayOneRaw(state, unit, card) {
       if (!res || !res.count) break;             // board is full — stop, keep the card
       rest.splice(bi, 1);
       state = { ...state, units: res.units };
+      /* 🌟 v121v150 — THIS PATH NEVER ANNOUNCED AN ARRIVAL AT ALL. It is the
+         deck / graveyard / void summon, so it is exactly the half of the
+         owner's "called from hand, deck or graveyard" that the summon event
+         could not answer — and every other summon responder on the board was
+         missing it too, not only cocoons. The zone is the one the effect
+         itself resolved, so no guess is involved. */
+      try {
+        if (typeof _fireTriggers === 'function') {
+          for (const sid of (res.spawnedIds || [])) {
+            const born = (state.units || []).find(u => u && u.id === sid);
+            if (born) state = _fireTriggers(state, 'summon', { actorOwner: owner, unit: born, fromZone: zone.id });
+          }
+        }
+      } catch (e) {}
       try { state = _fireAnywhereForSummons(state, res); } catch (e) {}
       log = [...(state.log || [])];
       log.push({ msg: owner === 'player'
@@ -117930,6 +117967,9 @@ const TRIGGER_EVENTS = [
   { id: 'phase',      label: 'A PHASE begins (pick which below)' },
   { id: 'handAdd',    label: 'A card is ADDED TO HAND from the deck' },
   { id: 'kalonTransform', label: '✦ A unit KALON TRANSFORMS' },
+  // 🧬 v121v150 — the last three of the cocoon's nine, as general vocabulary.
+  { id: 'dayNight',   label: '🌗 DAY flips to NIGHT (or back)' },
+  { id: 'effectActivated', label: '✨ An EFFECT is activated' },
 ];
 const TRIGGER_EFFECTS = [
   { id: 'draw',         label: '🃏 Draw N card(s)',                 amount: true },
@@ -117943,6 +117983,10 @@ const TRIGGER_EFFECTS = [
   { id: 'discardEnemy', label: '🗑 Enemy discards N from hand',     amount: true },
   { id: 'bounceEnemy',  label: '↩ Bounce nearest enemy unit' },
   { id: 'summonToken',  label: '✨ Summon a card',                  summon: true },
+  // 🧬 v121v150 — the Cocoon of Evolution. Put counters on THIS unit; at its
+  // card's evoAt it is sacrificed and the Evo unit it names (or the strongest
+  // in the Realm Deck) takes its tile.
+  { id: 'evoCounter',   label: '🧬 Put N evolution counter(s) on this unit', amount: true },
 ];
 // 🚫 NEGATION MODES. The old behaviour was binary — cancel and destroy. These
 // give a negate trigger a shape, which is where the interesting play lives.
@@ -117964,6 +118008,125 @@ const TRIGGER_NEGATE_KINDS = [
   { id: 'location',      label: 'Location cards' },
   { id: 'any',           label: 'ANY card' },
 ];
+
+/* 🧬 v121v150 — THE COCOON'S OWN SPEC, read from the card definition rather
+   than copied onto the unit at build time. buildUnit does not carry these two
+   fields, and reading the def at check time means a cocoon already on the
+   board picks up an edit to its card without needing a new match. */
+const EVO_DEFAULT_AT = 3;
+function _evoSpecOf(unit) {
+  try {
+    if (!unit) return null;
+    const def = (typeof _cardDefById === 'function')
+      ? (_cardDefById(unit.cardId || unit.originalCardId) || {}) : {};
+    const at = Math.max(1, (def.evoAt | 0) || (unit.evoAt | 0) || 0);
+    if (!at) return null;                       // not a cocoon
+    return { at, into: def.evoInto || unit.evoInto || '' };
+  } catch (e) { return null; }
+}
+/* 🧬 The player's Realm Deck, filtered to EVO units — the exact shape of
+   getBattleArchonCards, and deliberately so: it resolves the same saved keys
+   through the same _realmDeckAllows gate, so ownership, the admin bypass and
+   the AI's freedom are one rule rather than two that can disagree. */
+function getBattleEvoCards(side) {
+  const out = [], seen = new Set();
+  try {
+    if (side && side !== 'player') {
+      // the AI is unrestricted, exactly as it is for Archons
+      (typeof getAllEvoCards === 'function' ? getAllEvoCards() : []).forEach(c => {
+        if (c && !seen.has(c.id)) { seen.add(c.id); out.push(c); }
+      });
+      return out;
+    }
+    const keys = (typeof Profile !== 'undefined' && Profile.archonDeck && Array.isArray(Profile.archonDeck.cards))
+      ? Profile.archonDeck.cards : [];
+    for (const key of keys) {
+      let def = null;
+      try { def = (typeof resolveDeckCard === 'function') ? resolveDeckCard(key) : null; } catch (e) {}
+      if (def && isEvoCard(def) && !seen.has(def.id) && _realmDeckAllows(def, 'player')) { seen.add(def.id); out.push(def); }
+    }
+  } catch (e) {}
+  return out;
+}
+/* 🧬 Which Evo the cocoon becomes. An authored evoInto wins outright; with no
+   id the strongest legal Evo in the Realm deck is chosen, using the SAME
+   _summonCardPower the deterministic summon path ranks with. */
+function _evoPick(unit, spec) {
+  try {
+    const pool = getBattleEvoCards(unit && unit.owner);
+    if (!pool.length) return null;
+    if (spec && spec.into) {
+      const named = pool.find(c => c && c.id === spec.into);
+      if (named) return named;
+      return null;     // ⚠ authored to become ONE thing: not in the Realm deck, no hatch
+    }
+    let best = null, bs = -Infinity;
+    for (const c of pool) {
+      const sc = (typeof _summonCardPower === 'function') ? _summonCardPower(c) : 0;
+      if (sc > bs) { bs = sc; best = c; }
+    }
+    return best;
+  } catch (e) { return null; }
+}
+/* 🧬 THE HATCH. Sacrifices the cocoon and stands the Evo unit on its tile.
+   Returns the state unchanged when nothing legal can arrive, so the counters
+   are never spent for nothing. */
+function _evoHatch(state, unit, spec) {
+  try {
+    if (!state || !unit) return state;
+    const live = (state.units || []).find(u => u && u.id === unit.id && u.alive);
+    if (!live || !live.pos) return state;
+    const card = _evoPick(live, spec);
+    const log = [...(state.log || [])];
+    const mine = live.owner === 'player';
+    if (!card) {
+      log.push({ msg: '🧬 ' + live.name + ' is ready to evolve, but there is no Evo unit in '
+        + (mine ? 'your' : 'their') + ' Realm Deck to become.', color: 'amber' });
+      return { ...state, log };
+    }
+    const tile = { x: live.pos.x, y: live.pos.y };
+    let units = (state.units || []).map(u => u.id === live.id
+      ? { ...u, alive: false, currentHp: 0, _sacrificed: true, _evoHatched: true } : u);
+    let born = null;
+    try { born = buildUnit(card, live.owner, tile); } catch (e) { born = null; }
+    if (!born) {
+      log.push({ msg: '🧬 ' + live.name + ' could not take its new shape.', color: 'amber' });
+      return { ...state, log };
+    }
+    units = units.concat([born]);
+    log.push({ msg: '🧬 ' + live.name + ' splits open — ' + (card.name || 'an Evo unit')
+      + ' emerges from the Realm Deck!', color: mine ? 'green' : 'red' });
+    let out = { ...state, units, log };
+    // the newcomer is an arrival like any other — same event, same zone gate
+    try {
+      if (typeof _fireTriggers === 'function') {
+        out = _fireTriggers(out, 'summon', { actorOwner: live.owner, unit: born, fromZone: 'realm' });
+      }
+    } catch (e) {}
+    return out;
+  } catch (e) { return state; }
+}
+/* 🧬 Add counters, then hatch the moment the threshold is reached. Every path
+   that grants a counter goes through here, so the threshold is tested in one
+   place and a cocoon can never sit on more counters than it needs. */
+function _evoAdd(state, unit, amount, why) {
+  try {
+    if (!state || !unit) return state;
+    const spec = _evoSpecOf(unit);
+    if (!spec) return state;                      // not a cocoon: nothing to hold
+    const add = Math.max(1, amount | 0);
+    const live = (state.units || []).find(u => u && u.id === unit.id && u.alive);
+    if (!live) return state;
+    const have = Math.min(spec.at, ((live._evo | 0) + add));
+    const log = [...(state.log || [])];
+    log.push({ msg: '🧬 ' + live.name + ' gains ' + add + ' evolution counter' + (add === 1 ? '' : 's')
+      + (why ? ' (' + why + ')' : '') + ' — ' + have + '/' + spec.at + '.',
+      color: live.owner === 'player' ? 'green' : 'red' });
+    let out = { ...state, log, units: (state.units || []).map(u => u.id === live.id ? { ...u, _evo: have } : u) };
+    if (have >= spec.at) out = _evoHatch(out, live, spec);
+    return out;
+  } catch (e) { return state; }
+}
 
 function _unitTriggers(unit) {
   return (unit && Array.isArray(unit.triggers)) ? unit.triggers : [];
@@ -118040,6 +118203,41 @@ function _triggerCardCondOk(trg, card) {
 // hook instead of six that can drift apart.
 const _PHASE_FOR_EVENT = { cardPlayed: 'setup', summon: 'setup', attack: 'combat', turnEnd: 'end' };
 
+/* 🌗 v121v150 — announce a day/night flip to the trigger engine, once, from
+   either mutation point.
+   ⚠ THE GUARD IS NOT OPTIONAL. A dayNight trigger is allowed to have any
+     effect, including setTimeOfDay — and that effect writes state.timeOfDay
+     and would announce again, without end. _fireTriggers._phasing guards
+     advancePhase for exactly this reason; this is the same shape. */
+function _fireDayNight(state) {
+  if (_fireDayNight._busy) return state;
+  _fireDayNight._busy = true;
+  let out = state;
+  try {
+    out = _fireTriggers(state, 'dayNight', {
+      actorOwner: null,                       // the sky belongs to nobody: 'both' scopes fire
+      timeOfDay: (state && state.timeOfDay === 'night') ? 'night' : 'day'
+    });
+  } catch (e) { out = state; }
+  _fireDayNight._busy = false;
+  return out;
+}
+/* ✨ v121v150 — announce an activated effect. Same guard, same reason: an
+   effectActivated trigger resolves effects of its own. */
+function _fireEffectActivated(state, unit, eff) {
+  if (_fireEffectActivated._busy) return state;
+  _fireEffectActivated._busy = true;
+  let out = state;
+  try {
+    out = _fireTriggers(state, 'effectActivated', {
+      actorOwner: (unit && unit.owner) || null, unit: unit || null,
+      effectType: (eff && (eff.type || eff.effect)) || null
+    });
+  } catch (e) { out = state; }
+  _fireEffectActivated._busy = false;
+  return out;
+}
+
 function _fireTriggers(state, event, ctx) {
   if (!state || !Array.isArray(state.units)) return state;
   ctx = ctx || {};
@@ -118085,6 +118283,29 @@ function _fireTriggers(state, event, ctx) {
       if (trg.phase && trg.phase !== 'any') {
         const nowPhase = (event === 'phase') ? (ctx && ctx.phase) : _phaseOf(s);
         if (nowPhase !== trg.phase) continue;
+      }
+      /* 🌗 v121v150 — "ONLY DURING THE DAY" / "ONLY AT NIGHT" is a CONDITION,
+         not an event. The owner listed it alongside the flip itself, and it
+         belongs here for the same reason the phase gate does: it applies to
+         every trigger, not just to the one that watches the sky. Unset (or
+         'any') means every time of day, so nothing that exists changes.
+         ⚠ For the dayNight event the state has ALREADY flipped when this runs,
+           so 'night' means "fires on the flip INTO night" — which is the
+           reading the label promises. */
+      if (trg.timeOfDay && trg.timeOfDay !== 'any') {
+        const _tod = ((s && s.timeOfDay) === 'night') ? 'night' : 'day';
+        if (_tod !== trg.timeOfDay) continue;
+      }
+      /* 🌟 v121v150 — WHERE THE UNIT WAS CALLED FROM. The owner wants a cocoon
+         that charges when a unit arrives "from hand / deck / graveyard", and
+         the summon event carried no zone at all, so the three were
+         indistinguishable. The zone is supplied by the call sites that KNOW it;
+         a site that does not know sends nothing, and a trigger that asks for a
+         specific zone then does not fire — silence rather than a guess, because
+         a cocoon that charges on the wrong arrival is worse than one that
+         misses an unlabelled one. */
+      if (trg.fromZone && trg.fromZone !== 'any') {
+        if (String((ctx && ctx.fromZone) || '') !== trg.fromZone) continue;
       }
       // 🃏 "EXCEPT DURING THE DRAW PHASE" — the Ash-Blossom clause. A handAdd
       // responder can opt out of the turn's normal draw.
@@ -118509,6 +118730,16 @@ function _applyTriggerEffect(state, unit, trg, ctx) {
           try { _battleBounceNotice(tgt, _tgtSide); } catch (e) {}
         }
       }
+      break;
+    }
+    /* 🧬 v121v150 — one line, because every hard part (the threshold, the
+       sacrifice, the Realm-deck lookup, the tile) lives in _evoAdd where the
+       other grant paths can reach it too. */
+    case 'evoCounter': {
+      const before = s;
+      s = _evoAdd({ ...s, log }, unit, n, trg.name || 'trigger');
+      log = s.log || log;
+      if (s === before) log.push({ msg: tag + ' — nothing here can hold an evolution counter.', color: 'amber' });
       break;
     }
     case 'summonToken': {
@@ -123822,6 +124053,10 @@ const endAITurn = (state) => {
   if (s.turnNumber > 1 && (s.turnNumber - 1) % DAY_NIGHT_PERIOD === 0) {
     s.timeOfDay = (s.timeOfDay === 'day') ? 'night' : 'day';
     s.log = [...s.log, { msg: s.timeOfDay === 'day' ? '☀️ Dawn breaks — Light empowered.' : '🌙 Night falls — Shadow empowered.', color: 'amber' }];
+    // 🌗 v121v150 — mutation point ONE of two. The other is the setTimeOfDay
+    // effect; a cocoon that charges on the flip has to see both or a card that
+    // pulls night across the field would not count.
+    try { if (typeof _fireDayNight === 'function') s = _fireDayNight(s); } catch (e) {}
   }
   // 😢 Tick every active hero emotion once per full rotation. Emotions whose
   // duration hits 0 expire here + log a "returns to neutral" line.
@@ -149446,6 +149681,25 @@ function renderCardEditor() {
         <div id="stat-bars-preview">${renderStatBars(stats)}</div>
       </div>
     </div>
+    <div class="editor-field full" style="background:rgba(60,150,90,0.10);border:1px dashed rgba(120,230,160,0.50);border-radius:6px;padding:0.55rem 0.7rem">
+      <label style="font-weight:700;color:#7fe89f">🧬 Cocoon of Evolution</label>
+      <div class="small-text ink-dim" style="margin:0.2rem 0 0.5rem">
+        Set <strong>counters needed</strong> above 0 to make this a cocoon. Add a
+        <strong>⚡ Trigger Ability</strong> with the effect <em>🧬 Put N evolution counter(s)</em>
+        to say WHEN it charges — start of turn, the day/night flip, a unit called from the
+        deck, a spell being played, an attack, anything the trigger list offers. At the
+        threshold this unit is sacrificed and the Evo unit takes its tile.
+      </div>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end">
+        <label class="small-text">Counters needed
+          <input id="ed-evo-at" type="number" min="0" max="20" value="${card.evoAt | 0}" style="width:64px;display:block">
+        </label>
+        <label class="small-text" style="flex:1;min-width:200px">Becomes (Evo card id — blank = strongest in the Realm Deck)
+          <input id="ed-evo-into" type="text" value="${escapeHtml(card.evoInto || '')}" placeholder="leave blank for any Evo" style="width:100%;display:block">
+        </label>
+      </div>
+      <div class="small-text ink-dim" style="margin-top:0.4rem">🜂 Evo units live ONLY in the Realm Deck — the same rule Fusions and Archons follow. A cocoon with nothing legal in that deck keeps its counters and says so rather than being wasted.</div>
+    </div>
     <div class="editor-field full">
       <label>Passive Ability <button type="button" class="info-btn" data-info="passive" title="What does each passive do?">ℹ</button></label>
       <select id="ed-passive">${passiveOpts}</select>
@@ -151439,6 +151693,26 @@ function renderCardEditor() {
             ${TURN_PHASES.map(ph => `<option value="${ph.id}" ${t.phase === ph.id ? 'selected' : ''}>${ph.icon} ${escapeHtml(ph.label)}</option>`).join('')}
           </select></label>
           <label class="small-text" style="color:#9ec0ff" title="The Ash-Blossom clause — ignore the turn's normal draw."><input class="trg-nodraw" data-trg-idx="${i}" type="checkbox" ${t.notDrawPhase ? 'checked' : ''} style="vertical-align:-2px;margin-right:3px">except Draw Phase</label>
+          <!-- 🌗 v121v150 — "only during the day / only at night". A CONDITION on
+               any trigger, which is why it sits with Phase and not in the event
+               list: the owner asked for it alongside the flip, but it narrows a
+               trigger rather than being one. -->
+          <label class="small-text" title="Only fires while it is this time of day."><span class="ink-dim">🌗 Time</span> <select class="trg-tod" data-trg-idx="${i}">
+            <option value="any" ${!t.timeOfDay || t.timeOfDay === 'any' ? 'selected' : ''}>Any time</option>
+            <option value="day" ${t.timeOfDay === 'day' ? 'selected' : ''}>☀️ Only DAY</option>
+            <option value="night" ${t.timeOfDay === 'night' ? 'selected' : ''}>🌙 Only NIGHT</option>
+          </select></label>
+          <!-- 🌟 v121v150 — "a unit called from hand / deck / graveyard". Only
+               meaningful on the summon event; harmless elsewhere, where no ctx
+               carries a zone and 'Any' is the default. -->
+          <label class="small-text" title="On a SUMMON event: only fires when the unit was called from this zone."><span class="ink-dim">🌟 Called from</span> <select class="trg-fromzone" data-trg-idx="${i}">
+            <option value="any" ${!t.fromZone || t.fromZone === 'any' ? 'selected' : ''}>Any zone</option>
+            <option value="hand" ${t.fromZone === 'hand' ? 'selected' : ''}>✋ Hand</option>
+            <option value="deck" ${t.fromZone === 'deck' ? 'selected' : ''}>🂠 Deck</option>
+            <option value="graveyard" ${t.fromZone === 'graveyard' ? 'selected' : ''}>⚰️ Graveyard</option>
+            <option value="void" ${t.fromZone === 'void' ? 'selected' : ''}>🌌 Void</option>
+            <option value="realm" ${t.fromZone === 'realm' ? 'selected' : ''}>🜂 Realm Deck</option>
+          </select></label>
           <label class="small-text">Max/match <input class="trg-lpm" data-trg-idx="${i}" type="number" min="0" max="20" value="${t.limitPerMatch | 0}" style="width:46px"></label>
         </div>
       </div>`;
@@ -155652,6 +155926,11 @@ function captureEditorIntoCard(card) {
           limitPerMatch: Math.max(0, Math.min(20, num('.trg-lpm', 0))),
           prompt: (() => { const e = q('.trg-prompt'); return e ? !!e.checked : false; })(),
           phase: val('.trg-phase') || 'any',
+          // 🌗🌟 v121v150 — the two new gates. Saved here or the selects above
+          // would be decoration: the editor would show them, the player would
+          // set them, and the card would come back without them.
+          timeOfDay: val('.trg-tod') || 'any',
+          fromZone: val('.trg-fromzone') || 'any',
           notDrawPhase: (() => { const e = q('.trg-nodraw'); return e ? !!e.checked : false; })(),
           cost: val('.trg-cost') || '',
           restrict: val('.trg-restrict') || '',
@@ -155748,6 +156027,18 @@ function captureEditorIntoCard(card) {
       delete card.persistDrawPerTurn;
       delete card.persistFieldEffect;
     }
+  }
+  /* 🧬 v121v150 — the cocoon's two fields. Written only when the control is on
+     screen, so saving a card type that has no cocoon block cannot strip an
+     existing cocoon's settings. A threshold of 0 removes it entirely, which is
+     how the block doubles as its own off switch. */
+  if (document.getElementById('ed-evo-at')) {
+    const at = Math.max(0, Math.min(20, parseInt(v('ed-evo-at'), 10) || 0));
+    if (at > 0) {
+      card.evoAt = at;
+      const into = (v('ed-evo-into') || '').trim();
+      if (into) card.evoInto = into; else delete card.evoInto;
+    } else { delete card.evoAt; delete card.evoInto; }
   }
   // 🌌 Fusion Kalon config on summon cards.
   if (document.getElementById('ed-fusion-on')) {
@@ -177581,7 +177872,8 @@ function placeUnit(card, pos, opts) {
   // (cardPlayed). actorOwner = 'player'. Both fire AFTER the on-play resolves.
   try {
     if (typeof _fireTriggers === 'function') {
-      next = _fireTriggers(next, 'summon', { actorOwner: 'player', unit });
+      // 🌟 v121v150 — this site KNOWS the zone: the card came out of the hand.
+      next = _fireTriggers(next, 'summon', { actorOwner: 'player', unit, fromZone: 'hand' });
       next = _fireTriggers(next, 'cardPlayed', { actorOwner: 'player', card, unit });
     }
   } catch (e) {}
@@ -180516,7 +180808,8 @@ function doAIStep() {
             // who:'enemy' triggers react to the AI's plays.
             try {
               if (typeof _fireTriggers === 'function') {
-                next = _fireTriggers(next, 'summon', { actorOwner: 'ai', unit: newUnit });
+                // 🌟 v121v150 — the AI's hand-deploy, same knowledge, same zone.
+                next = _fireTriggers(next, 'summon', { actorOwner: 'ai', unit: newUnit, fromZone: 'hand' });
                 next = _fireTriggers(next, 'cardPlayed', { actorOwner: 'ai', card: best, unit: newUnit });
               }
             } catch (e) {}
@@ -268892,8 +269185,8 @@ try {
        that works everywhere except the one early path nobody tested. It is
        2KB with no dependencies. -->
 <script src="src/econ/peg.js?v=v121q51"></script>
-<script src="src/battle/effects.js?v=v121v149" defer></script>
-<script src="src/phone/handset.js?v=v121v149" defer></script>
+<script src="src/battle/effects.js?v=v121v150" defer></script>
+<script src="src/phone/handset.js?v=v121v150" defer></script>
 <script src="src/battle/combat.js?v=120m4" defer></script>
 <script src="src/battle/targeting.js?v=121e3hex" defer></script>
 <link rel="stylesheet" href="src/sprites/frames.css?v=120k3">

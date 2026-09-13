@@ -32,7 +32,7 @@
 
        🔴 The id derivation does NOT know a fixed set of read forms. The three
        the editor's convention names — v( , num( , getElementById( — accounted
-       for 385 of the 465 ids; the other 80 arrive through helpers the save path
+       for 387 of the 467 ids; the other 80 arrive through helpers the save path
        defines for itself (_wc, _pc, _pv, _n, _v, _ck, _rc, _rv, _zcOn, _zcName,
        numOrNull, _readCardFilterFrom, _readMultiSelectValues, _readSearchPickRule
        and the selector-composing _readPolyMatSources). A revision of this file

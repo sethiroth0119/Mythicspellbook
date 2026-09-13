@@ -1937,3 +1937,113 @@ board; the four-build range never checked it at all.
 Suite: `_aimarrow_smoke.mjs` (runs the legality decision for real, including that
 an empty legal set makes every tile red — a mode with nothing playable never
 shows green).
+
+---
+
+## v121v150 — 🧬 the Cocoon of Evolution
+
+> Owner: *"the unit gains a evolution counter … sacrifice it and summon a Evo
+> unit from the realm deck"*, charging on: start of turn, the day/night flip,
+> only-day / only-night, a unit called from hand / deck / graveyard, units dying,
+> spell cards, effects activated, and attacks.
+
+### Built on the trigger engine, not beside it
+
+That list of nine is almost exactly the vocabulary `card.triggers[]` already has
+— complete with the who-scope, the per-turn and per-match limits, the cost, the
+chance roll and the response prompt. A second subscription system for cocoons
+would have duplicated every one of those and then drifted from them.
+
+So **a cocoon is an ordinary trigger** whose effect happens to be *"🧬 put N
+evolution counter(s) on this unit"*, and six of the nine needed no new code at
+all. Spell cards in particular: `cardPlayed` already filters by card kind, and
+`spell` is one of them.
+
+Three were genuinely missing. They are added as **general vocabulary**, not as
+cocoon special cases — every card gets them:
+
+| added | what it is |
+|---|---|
+| `dayNight` | the flip itself |
+| `effectActivated` | an effect resolving on the field |
+| `fromZone` | a **gate** on `summon` — "called from hand / deck / graveyard", a distinction the event could not previously make at all |
+| `timeOfDay` | a **gate** — "only during the day" is a condition on any trigger, exactly like the phase gate it now sits beside, not a fourth event |
+
+### Day/night has two mutation points, and both are hooked
+
+The turn-based flip in `endAITurn` and the `setTimeOfDay` effect a card can play
+are separate writes to `state.timeOfDay`. Hooking only the first would mean a
+cocoon that charges on the flip **ignored the card that caused one**.
+
+⚠ The card path fires only on a *real* change — "make it night" played at night
+is not a flip, and firing there would let the card be replayed to farm counters.
+
+⚠ `_fireDayNight` carries a re-entrancy guard in the shape of
+`_fireTriggers._phasing`, because a `dayNight` trigger is allowed to play
+`setTimeOfDay` and would otherwise recurse without end.
+
+### An effect activating announces ONCE — the hard part
+
+Effects nest. An on-play resolves an effect that summons a unit whose own on-play
+resolves two more, and every one of those re-enters `_applyOnPlayOne`.
+Announcing at each re-entry would put **four** counters on a cocoon for one card,
+which is not what the player watched happen.
+
+⚠ **The existing `_afxDepth` cannot serve as that counter**, even though it looks
+like exactly the right one. It is incremented only on the *announced* branch —
+and the function's first line is a passthrough for when `ActivateFX` is absent,
+where every nested call would see depth 0 and fire again. `_fxActDepth` is
+therefore incremented on **both** branches, and only the outermost activation
+announces.
+
+### A real gap this surfaced
+
+⚠ **`summonFromZone` never fired the `summon` event at all.** It is the deck /
+graveyard / void summon — exactly the half of "called from hand, deck or
+graveyard" the event could not answer — and *every* summon responder on the
+board was missing those arrivals, not only cocoons. It announces now, with the
+zone the effect itself resolved, so no guess is involved.
+
+A call site that does **not** know the zone sends nothing, and a zone-gated
+trigger then stays silent. A cocoon charging on the wrong arrival is worse than
+one missing an unlabelled arrival.
+
+### The hatch
+
+⚠ **The Evo unit takes the cocoon's own tile**, which the sacrifice has just
+freed. It is the right picture, and it is the only placement that cannot *fail*:
+`sacrificeToSummon`'s hero-adjacent rule has to refuse the whole effect when the
+hero is walled in, and refusing here would eat counters a player spent a whole
+game accumulating.
+
+⚠ **Counters are spent only if the hatch actually happens.** With no legal Evo in
+the Realm Deck the cocoon keeps them and says so — a cocoon that silently ate its
+own charge would be indistinguishable from a bug.
+
+⚠ **The Realm-deck rule is the existing one.** `_realmDeckAllows` is the same gate
+Archons and Polycreation targets pass, so ownership, the admin bypass and "the AI
+is unrestricted" behave identically and cannot drift into two rules.
+
+Authoring: a **🧬 Cocoon of Evolution** block on the unit card (counters needed +
+which Evo it becomes, blank = strongest in the Realm Deck — which is what makes a
+generic cocoon card possible), plus the two new gates beside the Phase gate in
+the trigger row. Both are read back in the save handler; `forgeids` confirms it,
+since that suite lifts every save-path id out of the running source and requires
+it in the markup the editor actually renders.
+
+### Still open on this feature
+
+The player does not yet **choose** which Evo when `evoInto` is blank — it takes
+the strongest in the Realm Deck. A picker is the natural follow-up, but it needs
+care: evolution can fire during the AI's turn, and a modal opened inside that
+loop hangs it (the same rule `summonFromZone`'s `_autoPick` guard follows).
+
+### A stale check, fixed rather than re-baselined
+
+`_forgeids_smoke` derives the editor's id counts from the running source and
+compares them with the number written in its own header — 385/465 + 80. The two
+cocoon fields make it 387/467 + 80. The number is the **witness**, not the claim,
+so the header was corrected; the check itself was not weakened.
+
+Suite: `_evococoon_smoke.mjs` (62 checks; runs the counter arithmetic and both
+gates for real, including that an arrival with an unknown zone fires nothing).
