@@ -39507,7 +39507,7 @@ body:has(#pack-opener-frame) #chat-overlay {
   // the console. Bump this every deploy alongside sw.js's CACHE_VERSION. If two
   // machines show different stamps, the older one is on stale code (hard-refresh);
   // if they MATCH but content still differs, it is a DATA/publish issue, not code.
-  window.BUILD_VERSION = 'v121v145';
+  window.BUILD_VERSION = 'v121v146';
   try {
     console.info('%cMythic Spellbook ' + window.BUILD_VERSION + '%c — build check: run  __mg.version',
       'font-weight:700;color:#b48cff', 'color:#7d7499');
@@ -49903,6 +49903,70 @@ function _slimHeroForMp(hero) {
   try { const pr = _heroProgForMp(hero.id); if (pr && out) out._mpProg = pr; } catch (e) {}
   return out;
 }
+/* 🃏 v121v146 — THE OPPONENT'S FORGED CARDS, SLIMMED FOR THE WIRE.
+
+   The deck payload has always carried ID KEYS ONLY. This game's cards are
+   player-forged, so a card the opponent made and never published resolves to
+   null on my client, buildDeckFromKeys silently drops the key, and _legalizeDeck
+   fills the hole from MY OWN collection — the player ends up watching their
+   opponent play the player's own deck. Sending the definitions is the fix.
+
+   ⚠ ART IS STRIPPED, exactly as _slimHeroForMp strips it for this same payload.
+     Card art here is base64 or a cloud URL; forty raw definitions would be
+     megabytes through a realtime broadcast frame, and an oversized or dropped
+     frame is how a client loses its turn permanently. Rules travel; pictures do
+     not. A card whose art does not resolve on the far side still renders — the
+     art layer already falls back — but now with the RIGHT rules and stats. */
+function _slimCardForMp(card) {
+  if (!card || typeof card !== 'object' || !card.id) return null;
+  const HEAVY = { img:1, image:1, imageUrl:1, art:1, artBase64:1, artUrl:1, cover:1, coverArt:1,
+    sprite:1, spriteBase64:1, spriteUrl:1, spriteFrames:1, frames:1, portrait:1, portraitUrl:1,
+    bgImage:1, background:1, audio:1, audioUrl:1, iconImg:1 };
+  let copy;
+  try { copy = JSON.parse(JSON.stringify(card)); } catch (e) { return null; }
+  const strip = (v) => {
+    if (v == null) return v;
+    if (typeof v === 'string') return (v.slice(0, 5) === 'data:' || v.length > 4096) ? '' : v;
+    if (Array.isArray(v)) { for (let i = 0; i < v.length; i++) v[i] = strip(v[i]); return v; }
+    if (typeof v === 'object') { for (const k in v) { if (!Object.prototype.hasOwnProperty.call(v, k)) continue; if (HEAVY[k] && typeof v[k] === 'string') { v[k] = ''; continue; } v[k] = strip(v[k]); } return v; }
+    return v;
+  };
+  return strip(copy);
+}
+/* Every CUSTOM definition a deck's keys refer to, slimmed. Built-in cards are
+   skipped: both clients already have those, and shipping them would double the
+   payload for no gain. */
+function _deckCardDefsForMp(deckKeys) {
+  const out = [];
+  try {
+    const seen = Object.create(null);
+    for (const key of (Array.isArray(deckKeys) ? deckKeys : [])) {
+      if (typeof key !== 'string') continue;
+      const i = key.indexOf(':');
+      const id = i >= 0 ? key.slice(i + 1) : key;
+      if (!id || seen[id]) continue;
+      seen[id] = 1;
+      const def = (typeof lookupCustomCard === 'function') ? lookupCustomCard(id) : null;
+      if (!def) continue;                       // a built-in — the far side has it
+      const slim = _slimCardForMp(def);
+      if (slim) out.push(slim);
+    }
+  } catch (e) {}
+  return out;
+}
+/* 🃏 The pool the opponent sent us for THIS match. Consulted by lookupCustomCard
+   as a LAST resort, so it can never shadow a card either player actually owns —
+   it only fills in definitions this client has never seen. */
+let _mpOpponentCardDefs = Object.create(null);
+function _mpSetOpponentCardDefs(list) {
+  try {
+    _mpOpponentCardDefs = Object.create(null);
+    for (const c of (Array.isArray(list) ? list : [])) { if (c && c.id) _mpOpponentCardDefs[c.id] = c; }
+    if (Array.isArray(list) && list.length) { try { console.info('[mp] adopted ' + list.length + " opponent card definitions"); } catch (e) {} }
+  } catch (e) {}
+}
+try { window.__mg = window.__mg || {}; window.__mg.mpOppDefs = function () { return _mpOpponentCardDefs; }; } catch (e) {}
+
 // 📊 The player's hero progression for a multiplayer hero handoff — { level, xp,
 // statGains, evs, nature, trait }. Relayed in the deck payload (Supabase path)
 // and on _slimHeroForMp (Colyseus path) so the OPPONENT builds our hero at the
@@ -57611,7 +57675,14 @@ function lookupCustomCard(id) {
   const local = (Forge.customCards || []).find(c => c.id === id);
   const cloud = (Catalog.cards || []).find(c => c.id === id);
   if (local && cloud) return _cardCloudIsNewer(cloud, local) ? cloud : local; // newest edit wins
-  return local || cloud || null;
+  /* 🃏 v121v146 — …and LAST, a definition the multiplayer opponent sent us for
+     this match. Last on purpose: it must never shadow a card either player
+     genuinely owns (theirs could be a stale copy of one I have edited), it only
+     fills in a forged card this client has never seen. Before this, such a card
+     resolved to NULL, buildDeckFromKeys dropped the key, and _legalizeDeck
+     padded the hole with MY OWN cards — which is why players reported watching
+     their opponent play the wrong deck. */
+  return local || cloud || _mpOpponentCardDefs[id] || null;
 }
 function lookupCustomMove(id) {
   if (!id) return null;
@@ -60180,10 +60251,19 @@ async function sendFriendChallenge(opts) {
   const _heroEquipment = (_heroEquipKey && Profile.equipment) ? (Profile.equipment[_heroEquipKey] || null) : null;
   const _unitEquipment = {};
   for (const cardKey of opts.deck) {
-    if (typeof cardKey !== 'string' || !cardKey.startsWith('u_')) continue;
-    if (_unitEquipment[cardKey]) continue;
-    const eq = Profile.equipment && Profile.equipment[cardKey];
-    if (eq && eq !== 'none') _unitEquipment[cardKey] = eq;
+    /* 🛡 v121v146 — DECK KEYS ARE "unit:<id>", EQUIPMENT KEYS ARE "u_<id>". This
+    tested the DECK key with startsWith('u_'), which never matches, so the loop
+    skipped every card and unitEquipment shipped as {} in EVERY multiplayer
+    payload — equipped units have never crossed the wire. Convert the key rather
+    than testing it in the wrong space. */
+    if (typeof cardKey !== 'string') continue;
+    const _ci = cardKey.indexOf(':');
+    const _cid = _ci >= 0 ? cardKey.slice(_ci + 1) : cardKey;
+    if (!_cid) continue;
+    const _ek = (_cid.slice(0, 2) === 'u_') ? _cid : ('u_' + _cid);   // idempotent: never u_u_<id>
+    if (_unitEquipment[_ek]) continue;
+    const eq = Profile.equipment && Profile.equipment[_ek];
+    if (eq && eq !== 'none') _unitEquipment[_ek] = eq;
   }
   const myName = (Profile.account && Profile.account.displayName)
     || (Profile.cloud.displayName)
@@ -60273,11 +60353,24 @@ async function _onChallengeAccepted(payload) {
     const _heroEquipment = (_heroEquipKey && Profile.equipment) ? (Profile.equipment[_heroEquipKey] || null) : null;
     const _unitEquipment = {};
     for (const cardKey of out.deck) {
-      if (typeof cardKey !== 'string' || !cardKey.startsWith('u_')) continue;
-      const eq = Profile.equipment && Profile.equipment[cardKey];
-      if (eq && eq !== 'none') _unitEquipment[cardKey] = eq;
+      /* 🛡 v121v146 — DECK KEYS ARE "unit:<id>", EQUIPMENT KEYS ARE "u_<id>". This
+      tested the DECK key with startsWith('u_'), which never matches, so the loop
+      skipped every card and unitEquipment shipped as {} in EVERY multiplayer
+      payload — equipped units have never crossed the wire. Convert the key rather
+      than testing it in the wrong space. */
+      if (typeof cardKey !== 'string') continue;
+      const _ci = cardKey.indexOf(':');
+      const _cid = _ci >= 0 ? cardKey.slice(_ci + 1) : cardKey;
+      if (!_cid) continue;
+      const _ek = (_cid.slice(0, 2) === 'u_') ? _cid : ('u_' + _cid);   // idempotent: never u_u_<id>
+      const eq = Profile.equipment && Profile.equipment[_ek];
+      if (eq && eq !== 'none') _unitEquipment[_ek] = eq;
     }
-    const deck1 = { cards: out.deck, heroEquipment: _heroEquipment, unitEquipment: _unitEquipment, heroProg: (typeof _heroProgForMp === 'function') ? _heroProgForMp(out.hero.id) : null, heroData: (typeof _heroDataForMp === 'function') ? _heroDataForMp(out.hero.id) : null };
+    /* 🃏 v121v146 — deck1 carries the CARD DEFINITIONS too. It already carried
+       the hero (which is why the accept path's missing heroData stood out), but
+       not the cards — so the accepting player could not resolve the challenger's
+       forged cards and _legalizeDeck padded the hole from their OWN collection. */
+    const deck1 = { cards: out.deck, cardDefs: (typeof _deckCardDefsForMp === 'function') ? _deckCardDefsForMp(out.deck) : [], heroEquipment: _heroEquipment, unitEquipment: _unitEquipment, heroProg: (typeof _heroProgForMp === 'function') ? _heroProgForMp(out.hero.id) : null, heroData: (typeof _heroDataForMp === 'function') ? _heroDataForMp(out.hero.id) : null };
     const deck2 = payload.deck || { cards: [], heroEquipment: null, unitEquipment: {} };
     // Activate the match listener BEFORE the insert so the realtime
     // subscription is ready to deliver the row to us.
@@ -60341,9 +60434,17 @@ async function acceptFriendChallenge(opts) {
   const _heroEquipment = (_heroEquipKey && Profile.equipment) ? (Profile.equipment[_heroEquipKey] || null) : null;
   const _unitEquipment = {};
   for (const cardKey of opts.deck) {
-    if (typeof cardKey !== 'string' || !cardKey.startsWith('u_')) continue;
-    const eq = Profile.equipment && Profile.equipment[cardKey];
-    if (eq && eq !== 'none') _unitEquipment[cardKey] = eq;
+    /* 🛡 v121v146 — DECK KEYS ARE "unit:<id>", EQUIPMENT KEYS ARE "u_<id>". The
+       FOURTH copy of this loop (challenge accept). Same bug as the other three:
+       testing the deck key with startsWith('u_') never matches, so this shipped
+       unitEquipment: {} every time. */
+    if (typeof cardKey !== 'string') continue;
+    const _ci = cardKey.indexOf(':');
+    const _cid = _ci >= 0 ? cardKey.slice(_ci + 1) : cardKey;
+    if (!_cid) continue;
+    const _ek = (_cid.slice(0, 2) === 'u_') ? _cid : ('u_' + _cid);   // idempotent: never u_u_<id>
+    const eq = Profile.equipment && Profile.equipment[_ek];
+    if (eq && eq !== 'none') _unitEquipment[_ek] = eq;
   }
   // Stash battlePrep so VS screen renders the right hero on our side.
   App.battlePrep = {
@@ -60358,7 +60459,24 @@ async function acceptFriendChallenge(opts) {
     to:    inc.from,
     from:  Profile.cloud.userId,
     hero:  { id: opts.hero.id, name: opts.hero.name, icon: opts.hero.icon },
-    deck:  { cards: opts.deck, heroEquipment: _heroEquipment, unitEquipment: _unitEquipment },
+    /* 🦸🃏 v121v146 — THE ACCEPT CARRIES THE HERO AND THE CARD DEFINITIONS TOO.
+       It carried neither, while the send side and deck1 both do — so on a friend
+       challenge the challenger's client fell through to the catalog/stub branch
+       and FABRICATED the accepting player's hero:
+           if (!oppHeroData.stats) oppHeroData.stats = { atk:14, def:12, mag:12, res:12, spd:1 };
+           if (oppHeroData.hp == null) oppHeroData.hp = 30;
+           if (!Array.isArray(oppHeroData.elements)) oppHeroData.elements = ['shadow'];
+       …a level-1 placeholder with the wrong element and a 👤 icon. That is the
+       owner's "it wasn't showing the players correct hero", and because it is
+       only on the ACCEPT path it would have looked intermittent. */
+    deck:  {
+      cards: opts.deck,
+      cardDefs: (typeof _deckCardDefsForMp === 'function') ? _deckCardDefsForMp(opts.deck) : [],
+      heroEquipment: _heroEquipment,
+      unitEquipment: _unitEquipment,
+      heroProg: (typeof _heroProgForMp === 'function') ? _heroProgForMp(opts.hero.id) : null,
+      heroData: (typeof _heroDataForMp === 'function') ? _heroDataForMp(opts.hero.id) : null,
+    },
   };
   const ok = await _lobbyBroadcast('challenge_accept', payload);
   // Clear the modal regardless — sender will land us in the match shortly.
@@ -83989,7 +84107,10 @@ function _pickThemedKeys(cards, kind, hero, count) {
 // second place for it to drift, so the cap now comes from `_capCopies` (which reads
 // MAX_COPIES_PER_CARD) and this function only adds the SIZE rule on top.
 const _MAX_COPIES = (typeof MAX_COPIES_PER_CARD === 'number') ? MAX_COPIES_PER_CARD : 3;
-function _legalizeDeck(cards) {
+/* 🃏 v121v146 —  marks a deck that belongs to the OTHER
+   player, so the top-up below never reaches into MY collection. Optional and
+   defaulted, so the three existing callers are byte-identical in behaviour. */
+function _legalizeDeck(cards, opts) {
   const cap = (typeof DECK_SIZE === 'number') ? DECK_SIZE : 40;
   const src = (Array.isArray(cards) ? cards : []).filter(Boolean);
   const legal = _capCopies(src, c => c.id || c.cardId || c.name || '?');
@@ -84009,9 +84130,20 @@ function _legalizeDeck(cards) {
   // is the more visible of the two at the table.
   try {
     if (out.length < cap) {
+      /* 🃏 v121v146 — AN OPPONENT'S DECK IS NEVER PADDED FROM MY COLLECTION.
+         This pad is why multiplayer showed the wrong cards: an opponent's forged
+         card that would not resolve was dropped, and the hole was refilled from
+         UNIT_CARDS *and Forge.customCards* — so the player watched their own
+         deck being played against them. v121v146 sends the real definitions, but
+         a hole can still open (a banned card, a deleted one, a version skew), and
+         filling THAT from my own collection is the visibly wrong answer. For an
+         opponent deck the built-in pool only; an undersized deck just means they
+         hit fatigue sooner, which is the better of the two failures — the same
+         judgement the note below already makes about the copy limit. */
+      const _mpOpp = !!(opts && opts.opponentDeck);
       const pool = [].concat(
         (typeof UNIT_CARDS !== 'undefined' && Array.isArray(UNIT_CARDS)) ? UNIT_CARDS : [],
-        (typeof Forge !== 'undefined' && Forge && Array.isArray(Forge.customCards)) ? Forge.customCards : []
+        (!_mpOpp && typeof Forge !== 'undefined' && Forge && Array.isArray(Forge.customCards)) ? Forge.customCards : []
       ).filter(c => c && c.id && (c.type === 'unit' || c.type === 'summon') && !c.isSummon);
       for (const c of pool) {
         while (out.length < cap && (counts[c.id] | 0) < _MAX_COPIES) {
@@ -145713,7 +145845,10 @@ function startBattleWithPrep(playerGoesFirst) {
     // to the enemy hero so it's at least coherent
     if (bp.enemyDeckOverride && bp.enemyDeckOverride.length === DECK_SIZE) {
       // 📏 A node-authored enemy deck is still an AI deck — same rules.
-      const aiDeck = _legalizeDeck(buildDeckFromKeys(bp.enemyDeckOverride));
+      /* 🃏 v121v146 — THIS is the opponent's real deck; padding it from my own
+         forged cards is what made players watch their own deck played back at
+         them. */
+      const aiDeck = _legalizeDeck(buildDeckFromKeys(bp.enemyDeckOverride), { opponentDeck: true });
       App.state = { ...App.state, ai: { ...App.state.ai, hand: aiDeck.slice(0, STARTING_HAND_SIZE), deck: aiDeck.slice(STARTING_HAND_SIZE) } };
     } else if (App.activeCampaignNode) {
       const gen = getGeneratedDeckForHero(foe.id);
@@ -172148,7 +172283,19 @@ function onTileClick(x, y) {
   // 👀 Spectators are pure observers — their input never touches the board
   // (they have no broadcast path anyway; this just keeps their view clean).
   if (typeof Spectator !== 'undefined' && Spectator.active) return;
-  if (s.turn !== 'player') return;
+  /* 🕓 v121v146 — SAY SO. This returned silently, and a multiplayer client is
+     only ever granted a turn by adopting a broadcast snapshot: the server writes
+     current_player_id on end-turn and nothing reads it back, so ONE dropped
+     frame leaves a player inert with no explanation. That is exactly the
+     reported "couldn't select cards and or attack". The turn-recovery itself is
+     a separate fix; this makes the state visible instead of looking like the
+     game ignored the click. */
+  if (s.turn !== 'player') {
+    if (App.battlePrep && App.battlePrep.multiplayer) {
+      try { showToast('🕓 Not your turn yet — waiting for the opponent.', 1400); } catch (e) {}
+    }
+    return;
+  }
   // 📡 Multiplayer turn ownership — block input while waiting on the opponent.
   if (typeof isWaitingForOpponent === 'function' && isWaitingForOpponent()) {
     showToast('🕓 Waiting for opponent…', 1200);
@@ -198584,6 +198731,11 @@ function onMultiplayerMatchFound(match) {
   App.battlePrep.opponent       = oppHeroData;
   App.battlePrep.opponentName   = MultiplayerMatch.opponentName;
   App.battlePrep.enemyDeckOverride = (MultiplayerMatch.opponentDeck && MultiplayerMatch.opponentDeck.cards) || null;
+  /* 🃏 v121v146 — adopt the opponent's card definitions BEFORE the deck is built,
+     because buildDeckFromKeys resolves each key as it walks the list; a pool
+     adopted afterwards would arrive too late and the deck would already have
+     been padded from our own collection. */
+  try { _mpSetOpponentCardDefs((MultiplayerMatch.opponentDeck && MultiplayerMatch.opponentDeck.cardDefs) || []); } catch (e) {}
   // 🎒 Mirror the opponent's equipped items onto battlePrep so the VS-screen
   // item strip can render them. Field names match cloudEnterMatchmaking's
   // _deckPayload shape (heroEquipment + unitEquipment map).
@@ -206246,13 +206398,27 @@ async function startMatchmaking(opts) {
   for (const cardKey of (Array.isArray(_deckCards) ? _deckCards : [])) {
     // cardKey is shaped like "u_<id>" or "h_<id>" — only carry equipment for
     // units (heroes are tracked separately via _heroEquipment).
-    if (typeof cardKey !== 'string' || !cardKey.startsWith('u_')) continue;
-    if (_unitEquipment[cardKey]) continue;
-    const eq = Profile.equipment && Profile.equipment[cardKey];
-    if (eq && eq !== 'none') _unitEquipment[cardKey] = eq;
+    /* 🛡 v121v146 — DECK KEYS ARE "unit:<id>", EQUIPMENT KEYS ARE "u_<id>". This
+    tested the DECK key with startsWith('u_'), which never matches, so the loop
+    skipped every card and unitEquipment shipped as {} in EVERY multiplayer
+    payload — equipped units have never crossed the wire. Convert the key rather
+    than testing it in the wrong space. */
+    if (typeof cardKey !== 'string') continue;
+    const _ci = cardKey.indexOf(':');
+    const _cid = _ci >= 0 ? cardKey.slice(_ci + 1) : cardKey;
+    if (!_cid) continue;
+    const _ek = (_cid.slice(0, 2) === 'u_') ? _cid : ('u_' + _cid);   // idempotent: never u_u_<id>
+    if (_unitEquipment[_ek]) continue;
+    const eq = Profile.equipment && Profile.equipment[_ek];
+    if (eq && eq !== 'none') _unitEquipment[_ek] = eq;
   }
   const _deckPayload = (opts && opts.deck) ? {
     cards: opts.deck,
+    /* 🃏 v121v146 — the DEFINITIONS, not just the ids. Without these the far
+       side cannot resolve a forged card, drops it, and pads the hole from its
+       own collection. Art-stripped (see _slimCardForMp) so the frame stays
+       small — an oversized frame is how a client loses its turn. */
+    cardDefs: (typeof _deckCardDefsForMp === 'function') ? _deckCardDefsForMp(opts.deck) : [],
     heroEquipment: _heroEquipment || null,
     unitEquipment: _unitEquipment,
     heroProg: (typeof _heroProgForMp === 'function') ? _heroProgForMp((opts && opts.hero && opts.hero.id) || null) : null,
@@ -268444,8 +268610,8 @@ try {
        that works everywhere except the one early path nobody tested. It is
        2KB with no dependencies. -->
 <script src="src/econ/peg.js?v=v121q51"></script>
-<script src="src/battle/effects.js?v=v121v145" defer></script>
-<script src="src/phone/handset.js?v=v121v145" defer></script>
+<script src="src/battle/effects.js?v=v121v146" defer></script>
+<script src="src/phone/handset.js?v=v121v146" defer></script>
 <script src="src/battle/combat.js?v=120m4" defer></script>
 <script src="src/battle/targeting.js?v=121e3hex" defer></script>
 <link rel="stylesheet" href="src/sprites/frames.css?v=120k3">

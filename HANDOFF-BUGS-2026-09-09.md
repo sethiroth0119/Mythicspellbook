@@ -1637,3 +1637,73 @@ follows deliberate additions; updated with that reasoning recorded.
 
 Suite: `_targetsac_smoke.mjs` (runs the seeded order for real, including that two
 clients with **different input order** get the same victim).
+
+---
+
+## v121v146 — multiplayer shows the opponent's REAL deck, hero and cards
+
+Owner, relaying a player report: *"Multiplayer is unplayable, they couldn't
+select cards and or attack"* — and: *"It wasn't showing the right cards, deck or
+the players correct hero."*
+
+**Five distinct bugs. The report was accurate about all of them.**
+
+### The root cause — the wire format carried ids only
+
+This game's content is **player-forged**, and the deck payload was
+`{ cards: ["unit:<id>", …] }` with no definitions anywhere. On the receiving
+client:
+
+1. the 40 keys arrive and pass the `length === DECK_SIZE` gate;
+2. `lookupCustomCard` cannot resolve a card the other player forged and never
+   published, so `buildDeckFromKeys` **drops it** — there is no `else`, the key
+   simply vanishes;
+3. `_legalizeDeck` sees a short deck and **pads it from `UNIT_CARDS` *and*
+   `Forge.customCards`** — my own forged cards.
+
+So the player watched their opponent play built-in goblins **and the player's own
+deck**. That is "it wasn't showing the right cards, deck", exactly.
+
+**Fix A — send the definitions.** Slimmed the same way `_slimHeroForMp` already
+slims a hero for this same payload: art stripped, rules kept. Card art here is
+base64 or cloud URLs, and forty raw definitions would be megabytes through a
+realtime frame — which matters beyond bandwidth, because an oversized or dropped
+frame is precisely how a client loses its turn permanently (see D). All three
+payload paths carry them: matchmaking, the friend-challenge send (`deck1`), and
+the accept. The opponent pool is consulted **last** inside `lookupCustomCard`, so
+it can never shadow a card either player actually owns, and it is adopted
+**before** the deck is built, because `buildDeckFromKeys` resolves each key as it
+walks the list.
+
+**Fix B — an opponent's deck is never padded from my collection.** Even with (A),
+a banned card, a deleted one or a version skew still leaves a hole — and filling
+*that* from my own cards is the visibly wrong answer. An opponent deck pads from
+the built-in pool only. An undersized deck (they hit fatigue sooner) beats a
+wrong one: the same judgement the existing note already makes about the copy
+limit.
+
+**Fix C — the wrong hero.** The challenge **accept** payload carried neither
+`heroData` nor `heroProg`, while the send side and `deck1` both do. So the
+challenger's client fell through to the stub branch and fabricated the other
+player's hero: level 1, 30 HP, `{atk:14, def:12, mag:12, res:12, spd:1}`, shadow
+element, 👤 icon. Being accept-only is why it would have looked intermittent.
+
+**Fix D — the silent refusal.** `onTileClick` returned silently on
+`s.turn !== 'player'`, and a multiplayer client is only ever granted a turn by
+adopting a broadcast snapshot — the server writes `current_player_id` on end-turn
+and **nothing reads it back**. One dropped frame leaves a player inert with no
+explanation, which is exactly "couldn't select cards and or attack". It now says
+so. ⚠ The turn-recovery itself (reading the server's turn back) is still open —
+this makes the state visible, it does not yet repair it.
+
+**Fix E — unit equipment has never crossed the wire.** At **four** payload sites,
+each loop tested a DECK key (`"unit:<id>"`) with `startsWith('u_')` — while
+equipment keys are `"u_<id>"`. The test never matched, the loop skipped every
+card, and `unitEquipment` shipped as `{}` every time, silently. The hero half
+works only because its key is built explicitly as `'h_' + id`. The conversion is
+**idempotent**, so a pre-prefixed key never becomes `u_u_<id>` — that would be
+the same silent miss in a new shape.
+
+Suite: `_mpdecks_smoke.mjs` (runs the key conversion, the resolver order and the
+pad for real — including that an opponent's short deck is never filled with my
+cards while my own still is).
