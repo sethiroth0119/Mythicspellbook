@@ -2294,3 +2294,133 @@ the head at y=0; phone head at 333px (was 459px) and fully on screen.
 Suite: `_cedricsize_smoke.mjs` (22 checks; reads the VP8X canvas size out of the
 WebP itself and runs the contain rule for real at desktop and phone sizes,
 including which cap binds at each).
+
+---
+
+## v121v154–155 — 🚨 the Ethos Fuel payout exploit, four economy rails, two persistence bugs, four cinematics
+
+### 🚨 bug-mtyjpcjg — the fuel vendor was paying out of a market it never synced
+
+> Reported: *"price/bbl … steadily in the high 200's … approx ~25,000 cinder a
+> tick … other users' value is showing in to 50-60bbl level."*
+
+**The reporter's own comparison was the diagnosis.** Measured live on
+`public.cx_prices` while fixing:
+
+| | |
+|---|---|
+| shared fuel price | **59.45** → correct vendor mark **52.3/bbl** |
+| eight profiles carrying a local mark of | 308.0, 299.2, 290.8, 267.4, 253.3, 217.2, 153.9, 102.5 |
+| every other player | exactly **88** — the untouched default, `supply` 50, 18-entry history, never traded |
+
+308 is `0.88 × 350`: that client's local exchange price was pinned at
+`CX_PRICE_MAX_FACTOR`, as high as the system permits and **5.9×** what the shared
+market said a barrel was worth.
+
+**Why the divergence survived.** The crash exchange *is* shared, and
+`_cxCloudMergeRow` writes the cloud value in absolutely — a pull heals any drift.
+But the shared price was pulled in exactly two places: `renderCrashExchange()`
+and `MythicExchange.list()`. `fcNpcMark()` — the one function that decides how
+much **cash** a barrel is worth — pulled nothing. A player who trades fuel at the
+pump but never opens the Crash Exchange moved their own local mark with their own
+trades, never pulled the shared one back, and decayed at `CX_DECAY_FACTOR` 4% of
+the gap per 6h — a **~4-day half-life**.
+
+**Three guard rails:**
+
+1. **The vendor syncs.** `fcNpcMark` now subscribes and pulls, throttled, exactly
+   as the exchange screen does. Because the merge writes the shared value
+   absolutely, this also **heals all eight profiles on their next visit** — no
+   database surgery.
+2. **A divergence rail**, because a pull can always fail (offline, signed out,
+   RLS, migration not applied): when a shared mark is known the quote may not
+   exceed `FC_NPC_DIVERGE_MAX` (1.35) × it. ⚠ One-sided, so it can never prop a
+   *low* price up to dodge a crash, and skipped entirely when no shared mark is
+   known so an offline player is not punished. `_fcSharedMark` reads the **cloud
+   mirror**, not `cx.prices` — asking the pumped state for the shared price would
+   be asking the suspect for its own alibi.
+3. **`getMarketPrice` heals the ceiling as well as the floor.** It always
+   re-established the floor on every read *"because a hand-edited profile must not
+   be trusted"*. That argument is symmetric; the upper half was never written.
+
+⚠ `CX_DECAY_FACTOR` is deliberately **not** retuned. The 4-day half-life is why a
+pumped mark persists, but it governs every asset on the exchange — that is an
+economy-wide decision, not a hotfix's.
+
+### ⛽ Four economy rails (owner)
+
+* **The vendor buys at a tenth of what it sells for.** The bid was
+  `ask × (1 − 0.05)`, so a round trip was nearly free.
+* **Fuel is only made in the Cracking Yard**, and only by one with process plant
+  commissioned. `fcRefine` never asked about the yard at all.
+* **The yard sets the throughput** — ratio × `FC_REFINE_SCALE` × build index, so a
+  13%-built yard refines at 13%. The panel prints the ratio `fcRefine` actually
+  uses.
+* **One loan at a time across every business.** Each only checked its own
+  `s.loan`; `BankEthos.businessLoans` is the shared registry both already wrote
+  to and neither ever read.
+
+### 🔴 An anti-exploit round had been crashing, unmeasured
+
+`fuelarb.mjs` lifts the real fuel + order-desk code and evals it. Its **§9**
+called `_cxExecuteBuy` → `_cxQuoteOrder` → `_cxFillPrice` → `CX_TRADE_FEE`, none
+of which were on its lift lists — so it threw and **§9–§12** (impact sweeps,
+typed-price guards, force-trigger dump) were never measured. Verified against
+HEAD with HEAD's own harness: it crashes identically, so this predates the
+release. Repaired: passes **1014 → 1048**.
+
+**§10f re-dated, not deleted.** It asserted honest buy-and-hold must profit *at
+the vendor*, and failed by name — *"the vendor has been neutered, not fixed"*.
+Put to the owner with the measurements (1,250 bbl → −141,865); the decision was
+to ship the 10× spread: the pump is a lowball counter and the exchange is where a
+barrel gets a real price. The measurement is kept with its verdict inverted,
+because if the vendor ever pays *more* than the market for held fuel the
+arbitrage is back and this is the row that sees it.
+
+**§11 left failing on purpose** (baseline 3 → 4, floor 1000 → 1040). It expects an
+override *above* the mark to be charged — `_cxExecuteBuy`'s own comment says
+*"you may always choose to pay MORE"* — but the v121v121 refactor replaced that
+body with `_cxQuoteOrder`, which takes no override; the parameter is now
+`_pxOverride` and never read. The dangerous direction is closed (a low typed price
+cannot mint — the sibling row proves it), so only the harmless half is missing and
+restoring limit orders is a design decision. Rewriting the check to match the code
+would erase the only evidence the feature existed.
+
+### 👤 Two persistence bugs
+
+**"c87" in the city.** Not a GLB — a citizen chat bubble printing the citizen's
+*id* as their name. `loadState` already carried a repair, added when this was
+reported as *"c55 / c59 keeps appearing"*, whose comment states the rule
+correctly — but the regex had lost a backslash: `/^cd+$/` matches a literal "c"
+followed by literal "d"s and **never** a real id, so the repair never once fired.
+⚠ Its own suite watched it ship: `_citname_smoke` **retyped** the rule into a `vm`
+string under the comment *"the shipped expression, verbatim"*, typed it
+correctly, and so tested a correct reimplementation while the page did something
+else. It now **lifts the real predicate**, verified by reintroducing the typo and
+watching it fail.
+
+**The main-menu character that kept coming back.** Three separate places read an
+empty roster as "nothing loaded yet" rather than "the admin removed it":
+`persist()` refused to write it, the IDB restore put it back, and the catalogue
+merge re-adopted the published list. `persist()`'s comment even named the cost —
+*"clearing the LAST character is refused here on purpose… the one edit this guard
+costs"*. A `mainMenuHeroesCleared` stamp now separates deliberate emptiness from
+not-loaded-yet; the accident those guards exist for still cannot erase anything.
+
+### 🎬 Four summon cinematics
+
+**Vintrius** and **Abraxas** — art re-encoded 30MB → 3.7MB; Vintrius's default
+source pointed at art not in this repo, so every play fired a failed request
+before its `onerror` fallback.
+
+**Hologram** and **Crimson Rupture** — taught the host's existing `?art=`/`?name=`
+contract rather than teaching the host their postMessage API, so no second
+mounting path. Both are marked `sprite: true`: they rebuild a *figure* out of
+light, so they are fed the unit's **sprite**, not its card face. ⚠ Per-entry, not
+global — restaging ten existing card-composed cinematics was not asked for.
+**Crimson is the default for ACE and mythic-rare**, checked *after* the name map
+so a card that names its own cinematic still wins.
+
+Suites: `_fuelexploit_smoke.mjs` (56 checks, runs the arithmetic on the eight real
+measured marks), `_citname_smoke.mjs` (repaired to lift the shipped predicate),
+`_cinemerge_smoke.mjs`, `_cedricsize_smoke.mjs`.

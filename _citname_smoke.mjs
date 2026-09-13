@@ -36,9 +36,25 @@ const NC  = readFileSync('./public/node-city/index.html', 'utf8');
   const ctx = { console };
   vm.createContext(ctx);
   vm.runInContext([given, family, citName, seqOf].join('\n'), ctx);
-  /* the shipped expression, verbatim */
+  /* 🔴 v121v154 — THE SHIPPED EXPRESSION, LIFTED. NOT RETYPED.
+     This block used to hand vm a hand-written copy of the rule under the
+     comment "the shipped expression, verbatim". It was not verbatim: the copy
+     had the backslash (/^c\d+$/) and the page had lost it (/^cd+$/), so the
+     suite drove a CORRECT REIMPLEMENTATION, passed on every run, and watched a
+     dead repair ship. "c87" reached the speech bubble for several builds with
+     this file green the whole time.
+     The predicate is now cut out of node-city/index.html, so what runs here is
+     what runs in the game. If the anchor ever stops matching, that is a FAIL
+     rather than a silent fallback to a copy — the fallback is what caused this. */
+  const _nameLine = (NC.match(/name: \(typeof r\.n === 'string'[^\n]*\n[^\n]*\n[^\n]*/) || [])[0] || '';
+  ok(!!_nameLine && _nameLine.indexOf('r.n.trim()') > 0, 'the shipped name-repair expression was found in the page');
+  const _pred = (_nameLine.match(/!(\/\^[^/]*\/)\.test\(r\.n\.trim\(\)\)/) || [])[1] || '';
+  ok(!!_pred, 'and its id-shape pattern was lifted out of it', _pred);
+  ok(_pred === '/^c\\d+$/',
+    'THE LIFTED PATTERN IS /^c\\d+$/ — the backslash is the whole bug; /^cd+$/ matches "cd"/"cdd" and never a real id, which is how the repair came to do nothing at all',
+    _pred);
   vm.runInContext(
-    "function restoreName(n, id) { return (typeof n === 'string' && n.trim() && !/^c\\d+$/.test(n.trim())) ? n.trim().slice(0, 40) : citName(citSeqOf(id)); }",
+    "function restoreName(n, id) { return (typeof n === 'string' && n.trim() && !" + _pred + ".test(n.trim())) ? n.trim().slice(0, 40) : citName(citSeqOf(id)); }",
     ctx);
   const nm = (n, id) => vm.runInContext('restoreName(' + JSON.stringify(n) + ',' + JSON.stringify(id) + ')', ctx);
 
@@ -59,6 +75,8 @@ const NC  = readFileSync('./public/node-city/index.html', 'utf8');
   }
 }
 ok(/A NAME THAT IS THE ID IS NOT A NAME/.test(NC), 'the repair records what it is repairing and why');
+ok(/THE BACKSLASH IS THE WHOLE BUG/.test(NC),
+  'and the comment no longer states the BROKEN pattern as the intended rule — prose describing a bug invites the next reader to "fix" the code back to match it');
 
 /* ── the sell button ── */
 ok(/const ownersKnown = \(typeof _twOwnersReady === 'function'\) \? _twOwnersReady\(\) : true;/.test(SRC),

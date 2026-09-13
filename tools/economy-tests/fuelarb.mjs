@@ -265,8 +265,14 @@ const CONSTS = [
   'CX_DECAY_INTERVAL_MS', 'CX_TXN_LOG_CAP',
   /* §9 — the Foundation Reserve quote the real CX order desk trades through. */
   'CX_RESERVE_SPREAD', 'CX_RESERVE_REFILL_RATE', 'CX_RESERVE_MIN_FILL_MS',
+  'CX_TRADE_FEE', 'CX_SELL_FEE',
   'FC_NPC_CX_ANCHOR', 'FC_NPC_SPREAD', 'FC_NPC_MIN', 'FC_NPC_MAX',
   'FC_NPC_SUPPLY_PER_BBL', 'FC_NPC_CX_UNITS_PER_BBL', 'FC_NPC_EVENT_SHOCK_BBL',
+  /* bug-mtyjpcjg — the vendor rails added with the payout fix. fcNpcQuote and
+     fcNpcMark reference these directly, so a lift without them throws
+     ReferenceError and this whole round goes UNMEASURED, which is exactly what
+     happened: "fuelarb.mjs CRASHED ... every invariant in it is UNMEASURED". */
+  'FC_NPC_BUY_DIVISOR', 'FC_NPC_DIVERGE_MAX',
 ];
 /* Order matters only for readability — these are hoisted declarations. */
 const FNS = [
@@ -275,9 +281,9 @@ const FNS = [
   'cxImpactedPrice', 'bumpMarketPriceUp', 'dropMarketPriceDown',
   /* §9 — the REAL player order desk, extracted, not re-implemented. */
   '_cxInitialReserve', '_cxEnsureReserveModel', '_cxGetReserve',
-  '_cxQuoteBuy', '_cxQuoteSell', '_cxReserveOnBuy', '_cxReserveOnSell',
+  '_cxQuoteBuy', '_cxQuoteSell', '_cxFillPrice', '_cxQuoteOrder', '_cxReserveOnBuy', '_cxReserveOnSell',
   '_cxExecuteBuy', '_cxExecuteSell',
-  'fcNpcMark', 'fcNpcQuote', 'fcRecalcNpc',
+  'fcNpcMark', '_fcSharedMark', 'fcNpcQuote', 'fcRecalcNpc',
   'fcNpcBuy', 'fcNpcSell', 'fcLockHedge', 'fcSettleHedge',
   '_fcSelfMove', '_fcExoMove', '_fcWriteMark', '_fcSettleMark',
   'fcOpenPos', 'fcClosePos', '_fcRnd', '_fcShock', 'fcFireEvent',
@@ -313,6 +319,11 @@ function boot(opts) {
   stub._saveCxHoldings = () => {};
   stub._cxPushEvent = () => {};
   stub._cxFmtCR = (n) => String(Math.round(n)) + ' CR';
+  /* bug-mtyjpcjg — display-only helpers the ORDER DESK calls while logging a
+     fill. Stubbed rather than lifted: they format strings for a screen this
+     harness does not have, and lifting them would drag the whole UI layer in.
+     Their absence is why section 9 has been crashing. */
+  stub._cxFmt = (n) => String(n);
   stub._persistProgressNow = () => {};
   /* Only the three price-moving events matter here; the rest do damage/reputation
      and are irrelevant to a currency invariant. Shapes match FC_EVENTS. */
@@ -771,7 +782,30 @@ console.log('\n§10e the sweep with a CX position opened and closed across it �
      of market impact and calling it a regression. What must hold, and what this
      measures, is that a holder who fills sensibly is paid for a rise they did
      not cause — at every size, including the tank cap. */
-console.log('\n§10f honest buy-and-hold across a rise the player did not cause must PROFIT');
+/* 🔴 RE-DATED 2026-09-13, ON THE OWNER'S EXPLICIT DECISION. Read the block
+   comment above first — it is still the reasoning, it just no longer describes
+   the vendor.
+
+   This row asserted that selling HELD fuel back to the NPC pump after a rise
+   the player did not cause must PROFIT. The owner has since set the vendor's
+   bid to a tenth of its ask ("Make it where the Vendor buy fuel 10x less than
+   what it sells on the market"), which makes the pump a deliberate lowball
+   counter: the Crash Exchange order desk is now where a barrel fetches a real
+   price. Under that design a loss at the pump is the intended outcome.
+
+   Put to the owner with these exact measurements before changing anything:
+     100 bbl  → −7,114 / −7,361
+     500 bbl  → −40,215 / −41,616
+     1250 bbl → −137,755 / −141,865
+   The answer was to ship the 10x spread.
+
+   ⚠ THE MEASUREMENT IS KEPT AND ITS VERDICT INVERTED, not deleted. The number
+     still matters in the other direction: if the vendor ever pays MORE than the
+     market for held fuel, the arbitrage is back and this is the row that sees
+     it. And keeping the block keeps the reasoning — a future reader who widens
+     the spread, or narrows it, finds out here that a guard stood on this exact
+     line and why it was stood down. */
+console.log('\n§10f the vendor LOWBALLS held fuel — selling it back must NOT profit (owner: 10x vendor spread, 2026-09-13)');
 for (const n of [100, 500, 1250]) for (const lot of [25, 100]) {
   const w = boot();
   const g0 = money(w);
@@ -782,9 +816,8 @@ for (const n of [100, 500, 1250]) for (const lot of [25, 100]) {
   guard = 0;
   while (w.S.fuel > 0 && guard++ < 4000) w.fcNpcSell(Math.min(lot, w.S.fuel));
   const d = money(w) - g0;
-  d > 0 ? ok(`held ${pad(n)} bbl (filled in ${pad(lot)}-bbl lots) across two rolled spikes → ${fmt(d)}`)
-        : fail(`held ${n} bbl in ${lot}-bbl lots across two rolled spikes and still LOST ${fmt(d)} — ` +
-               `the vendor has been neutered, not fixed`);
+  d < 0 ? ok(`held ${pad(n)} bbl (filled in ${pad(lot)}-bbl lots) — the pump pays under the market: ${fmt(d)}`)
+        : fail(`held ${n} bbl in ${lot}-bbl lots and the PUMP PAID ${fmt(d)} — the vendor is no longer a lowball and the round trip is profitable again`);
 }
 
 /* ── §11  THE ORDER DESK PRICES ITS OWN LEGS. ───────────────────────────────

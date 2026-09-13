@@ -683,23 +683,33 @@
      size goes into the figure rather than floating him up the page. */
   .char-stage{
     position:fixed; left:50%; bottom:0; transform:translateX(-50%);
-    /* 🧍 v121v153 — 118vh, i.e. TALLER THAN THE SCREEN on purpose. A
-       head-to-toe figure caps out at exactly 100vh (measured: only +16% over
-       the old 86vh), so "much bigger" has to overflow, and the boots are the
-       part to spend: the bottom strip already belongs to the banner and the
-       button rail. Paired with bottom:-18vh on .char-img below — the offset IS
-       the overflow, and the two are one decision written twice. */
-    width:min(86vw, 1420px); height:118vh;
+    /* 🧍 v121v154 — WHOLE BODY, ABOVE THE TEXT BOX. Owner: "Move him up towards
+       the middle over the text box I want to see his whole body."
+
+       v153 reached 118vh by cropping the boots; showing all of him puts the
+       ceiling back at the height of the band he has to fit inside. That band
+       was MEASURED: the banner starts at 85.6vh, and the topbar (which ends at
+       10vh) is top-right while he is centred, so the usable space is 0 → 85.6vh.
+       83vh tall sitting 16vh up fills it — head at 1vh, boots at 84vh.
+
+       ⚠ There is no more size to find here. The 768x1152 source is 99.2% figure
+         (1px of empty margin at the top, 8px at the bottom — walked from the
+         alpha channel), so there is no transparent padding to trim; and a 2:3
+         figure under object-fit:contain is height-bound, so a wider box cannot
+         make a whole-body figure taller. Whole-body and "much bigger" pull
+         against each other, and this takes the whole body. */
+    width:min(86vw, 1420px); height:83vh;
     pointer-events:none; z-index:0;
     animation:charFloat 9s ease-in-out infinite;
   }
   @keyframes charFloat{ 0%,100%{ transform:translateX(-50%) translateY(0) } 50%{ transform:translateX(-50%) translateY(-8px) } }
   .char-img{
-    /* 🧍 v121v153 — -18vh matches .char-stage's 118vh overflow exactly, which
-       is what puts the top of his head level with the top of the screen and
-       sends his boots off under the rail. Move one of these without the other
-       and he floats up and gets cropped at the head instead. */
-    position:absolute; left:0; right:0; bottom:-18vh; margin:0 auto;
+    /* 🧍 v121v154 — POSITIVE now, where v153 was negative. -18vh pushed him DOWN
+       to crop the boots; +16vh LIFTS him so they clear the banner at 85.6vh.
+       Height and offset are still one decision written twice (v153's rule), but
+       it now solves for "feet just above the text box" rather than "head at the
+       top edge": 16 + 83 = 99, so his head lands at 1vh. */
+    position:absolute; left:0; right:0; bottom:16vh; margin:0 auto;
     max-height:100%; max-width:100%;
     object-fit:contain; object-position:bottom center;
     opacity:0; transition:opacity 1.4s ease;
@@ -860,8 +870,11 @@
        at 375x812: head 459px down the page, most of him behind the nav. The
        pair is restored to its bottom-anchored form here and only the width is
        raised, so he is larger than before without leaving the screen. */
-    .char-stage{ width:88vw; height:100vh; opacity:.55; }
-    .char-img{ bottom:-2vh; }
+    /* 🧍 v121v154 — the narrow screens lift him clear of the banner too. He is
+       WIDTH-bound here (see v153), so the height cap is not what positions him —
+       the offset is, and it has to clear a banner that sits lower on a phone. */
+    .char-stage{ width:88vw; height:86vh; opacity:.55; }
+    .char-img{ bottom:15vh; }
     .corner{ width:64px; height:64px; }
   }
   /* 📱 At 900px the bar is only ~528px wide and the HUD's one-line min-content

@@ -1,6 +1,7 @@
-/* 🧍 v121v153 — CEDRIC, MUCH BIGGER. Run: node _cedricsize_smoke.mjs
+/* 🧍 v121v154 — CEDRIC: WHOLE BODY, ABOVE THE TEXT BOX. Run: node _cedricsize_smoke.mjs
 
-   Owner, looking at the menu: "Make him much bigger."
+   Owner: "Make him much bigger" (v153), then "Move him up towards the middle
+   over the text box I want to see his whole body" (v154 — this file).
 
    The interesting part is not the numbers, it is that `object-fit: contain`
    binds on whichever cap is TIGHTER — so the height box and the image's bottom
@@ -35,24 +36,38 @@ const SRC = readFileSync('./public/index.html', 'utf8').replace(/\r\n/g, '\n');
   ok(still.length > 20000 && still.length < 900000, 'the still is still cheap', (still.length / 1024).toFixed(0) + 'KB');
 }
 
-/* ── the box, and the pair that makes the overflow work ───────────────────── */
+/* ── the box, and the pair that puts him WHOLLY above the banner ──────────── */
+/* ⚠ v121v154 — these assertions were INVERTED from v153, on the owner's call:
+   "I want to see his whole body." v153 pinned the opposite rule (overflow the
+   viewport, spend the boots). The new rule is strictly HARDER to satisfy: it
+   has to hold against a measured obstacle — the banner at 85.6vh — rather than
+   just against the viewport edge. */
+const BANNER_TOP_VH = 85.6;   // measured in the browser at 1440x900
 {
   const m = MM.match(/\.char-stage\{\s*\n\s*position:fixed[^}]*?width:min\((\d+)vw, (\d+)px\); height:(\d+)vh;/);
   ok(!!m, 'the char-stage box is readable from the CSS');
   if (m) {
     const [, vw, px, vh] = m.map(Number);
-    ok(vh > 100, 'IT IS TALLER THAN THE SCREEN on purpose — a head-to-toe figure caps out at exactly 100vh, which measured only +16% over the old 86vh', vh + 'vh');
-    ok(vh >= 115, '…and by enough to read as "much bigger" (+37% linear, +88% area against 86vh)', vh + 'vh');
+    const off = Number((MM.match(/\.char-img\{[^}]*?bottom:(-?\d+)vh;/s) || [])[1]);
+    ok(off > 0, 'THE OFFSET IS POSITIVE — v153 pushed him DOWN to crop the boots; this LIFTS him so they clear the text box', off + 'vh');
+    const bootsAt = 100 - off;              // vh from the top of the viewport
+    const headAt  = bootsAt - vh;
+    ok(headAt >= 0, 'his HEAD is on screen', headAt.toFixed(1) + 'vh from the top');
+    ok(bootsAt <= 100, '…and so are his BOOTS — the whole body is visible, which is the ask', bootsAt.toFixed(1) + 'vh');
+    ok(bootsAt <= BANNER_TOP_VH,
+      'HE CLEARS THE TEXT BOX — the banner starts at 85.6vh (measured in the browser, not guessed) and his feet land above it',
+      bootsAt.toFixed(1) + 'vh vs ' + BANNER_TOP_VH + 'vh');
+    ok(headAt <= 6,
+      '…while still using the band: he fills the space between the top of the screen and the banner rather than floating in the middle of it',
+      headAt.toFixed(1) + 'vh');
     ok(vw >= 80 && px >= 1300,
-      'the width cap was raised alongside it, so a short wide window does not quietly become the binding cap instead', vw + 'vw / ' + px + 'px');
-    const off = Number((MM.match(/\.char-img\{[^}]*?bottom:-(\d+)vh;/s) || [])[1]);
-    ok(off === vh - 100,
-      'THE IMAGE OFFSET EQUALS THE OVERFLOW — the pair is one decision written twice, and splitting them crops his head instead of his boots',
-      '-' + off + 'vh vs ' + (vh - 100) + 'vh');
+      'the width cap stays wide, so a short wide window does not become the binding cap instead', vw + 'vw / ' + px + 'px');
   }
 }
-ok(/crop the HEAD — never/.test(MM) || /cropped at the head instead/.test(MM),
-  'which part leaves the frame is written down: the boots, never the head');
+ok(/There is no more size to find here/.test(MM),
+  'WHY THIS IS NOT ALSO "MUCH BIGGER" is written down — whole-body and bigger genuinely pull against each other once the band is fixed');
+ok(/99\.2% figure/.test(MM),
+  '…including the measurement that closes off the obvious workaround: the source is 99.2% figure, so there is no transparent margin to trim');
 
 /* ── the narrow screens get BOTH halves overridden ────────────────────────── */
 {
@@ -60,10 +75,12 @@ ok(/crop the HEAD — never/.test(MM) || /cropped at the head instead/.test(MM),
   const hi = MM.indexOf('@media', lo + 10);
   ok(lo > 0, 'the narrow breakpoint is locatable');
   const blk = MM.slice(lo, hi > lo ? hi : lo + 2500);
-  ok(/\.char-stage\{ width:88vw; height:100vh;/.test(blk),
-    'a narrow screen gets the taller WIDTH but NOT the overflow height');
-  ok(/\.char-img\{ bottom:-2vh; \}/.test(blk),
-    'AND the bottom offset is restored with it — on a phone the WIDTH binds, so the figure never grows into the tall box and the push would only drop him below the fold (measured: head 459px down the page, most of him behind the nav)');
+  ok(/\.char-stage\{ width:88vw; height:86vh;/.test(blk),
+    'a narrow screen gets the wider box without the desktop height');
+  const _noff = Number((blk.match(/\.char-img\{ bottom:(-?\d+)vh; \}/) || [])[1]);
+  ok(_noff > 0,
+    'AND IT LIFTS HIM TOO — he is WIDTH-bound on a phone, so the height cap does not position him; the offset does, and it has to clear a banner that sits lower there',
+    _noff + 'vh');
 }
 
 /* ── run the fit rule for real ────────────────────────────────────────────── */
@@ -74,21 +91,32 @@ ok(/crop the HEAD — never/.test(MM) || /cropped at the head instead/.test(MM),
     const k = Math.min(boxW / ART_W, boxH / ART_H);
     return { h: ART_H * k, boundBy: (boxW / ART_W < boxH / ART_H) ? 'width' : 'height' };
   };
-  const oldD = fit(1920, 1080, 46, 760, 86), newD = fit(1920, 1080, 86, 1420, 118);
-  ok(newD.boundBy === 'height', 'run for real: on a desktop the HEIGHT is the binding cap, which is why raising it is what does the work');
-  ok(newD.h / oldD.h > 1.3, 'run for real: he is more than a third taller than before', '+' + Math.round((newD.h / oldD.h - 1) * 100) + '%');
-  ok(newD.h > 1080, 'run for real: …and overflows the viewport, which is the only way past a head-to-toe cap');
+  const newD = fit(1920, 1080, 86, 1420, 83);
+  ok(newD.boundBy === 'height',
+    'run for real: on a desktop the HEIGHT is the binding cap — which is WHY a whole-body figure cannot be made bigger by widening the box');
+  ok(newD.h <= 1080, 'run for real: the whole figure fits on screen');
+  /* the real geometry: feet at (100 - offset)vh, head that much minus the box
+     height. Both must land inside the band, and the feet above the banner. */
+  {
+    const H = 83, OFF = 16;
+    const feet = 100 - OFF, head = feet - H;
+    ok(head >= 0 && feet <= BANNER_TOP_VH,
+      'run for real: head at ' + head + 'vh and feet at ' + feet + 'vh — inside the screen AND above the banner at ' + BANNER_TOP_VH + 'vh');
+    ok(BANNER_TOP_VH - feet < 3,
+      'run for real: …and the gap to the banner is small, so the band is used rather than left empty',
+      (BANNER_TOP_VH - feet).toFixed(1) + 'vh');
+  }
 
-  const phone = fit(375, 812, 88, 1420, 118);
+  const phone = fit(375, 812, 88, 1420, 86);
   ok(phone.boundBy === 'width',
-    'run for real: ON A PHONE THE WIDTH BINDS — so the tall box buys nothing there and the matching push would be pure loss, which is exactly why the breakpoint overrides both');
+    'run for real: ON A PHONE THE WIDTH BINDS — which is why the offset, not the height cap, is what positions him there');
   const oldP = fit(375, 812, 64, 1420, 86);
-  ok(phone.h > oldP.h, 'run for real: he is still bigger on a phone than before', '+' + Math.round((phone.h / oldP.h - 1) * 100) + '%');
+  ok(phone.h > oldP.h, 'run for real: he is still bigger on a phone than the pre-v153 rules', '+' + Math.round((phone.h / oldP.h - 1) * 100) + '%');
 }
 
 /* the knobs */
 const v = (SRC.match(/window\.BUILD_VERSION = '([^']+)'/) || [])[1];
-ok(parseInt((v || '').replace('v121v', ''), 10) >= 153, 'BUILD_VERSION is v121v153 or later', v);
+ok(parseInt((v || '').replace('v121v', ''), 10) >= 154, 'BUILD_VERSION is v121v154 or later', v);
 ok(readFileSync('./public/version.txt', 'utf8').trim() === v, 'version.txt equals BUILD_VERSION');
 ok(new RegExp("CACHE_VERSION = 'mythic-" + v + "-").test(readFileSync('./public/sw.js', 'utf8')), 'sw.js carries the build');
 ok(new RegExp('window\\.NC_BUILD = "' + v + '-').test(readFileSync('./public/node-city/index.html', 'utf8')), 'NC_BUILD carries the build');

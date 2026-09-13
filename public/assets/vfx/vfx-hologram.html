@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Hologram / Unit transmission</title>
+<style>
+*{box-sizing:border-box}body{margin:0;background:#060b10;color:#dce9ee;font:14px 'Segoe UI',sans-serif}main{max-width:1440px;margin:auto;padding:30px 42px}header{display:flex;align-items:center;justify-content:space-between}.eyebrow{font-size:10px;letter-spacing:3px;color:#67dce5}h1{font-size:25px;font-weight:400;letter-spacing:-.7px;margin:8px 0 22px}header aside{color:#73919c;font-size:11px;letter-spacing:2px}.stage{height:min(72vh,780px);min-height:400px;position:relative;overflow:hidden;border:1px solid #20323c;background:radial-gradient(ellipse at 50% 80%,#102632 0,#080f18 43%,#060a10 75%)}.stage:before{content:'';position:absolute;inset:60% -30% -90%;background:linear-gradient(#3b68741c 1px,transparent 1px),linear-gradient(90deg,#3b68741c 1px,transparent 1px);background-size:60px 60px;transform:perspective(280px) rotateX(58deg);transform-origin:50% 0}.stage:after{content:'';position:absolute;inset:0;pointer-events:none;box-shadow:inset 0 0 100px #02060b80}canvas{width:100%;height:100%;position:relative}.readout{position:absolute;left:28px;top:25px;font:10px monospace;letter-spacing:2px;color:#6d919e;line-height:2}.readout b{display:block;color:#bfeef2;font-weight:400;font-size:12px}.unitname{position:absolute;bottom:27px;left:30px}.unitname strong{display:block;font-size:17px;letter-spacing:3px;font-weight:400;margin-top:7px}.phase{position:absolute;right:28px;bottom:28px;font:10px monospace;letter-spacing:2px;color:#88bec6}.bar{height:2px;background:#19323d}.bar i{display:block;height:100%;background:#83f6ff;box-shadow:0 0 12px #4ff4ff;width:0}.controls{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-top:20px}button,.upload,select{border:1px solid #30434c;background:#101b23;color:#cce1e7;padding:11px 17px;border-radius:4px;font:12px 'Segoe UI',sans-serif;cursor:pointer}button:hover,.upload:hover{border-color:#73dfe9}button.primary{background:#b6f7f7;border-color:#b6f7f7;color:#092128}label{font-size:12px;color:#8fa9b3;display:flex;align-items:center;gap:7px}input[type=color]{width:30px;height:30px;border:0;padding:0;background:none}input[type=range]{flex:1;min-width:110px;accent-color:#80e8ed}footer{display:flex;justify-content:space-between;color:#627e8c;font-size:11px;margin-top:18px;line-height:1.7}#error{color:#ffb2a4}.embed main{padding:0;max-width:none}.embed header,.embed .controls,.embed footer,.embed .readout,.embed .unitname,.embed .phase,.embed .bar{display:none}.embed,.embed .stage{background:transparent}.embed .stage{border:0;height:100vh}.embed .stage:before,.embed .stage:after{display:none}@media(max-width:700px){main{padding:20px 14px}header aside{display:none}.stage{min-height:420px}.readout{left:15px}footer{display:block}}
+</style></head><body><main><header><div><div class="eyebrow">SUMMON SYSTEM / 003</div><h1>Holographic arrival.</h1></div><aside>DIGITAL RECONSTRUCTION</aside></header><div class="stage"><canvas id="vfx" aria-label="Holographic unit summon preview"></canvas><div class="readout">UPLINK / ESTABLISHED<b id="status">ACQUIRING SIGNAL</b>MATTER TRANSFER PROTOCOL</div><div class="unitname"><span class="eyebrow">DEPLOYMENT TARGET</span><strong id="unitName">AEGIS / SENTINEL</strong></div><div class="phase" id="phase">01 / LOCK ON</div></div><div class="bar"><i id="progress"></i></div><div class="controls"><button class="primary" id="replay">Replay summon</button><button id="pause">Pause</button><label class="upload">Change unit<input id="upload" type="file" accept="image/png,image/webp,image/jpeg" hidden></label><label>Color <input type="color" id="color" value="#65efff"></label><label><input type="checkbox" id="loop" checked>Loop</label><select id="speed" aria-label="Playback speed"><option value="1">Normal speed</option><option value="0.5">Half speed</option></select><input id="seek" type="range" min="0" max="4" step="0.01" value="0" aria-label="Timeline"></div><footer><span>Swap in your unit artwork. Transparent PNG / WebP gives the cleanest silhouette.<br><span id="error" role="status"></span></span><span>4 SEC / TRANSPARENT CANVAS / REUSABLE UNIT API</span></footer></main><script src="hologram-summon.js"></script><script>
+const $=id=>document.getElementById(id),embedded=(function(){var q=new URLSearchParams(location.search);return q.has('embed')||q.has('art');})();if(embedded)document.body.classList.add('embed');let timer;
+const effect=new HologramSummon($('vfx'),{onComplete(){if(embedded)parent.postMessage({type:'hologram:complete'},location.origin);else if($('loop').checked)timer=setTimeout(()=>effect.play(),900)}});window.summon=effect;
+function resize(){const r=$('vfx').getBoundingClientRect(),d=Math.min(devicePixelRatio||1,2);$('vfx').width=r.width*d;$('vfx').height=r.height*d;effect.draw(effect.time)}addEventListener('resize',resize);resize();
+function replay(){clearTimeout(timer);$('pause').textContent='Pause';effect.play()}$('replay').onclick=replay;$('pause').onclick=()=>{clearTimeout(timer);effect.pause();$('pause').textContent='Paused — replay to start'};$('seek').oninput=()=>{clearTimeout(timer);effect.seek(+$('seek').value)};$('color').oninput=()=>effect.setColor($('color').value);$('speed').onchange=()=>effect.speed=+$('speed').value;$('loop').onchange=()=>{if(!$('loop').checked)clearTimeout(timer)};
+$('upload').onchange=async()=>{const file=$('upload').files[0];if(!file)return;const url=URL.createObjectURL(file);try{await effect.setUnit(url);$('unitName').textContent=file.name.replace(/\.[^.]+$/,'').toUpperCase();$('error').textContent='';replay()}catch(e){$('error').textContent=e.message}finally{URL.revokeObjectURL(url)}};
+function ui(){let t=effect.time;$('progress').style.width=t/effect.duration*100+'%';$('seek').value=t;t=t*5.6/effect.duration;let phase=t<.5?0:t<1.1?1:t<3.45?2:t<4.4?3:4;$('status').textContent=['ACQUIRING SIGNAL','TRANSMITTING','RECONSTRUCTING UNIT','SOLIDIFYING','UNIT DEPLOYED'][phase];$('phase').textContent=['01 / LOCK ON','02 / BEAM DOWN','03 / MATERIALIZE','04 / RESOLVE','05 / COMPLETE'][phase];requestAnimationFrame(ui)}ui();
+window.addEventListener('message',async e=>{if(e.origin!==location.origin||e.source!==parent||!embedded)return;if(e.data?.type==='hologram:play'){try{if(e.data.unitSrc)await effect.setUnit(e.data.unitSrc);if(e.data.color)effect.setColor(e.data.color);replay()}catch(err){parent.postMessage({type:'hologram:error',message:err.message},location.origin)}}});
+addEventListener('pagehide',()=>{clearTimeout(timer);effect.destroy()});if(!embedded)replay();else parent.postMessage({type:'hologram:ready'},location.origin);
+</script>
+<script>
+/* 🛸 HOST ENTRY POINT (added on install). The game mounts summon cinematics as
+   a transparent iframe and passes the unit on the query string —
+   ?art=<url>&name=<unit name> — which is the contract every other cinematic in
+   this folder already answers. This adapts that to the page's own API without
+   touching it: the postMessage handshake documented in the README still works
+   exactly as shipped, for any host that prefers it.
+   ⚠ One shot, no loop: a summon cinematic plays once and is removed by the
+     host when it reports complete. Looping here would leave the unit's arrival
+     replaying over the battlefield forever. */
+(function () {
+  try {
+    var q = new URLSearchParams(location.search);
+    var art = q.get('art');
+    var nm  = q.get('name');
+    if (nm) { try { var el = document.getElementById('unitName'); if (el) el.textContent = nm; } catch (e) {} }
+    if (!art) return;
+    try { var lp = document.getElementById('loop'); if (lp) lp.checked = false; } catch (e) {}
+    var fire = function () {
+      try { parent.postMessage({ type: 'hologram:complete' }, '*'); } catch (e) {}
+    };
+    var go = function () {
+      try {
+        if (!window.summon) { fire(); return; }
+        Promise.resolve(window.summon.setUnit(art))
+          .then(function () { window.summon.play(); })
+          /* A broken art URL must not strand the overlay on screen: report
+             complete so the host tears it down and the unit simply appears. */
+          .catch(function () { fire(); });
+      } catch (e) { fire(); }
+    };
+    if (document.readyState === 'complete' || document.readyState === 'interactive') setTimeout(go, 0);
+    else addEventListener('DOMContentLoaded', go);
+  } catch (e) {}
+})();
+</script>
+</body></html>

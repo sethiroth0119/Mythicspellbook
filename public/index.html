@@ -39940,7 +39940,7 @@ body:has(#pack-opener-frame) #chat-overlay {
   // the console. Bump this every deploy alongside sw.js's CACHE_VERSION. If two
   // machines show different stamps, the older one is on stale code (hard-refresh);
   // if they MATCH but content still differs, it is a DATA/publish issue, not code.
-  window.BUILD_VERSION = 'v121v153';
+  window.BUILD_VERSION = 'v121v155';
   try {
     console.info('%cMythic Spellbook ' + window.BUILD_VERSION + '%c — build check: run  __mg.version',
       'font-weight:700;color:#b48cff', 'color:#7d7499');
@@ -56819,7 +56819,13 @@ function _rehydrateCatalogMedia() {
       try {
         const _adm = (typeof isAdmin === 'function') && isAdmin();
         const _localHasImgs = Array.isArray(Forge.mainMenuHeroes) && Forge.mainMenuHeroes.some(h => h && typeof h.src === 'string' && h.src.length > 12);
-        if (!_adm || !_localHasImgs) Forge.mainMenuHeroes = m.mainMenuHeroes.filter(h => h && h.src);
+        /* 🎭 THE THIRD RESURRECTION PATH. An admin who cleared their roster on
+           purpose must not have the published set pushed straight back into it
+           on the next catalogue load — that is the loop the owner hit: remove,
+           reload, it is back. A non-admin still adopts the published list
+           exactly as before, because it is not their roster to clear. */
+        const _clearedLocal = _adm && !!Forge.mainMenuHeroesCleared;
+        if (!_clearedLocal && (!_adm || !_localHasImgs)) Forge.mainMenuHeroes = m.mainMenuHeroes.filter(h => h && h.src);
       } catch (e) {}
     }
     // 🪪 Character-box portraits — overlay the published map so every player's
@@ -77942,7 +77948,10 @@ async function loadHeavyForgeFromIdb() {
   try {
     const mh = await idbGet('forge_mainMenuHeroes');
     const hasImgs = (a) => Array.isArray(a) && a.some(h => h && typeof h.src === 'string' && h.src.length > 12);
-    if (hasImgs(mh) && !hasImgs(Forge.mainMenuHeroes)) { Forge.mainMenuHeroes = mh; changed = true; }
+    /* 🎭 …unless the admin deliberately cleared it. Restoring here is the second
+       of the three paths that used to resurrect a removed character. */
+    const _cleared = !!Forge.mainMenuHeroesCleared;
+    if (!_cleared && hasImgs(mh) && !hasImgs(Forge.mainMenuHeroes)) { Forge.mainMenuHeroes = mh; changed = true; }
   } catch (e) {}
   // 🖼 Frame art can arrive AFTER boot stamped the body class, so re-apply it
   // here — otherwise an authored frame only appears once the player happens to
@@ -139509,7 +139518,16 @@ function _mdOpenCharManager() {
     try {
       if (typeof idbSet === 'function') {
         const cur = Array.isArray(Forge.mainMenuHeroes) ? Forge.mainMenuHeroes : [];
+        /* 🎭 AN EMPTY ROSTER THE ADMIN PRODUCED IS A REAL EDIT AND IS SAVED.
+           The guard below still refuses an UNSTAMPED empty write, which is the
+           accident it was written for (the modal opening before the published
+           art downloaded). What it no longer does is refuse the owner's own
+           removal — reported as "I keep removing it and it keeps coming back
+           so it is not saving", and the previous comment here named that exact
+           edit as the price of the guard. The stamp is what tells the two
+           apart; without one, nothing about the old behaviour changes. */
         if (cur.length) idbSet('forge_mainMenuHeroes', cur);
+        else if (Forge.mainMenuHeroesCleared) idbSet('forge_mainMenuHeroes', []);
         else try { console.warn('[menuHeroes] refused to write an empty roster over the IDB snapshot'); } catch (_) {}
       }
     } catch (e) {}
@@ -139517,7 +139535,18 @@ function _mdOpenCharManager() {
   wrap.addEventListener('click', (e) => {
     if (e.target.closest('[data-x]') || e.target === wrap) { close(); return; }
     const rm = e.target.closest('[data-rm]');
-    if (rm) { const i = +rm.getAttribute('data-rm'); Forge.mainMenuHeroes.splice(i, 1); persist(); paint(); return; }
+    if (rm) {
+      const i = +rm.getAttribute('data-rm');
+      Forge.mainMenuHeroes.splice(i, 1);
+      /* 🎭 STAMP THE INTENT when this removal empties the roster. Three separate
+         guards read an empty list as "not loaded yet" and put the old one back;
+         this is the only signal that says otherwise. Cleared again the moment a
+         character is added, below. */
+      try {
+        if (!Forge.mainMenuHeroes.length) Forge.mainMenuHeroesCleared = Date.now();
+      } catch (e2) {}
+      persist(); paint(); return;
+    }
     /* 🎭 LOAD THE LIVE ROSTER INTO THE WORKING COPY. The published set is the
        authority for what players see; this is how an admin on a fresh device
        (or a second admin account) gets it back to edit instead of rebuilding it
@@ -139527,6 +139556,8 @@ function _mdOpenCharManager() {
       const pub = _mdPublishedHeroes();
       if (!pub.length) { try { showToast('Nothing published to load yet.', 2600); } catch (er) {} return; }
       Forge.mainMenuHeroes = pub.map(h => ({ name: h.name || 'Character', src: h.src }));
+      // 🎭 the roster is deliberately non-empty again — drop the cleared stamp
+      try { delete Forge.mainMenuHeroesCleared; } catch (e2) {}
       persist(); paint();
       try { showToast('🎭 Loaded ' + pub.length + ' published character' + (pub.length === 1 ? '' : 's') + ' for editing.', 3600); } catch (er) {}
       return;
@@ -175808,6 +175839,19 @@ const _UNIT_SUMMON_VFX = {
      expects from an iframe cinematic. */
   geomax:       { label: '🌑 Geomax — Devourer of Existence',         file: 'assets/vfx/vfx-geomax.html' },
   lordGary:     { label: '🌀 Lord Gary — Gate of Zemore',             file: 'assets/vfx/vfx-lord-gary.html' },
+  /* 🌌 v121v155 — two more arrivals, same 6400ms + '<name>:complete' contract.
+     Their art was 30MB of PNGs between them (Abraxas alone 27MB across five
+     plates) and is re-encoded to 3.7MB of WebP — a one-shot cinematic the
+     player is waiting on cannot afford to stall on its own textures. */
+  vintrius:     { label: '🌠 Vintrius — The Birth of Reality',        file: 'assets/vfx/vfx-vintrius.html' },
+  abraxas:      { label: '🪐 Abraxas — Worlds Unmade',                file: 'assets/vfx/vfx-abraxas.html' },
+  /* 🛸 v121v155 — the two NEW summon pieces. Both are CHARACTER effects: they
+     rebuild a figure out of light, so they are fed the unit's SPRITE rather
+     than its card face (sprite: true). Both answer the host's existing
+     ?art= / ?name= contract — see the host entry point appended to each page —
+     while keeping their own postMessage API intact. */
+  hologram:     { label: '🛸 Holographic Arrival',                    file: 'assets/vfx/vfx-hologram.html', sprite: true },
+  crimson:      { label: '🩸 Crimson Rupture (ACE / Mythic)',          file: 'assets/vfx/vfx-rupture.html',  sprite: true },
   aceGeneric:   { label: '👑 ACE — Generic Arrival',                  file: 'vfx/ace?theme=_default' },
 };
 let _summonCineBusy = false;
@@ -175889,7 +175933,15 @@ function _playUnitVfx(vfxId, anchor, unit) {
       if (nm) file += (file.indexOf('?') >= 0 ? '&' : '?') + 'name=' + encodeURIComponent(nm);
     } catch (e) {}
     let art = null;
-    try { art = _unitCardArtForVfx(unit); } catch (e) {}
+    /* 🛸 v121v155 — a cinematic marked `sprite` gets the unit's SPRITE. These
+       pieces reconstruct a figure, so a rectangular card face is the wrong
+       source. Falls back to the card art when the unit has no sprite, because
+       a picture of the right unit beats no picture at all — the same rule
+       _vfxPayloadFor already follows for the mech cinematics. */
+    try {
+      if (cine.sprite && typeof _vfxUnitImage === 'function') art = _vfxUnitImage(unit, { noBase: true });
+    } catch (e) {}
+    try { if (!art) art = _unitCardArtForVfx(unit); } catch (e) {}
     try { if (art && typeof _vfxPortableUrl === 'function') { const pu = _vfxPortableUrl(art); if (pu && typeof pu === 'string') art = pu; } } catch (e) {}
     _playSummonCinematic(file, art || undefined);
     return;
@@ -176457,14 +176509,47 @@ const _ACE_VFX_NAME_MAP = [
      only the picker would leave these working in the Forge and dead in a match. */
   { id: 'geomax',       any: ['geomax'] },
   { id: 'lordGary',     any: ['lord gary'] },
+  /* 🌌 v121v155 — and the same lesson applies to these two: the picker alone
+     would leave them working in the Forge and dead in a match. */
+  { id: 'vintrius',     any: ['vintrius'] },
+  { id: 'abraxas',      any: ['abraxas'] },
 ];
 function _aceVfxIdForUnit(u) {
   try {
     const n = String((u && u.name) || '').toLowerCase();
-    if (!n) return null;
-    for (const m of _ACE_VFX_NAME_MAP) { if (m.any.some(k => n.indexOf(k) >= 0)) return m.id; }
+    if (n) {
+      for (const m of _ACE_VFX_NAME_MAP) { if (m.any.some(k => n.indexOf(k) >= 0)) return m.id; }
+    }
+    /* 🩸 v121v155 — CRIMSON RUPTURE IS THE DEFAULT FOR THE TOP TIER. Owner:
+       "Crimson is for Ace and mythic Rare units." Checked AFTER the name map,
+       so a unit that names its own cinematic still gets it — this is the
+       fallback for a card whose summonVfx was never set or was stripped on
+       publish, which is the case this whole function exists to cover. */
+    if (_isAceOrMythicUnit(u)) return 'crimson';
   } catch (e) {}
   return null;
+}
+/* 🩸 Is this unit ACE or mythic-rare? Reads the flags the rest of the engine
+   already uses rather than inventing a new tier test, so "what counts as ACE"
+   has one answer in this codebase. */
+function _isAceOrMythicUnit(u) {
+  try {
+    if (!u) return false;
+    if (u.isAce || u.ace) return true;
+    const r = String(u.rarity || (u.card && u.card.rarity) || '').toLowerCase();
+    if (r === 'mythic' || r === 'mythicrare' || r === 'mythic rare') return true;
+    const t = String(u.cardType || u.unitType || '').toLowerCase();
+    if (t.indexOf('ace') >= 0) return true;
+    try {
+      const def = (typeof _cardDefById === 'function') ? _cardDefById(u.cardId || u.originalCardId) : null;
+      if (def) {
+        if (def.isAce || def.ace) return true;
+        const dr = String(def.rarity || '').toLowerCase();
+        if (dr === 'mythic' || dr === 'mythicrare' || dr === 'mythic rare') return true;
+      }
+    } catch (e2) {}
+  } catch (e) {}
+  return false;
 }
 function _dispatchUnitSummonVfx(opts) {
   // Returns TRUE when it actually dispatched a per-unit cinematic/burst (so the
@@ -224104,6 +224189,17 @@ function _cxCloudReady() {
 function _cxCloudMergeRow(row) {
   if (!row || !row.asset_id) return false;
   try {
+    /* 🚨 bug-mtyjpcjg — KEEP THE SHARED VALUE AS SHARED, separately from the
+       local row it is about to be merged into. Once merged, cx.prices holds a
+       number that a later local trade will move, so it can no longer answer
+       "what does the rest of the world think this is worth" — which is exactly
+       the question the gas station's divergence rail has to ask. */
+    try {
+      if (typeof CXCloud === 'object' && CXCloud) {
+        if (!CXCloud.shared || typeof CXCloud.shared !== 'object') CXCloud.shared = {};
+        CXCloud.shared[row.asset_id] = { current_px: +row.current_px, at: Date.now() };
+      }
+    } catch (e2) {}
     const cx = getCrashExchange();
     const id = row.asset_id;
     const base = _cxBasePrice(id);
@@ -224377,6 +224473,18 @@ function getMarketPrice(id) {
   if (typeof p.base === 'number' && p.base > 0 && typeof p.current === 'number') {
     const floor = p.base * CX_PRICE_MIN_FACTOR;
     if (!(p.current >= floor)) p.current = floor;   // !(>=) also catches NaN
+    /* 🔒 …AND THE CEILING, which this block always should have healed too.
+       The floor was re-established on every read precisely because a save from
+       an older build — or a hand-edited profile — must not be trusted. That
+       argument is symmetric and the upper half was simply never written, so
+       p.current was trusted UPWARD without limit relative to base. Every writer
+       clamps to base*MAX; this makes the invariant hold for readers that did
+       not arrive through a writer, which is the same reason the floor is here.
+       Measured on the live exchange during bug-mtyjpcjg: eight profiles were
+       carrying a fuel mark up to 350 (= base*MAX) while the shared market said
+       59.45, and the gas-station vendor was paying out of it. */
+    const ceil = p.base * CX_PRICE_MAX_FACTOR;
+    if (p.current > ceil) p.current = ceil;
   }
   return p;
 }
@@ -232205,6 +232313,15 @@ function _brSyncLoanToBankEthos() {
 function brOpenLoan(principal, rate) {
   const s = ensureBlackRiver();
   if (s.loan) { showToast('You already have an open Black River loan.'); return false; }
+  /* 🏦 …and the same question here, or the rule would only bind one way round. */
+  {
+    const other = (typeof _anyBusinessLoanOpen === 'function') ? _anyBusinessLoanOpen('oil:blackRiver') : null;
+    if (other) {
+      showToast('🏦 One loan at a time. ' + (other.businessName || 'Another business') + ' is still carrying ¢'
+        + ((+other.balance || 0) | 0).toLocaleString() + '. Repay it first.', 5600);
+      return false;
+    }
+  }
   s.loan = { principal, balance: principal, rate, openedAt: Date.now() };
   addGems(principal, 'Black River: loan drawn');
   _brSyncLoanToBankEthos();
@@ -234879,6 +234996,34 @@ const FC_NPC_CX_ANCHOR       = 0.88;    // ¢/bbl per 1.0 of the exchange 'fuel'
 const FC_NPC_SPREAD          = 0.05;    // the vendor's cut. NOT the exploit guard (see
                                         // REJECTED above); it is what makes the round
                                         // trip a strict loss rather than a wash.
+/* 🚨 bug-mtyjpcjg — HOW FAR THE LOCAL MARK MAY LEAD THE SHARED ONE.
+   A local price legitimately moves ahead of the cloud between syncs: the
+   player's own trade lands locally first, and another player's trade arrives
+   over cx_prices a moment later. That is real trading and must keep working.
+   What must NOT keep working is a private mark paying SIX TIMES the shared one
+   because the vendor never synchronised — measured at 308 against 59.45.
+   1.35 leaves ordinary lead-and-lag untouched (a single large order moves fuel
+   by far less than 35%) and turns a sustained private pump into a hard stop. */
+const FC_NPC_DIVERGE_MAX     = 1.35;
+/* ⛽ THE VENDOR BUYS LOW. Owner: "Make it where the Vendor buy fuel 10x less
+   than what it sells on the market." The bid used to be ask*(1-0.05), so a
+   round trip through the pump was nearly free and only the direction of the
+   mark decided whether it paid. A tenth makes selling to the NPC a deliberate
+   loss against the market — which is what a vendor spread means everywhere
+   else in this game — and leaves the open exchange as the place to get a real
+   price for a barrel. */
+const FC_NPC_BUY_DIVISOR     = 10;
+/* ⛽ HOW MUCH FUEL CAN EXIST. Owner: "decrease the amount of fuel that can be
+   produce massively". Applied to the convert ratio rather than to the crude
+   cap, so the scarcity lands on refining throughput (the thing the player
+   operates) instead of on storage (a number they just look at). */
+const FC_REFINE_SCALE        = 0.10;
+/* ⛽ …AND WHO MAY MAKE IT. The fraction of PROCESS plant a Cracking Yard must
+   have commissioned before the Refine button works at all. buildIndex() already
+   reports this; nothing asked it. Deliberately low — this is a "you must
+   actually have built a refinery" gate, not a soft-lock on new players, and the
+   yield scaling below is what rewards building it out further. */
+const FC_REFINE_MIN_PROCESS  = 0.05;
 const FC_NPC_MIN             = 22;      // hard rails on the quoted price. The exchange
 const FC_NPC_MAX             = 320;     // band (35%–350% of base) already pins the mark
                                         // to ¢30.8–¢308; these are belt-and-braces and
@@ -234954,6 +235099,17 @@ function fcNpcMark(impactQty, impactDir) {
   try {
     tickMarketDecay();                       // settle any pending decay FIRST, so the
                                              // quote and the write that follows agree
+    /* 🚨 bug-mtyjpcjg — SYNCHRONISE THE MARKET THIS VENDOR PAYS OUT OF.
+       The shared price was pulled in exactly two places, renderCrashExchange()
+       and MythicExchange.list(), and this function — the one that decides how
+       much cash a barrel is worth — was not one of them. A player who trades
+       fuel at the pump but never opens the Crash Exchange therefore moved their
+       own local mark with their own trades and never pulled the shared mark
+       back, while CX_DECAY_FACTOR (4% of the gap per 6h, a ~4-day half-life)
+       could not bring it down. Both calls are throttled and both no-op when the
+       cloud is unreachable, so this costs nothing on an offline client. */
+    try { cxCloudSubscribe(); } catch (e) {}
+    try { cxCloudPullAll(); } catch (e) {}
     const p = getMarketPrice('fuel');
     px = impactDir ? cxImpactedPrice(p, _fcCxUnits(impactQty), impactDir, impactDir > 0 ? 'gasStation:npcBuy' : 'gasStation:npcSell')
                    : p.current;
@@ -234964,7 +235120,32 @@ function fcNpcMark(impactQty, impactDir) {
     try { px = _cxBasePrice('fuel'); } catch (e2) { px = 0; }
   }
   if (!isFinite(px) || px <= 0) return FC_NPC_MIN;
-  return _fcClamp(px * FC_NPC_CX_ANCHOR, FC_NPC_MIN, FC_NPC_MAX);
+  let mark = _fcClamp(px * FC_NPC_CX_ANCHOR, FC_NPC_MIN, FC_NPC_MAX);
+  /* 🚨 bug-mtyjpcjg — AND THE DIVERGENCE RAIL, because a pull can always fail:
+     offline, signed out, RLS, the migration not applied. The sync above is the
+     fix; this is what holds when the sync cannot run. The vendor may quote a
+     local mark that LEADS the shared one — that is ordinary lead-and-lag — but
+     never by more than FC_NPC_DIVERGE_MAX, so a private pump stops paying.
+     ⚠ Only applied when a shared mark is actually KNOWN. With no cloud value
+       there is nothing to diverge from, and inventing a rail out of the local
+       base would punish a legitimately offline player for being offline. */
+  try {
+    const shared = _fcSharedMark();
+    if (shared > 0) mark = Math.min(mark, shared * FC_NPC_DIVERGE_MAX);
+  } catch (e) {}
+  return mark;
+}
+/* 🚨 bug-mtyjpcjg — the last-known SHARED fuel mark, or 0 when none is known.
+   Read from the cloud mirror rather than from cx.prices, because cx.prices is
+   exactly the local state that can be pumped — asking it what the shared price
+   is would be asking the suspect for its own alibi. */
+function _fcSharedMark() {
+  try {
+    const row = (typeof CXCloud === 'object' && CXCloud && CXCloud.shared) ? CXCloud.shared.fuel : null;
+    const px = row && +row.current_px;
+    if (!isFinite(px) || px <= 0) return 0;
+    return _fcClamp(px * FC_NPC_CX_ANCHOR, FC_NPC_MIN, FC_NPC_MAX);
+  } catch (e) { return 0; }
 }
 
 // Ask and bid for `qty` barrels, both derived from the SAME mark. bid <= ask by
@@ -234976,7 +235157,11 @@ function fcNpcMark(impactQty, impactDir) {
 // cash by fcSettleHedge(), once.
 function fcNpcQuote(qty, dir) {
   const ask = fcNpcMark(qty, dir);
-  return { ask: ask, bid: ask * (1 - FC_NPC_SPREAD) };
+  /* ⛽ THE VENDOR BUYS AT A TENTH OF WHAT IT SELLS FOR (owner's rule).
+     ⚠ The no-free-round-trip proof in the block above rests on bid <= ask. This
+       does not weaken that invariant — it widens it by an order of magnitude,
+       so every clause of that proof still holds and holds by more. */
+  return { ask: ask, bid: ask / FC_NPC_BUY_DIVISOR };
 }
 
 // Move the exchange fuel price because the PLAYER chose to. Books nothing — the
@@ -235193,9 +235378,33 @@ function _fcSyncLoanToBankEthos() {
     }
   } catch (e) {}
 }
+/* 🏦 IS ANY BUSINESS CARRYING A LOAN? Owner: "make it where they can only take
+   out one loan at a time in all businesses."
+   Each business only ever checked its OWN s.loan, so a player could draw from
+   Black River and from Ethos Fuel and stack the cinder behind one balance
+   sheet. BankEthos.businessLoans is the shared registry both already sync into
+   on every open and repay — it simply was never asked the question.
+   `exceptId` lets a business ignore its own row, so this composes with the
+   per-business check rather than replacing it. */
+function _anyBusinessLoanOpen(exceptId) {
+  try {
+    if (typeof BankEthos === 'undefined' || !BankEthos) return null;
+    const list = Array.isArray(BankEthos.businessLoans) ? BankEthos.businessLoans : [];
+    const hit = list.find(l => l && l.businessId !== exceptId && (+l.balance || 0) > 0);
+    return hit || null;
+  } catch (e) { return null; }
+}
 function fcOpenLoan(principal, rate) {
   const s = ensureFuelCommand();
   if (s.loan) { showToast('You already have an open Ethos Fuel loan. Repay it first.', 4200); return false; }
+  {
+    const other = _anyBusinessLoanOpen('gas:ethosFuel');
+    if (other) {
+      showToast('🏦 One loan at a time. ' + (other.businessName || 'Another business') + ' is still carrying ¢'
+        + ((+other.balance || 0) | 0).toLocaleString() + '. Repay it first.', 5600);
+      return false;
+    }
+  }
   if (!principal || principal <= 0) { showToast('⚠️ Enter a loan amount above 0.', 3200); return false; }
   if ((s.creditLimit | 0) > 0 && principal > s.creditLimit) { showToast('⚠️ Exceeds credit limit (¢' + (s.creditLimit | 0).toLocaleString() + ').', 4200); return false; }
   s.loan = { principal: principal | 0, balance: principal | 0, rate: rate || 0.012, openedAt: Date.now() };
@@ -235403,13 +235612,57 @@ function fcRunExtraction() {
   try { saveProfile && saveProfile(); } catch (e) {} try { saveForge && saveForge(); } catch (e) {}
   return true;
 }
+/* ⛽ What the Cracking Yard contributes to refining, or null when there is no
+   working yard. Returns { idx, process } with both in 0..1.
+   ⚠ A MISSING MODULE IS A REFUSAL, not a free pass. fcRefine never asked about
+     the yard at all, so the whole upstream chain ran whether or not the player
+     had built one — which is precisely what the owner is closing. */
+/* The live convert ratio — one definition, read by both the panel and fcRefine
+   so the number on screen can never drift from the number that runs. */
+function _fcConvertRatio(s) {
+  const yard = _fcYardWork();
+  const base = 0.7 + ((s && s.upgrades && s.upgrades.ref) | 0) * 0.06;
+  return base * FC_REFINE_SCALE * (yard ? yard.idx : 0);
+}
+function _fcYardWork() {
+  try {
+    const R = window.MythicRefinery;
+    if (!R || typeof R.buildIndex !== 'function') return null;
+    const b = R.buildIndex() || {};
+    const idx = Math.max(0, Math.min(1, +b.index || 0));
+    const process = Math.max(0, Math.min(1, +b.process || 0));
+    return { idx, process };
+  } catch (e) { return null; }
+}
 function fcRefine(qty) {
   const s = ensureFuelCommand();
+  /* ⛽ ONLY THE CRACKING YARD MAKES FUEL, and only one that is actually running.
+     Owner: "they can only produce fuel. Within the cracking yard. They need the
+     stuff working in the cracking yard To even use the Refine fuel button." */
+  const yard = _fcYardWork();
+  if (!yard) {
+    showToast('⚠ Refining happens in the Cracking Yard — build it first.', 4200);
+    return false;
+  }
+  if (yard.process < FC_REFINE_MIN_PROCESS) {
+    showToast('⚠ Your Cracking Yard has no process plant running. Commission process units before you can refine.', 5200);
+    return false;
+  }
   const refLvl = s.upgrades.ref | 0;
-  const ratio  = 0.7 + refLvl * 0.06;
+  /* ⛽ …AND THE YARD SETS THE THROUGHPUT. The tier ratio is scaled down hard
+     (FC_REFINE_SCALE) and then by the yard's own build index, so a 13%-built
+     yard refines at 13% of its potential. That is the "actually run the
+     business" half — the number moves as units are commissioned. */
+  const ratio  = (0.7 + refLvl * 0.06) * FC_REFINE_SCALE * yard.idx;
   qty = Math.max(1, qty | 0);
   if (qty > s.crude) { showToast('Not enough crude.'); return false; }
   const out = Math.round(qty * ratio);
+  /* A yard so lightly built that a full batch rounds to nothing says so, rather
+     than silently eating the crude. */
+  if (out <= 0) {
+    showToast('⚠ Your yard cannot refine that yet — commission more units, or refine a larger batch.', 5200);
+    return false;
+  }
   if (s.fuel + out > s.fuelCap) { showToast('Storage full.'); return false; }
   s.crude -= qty;
   s.fuel  += out;
@@ -236052,7 +236305,10 @@ function _fcRenderMarket(s) {
         '<div class="br-bank-stat"><span>Crude oil held</span><b style="color:#4fd0e7">' + _fcFmt(s.crude) + '/' + _fcFmt(s.crudeCap) + '</b></div>' +
         '<button class="br-btn" style="width:100%;margin-top:6px" id="fc-extract">⛏️ Run Extraction Mission · ¢4,000</button>' +
         '<div class="br-bank-stat" style="margin-top:10px"><span>Refinery tier</span><b>Lv ' + (s.upgrades.ref | 0) + '</b></div>' +
-        '<div class="br-bank-stat"><span>Convert ratio</span><b style="color:#e8a13a">×' + (0.7 + (s.upgrades.ref | 0) * 0.06).toFixed(2) + '</b></div>' +
+        /* ⛽ THE PANEL SHOWS THE RATIO fcRefine ACTUALLY USES, yard scaling and
+           all. It used to print the raw tier ratio, which after the yard gate
+           would have been a promise the button does not keep. */
+        '<div class="br-bank-stat"><span>Convert ratio</span><b style="color:#e8a13a">×' + _fcConvertRatio(s).toFixed(3) + '</b></div>' +
         '<div style="display:flex;gap:6px;align-items:flex-end;margin-top:8px">' +
           '<div style="flex:1">' +
             '<div style="font-size:11px;letter-spacing:.18em;color:#8d959e;text-transform:uppercase">CRUDE TO REFINE</div>' +
@@ -269956,8 +270212,8 @@ try {
        that works everywhere except the one early path nobody tested. It is
        2KB with no dependencies. -->
 <script src="src/econ/peg.js?v=v121q51"></script>
-<script src="src/battle/effects.js?v=v121v153" defer></script>
-<script src="src/phone/handset.js?v=v121v153" defer></script>
+<script src="src/battle/effects.js?v=v121v155" defer></script>
+<script src="src/phone/handset.js?v=v121v155" defer></script>
 <script src="src/battle/combat.js?v=120m4" defer></script>
 <script src="src/battle/targeting.js?v=121e3hex" defer></script>
 <link rel="stylesheet" href="src/sprites/frames.css?v=120k3">

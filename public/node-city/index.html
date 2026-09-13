@@ -9,7 +9,7 @@
      believed the file was already live. Only a CONTENT change moves the hash
      and forces a re-upload, so bump this stamp whenever the city 404s, and
      probe it (grep NC_BUILD on the served page) to prove the deploy landed. -->
-<script>window.NC_BUILD = "v121v153-cedric";</script>
+<script>window.NC_BUILD = "v121v155-fuelfix";</script>
 <!-- ════════════════════════════════════════════════════════════════════════
      NODE CITY — SimCity-style settlement layer for Mythic Spellbook.
      Three.js WebGPU (auto-falls back to WebGL2). Realistic sun/moon cycle.
@@ -47751,12 +47751,18 @@ function citLoad(raw) {
          citAdd and this line have both always written citName(), so the bad
          rows are historical and baked into saves; nothing in the running game
          can un-bake them, because the value round-trips through citSave.
-         Treated as MISSING rather than trusted: /^cd+$/ is exactly the id
+         Treated as MISSING rather than trusted: /^c\d+$/ is exactly the id
+         shape — and THE BACKSLASH IS THE WHOLE BUG. This read /^cd+$/ for
+         several builds, which matches a literal "c" followed by literal "d"s
+         and therefore never matched a real id, so the repair below never once
+         fired and "c87" kept reaching the speech bubble. The id test ten lines
+         above has always been correct, which is exactly what made it invisible.
+         The rest of the reasoning was always right:
          shape and no generated name can collide with it (citName always
          returns 'Given Family'), so this repairs the broken rows and cannot
          touch a good one — including a player-set name, which is free text but
          would have to be literally 'c' followed by digits to match. */
-      name: (typeof r.n === 'string' && r.n.trim() && !/^cd+$/.test(r.n.trim()))
+      name: (typeof r.n === 'string' && r.n.trim() && !/^c\d+$/.test(r.n.trim()))
         ? r.n.trim().slice(0, 40)
         : citName(citSeqOf(id)),
       // a job is only restored if it LOOKS like a tile key; whether that tile
