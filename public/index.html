@@ -39458,7 +39458,7 @@ body:has(#pack-opener-frame) #chat-overlay {
   // the console. Bump this every deploy alongside sw.js's CACHE_VERSION. If two
   // machines show different stamps, the older one is on stale code (hard-refresh);
   // if they MATCH but content still differs, it is a DATA/publish issue, not code.
-  window.BUILD_VERSION = 'v121v136';
+  window.BUILD_VERSION = 'v121v137';
   try {
     console.info('%cMythic Spellbook ' + window.BUILD_VERSION + '%c — build check: run  __mg.version',
       'font-weight:700;color:#b48cff', 'color:#7d7499');
@@ -151411,7 +151411,7 @@ function renderCardEditor() {
     </div>
     <div class="editor-field">
       <label>Response window (seconds)</label>
-      <input id="ed-counter-window" type="number" min="3" max="30" value="${(card.counterWindow | 0) || 15}">
+      <input id="ed-counter-window" type="number" min="3" max="60" value="${(card.counterWindow | 0) || 30}">
     </div>
   ` : '';
   const locationBlock = (type === 'location') ? `
@@ -151990,7 +151990,7 @@ function bindCardEditor() {
           t.counterTriggers = ['spell', 'ultimate'];
         }
         if (!t.counterEffect) t.counterEffect = 'negate';
-        if (!t.counterWindow) t.counterWindow = 15;
+        if (!t.counterWindow) t.counterWindow = 30;   // ⏱ v121v137 — 30s, not 15
       }
       if (!isNew) saveForge();
       render();
@@ -153839,7 +153839,7 @@ function captureEditorIntoCard(card) {
     card.counterEffect = effEl ? effEl.value : 'negate';
     const winEl = document.getElementById('ed-counter-window');
     const winVal = winEl ? parseInt(winEl.value, 10) : 15;
-    card.counterWindow = Math.max(3, Math.min(30, isFinite(winVal) ? winVal : 15));
+    card.counterWindow = Math.max(3, Math.min(60, isFinite(winVal) ? winVal : 30));
     // 🃏 Punish payload — only meaningful for the punish* effects, but stored
     // unconditionally so toggling the effect back and forth doesn't lose it.
     const amtEl = document.getElementById('ed-counter-amount');
@@ -161860,9 +161860,11 @@ try { window.__mg = window.__mg || {}; window.__mg.drainChain = _drainPendingTri
 /* ⛓ THE ORDER PICKER. Click your triggers in the order they should resolve.
    Built on the chain overlay's own `.cc-aaa` look so it reads as the same
    system, not a bolted-on dialog.
-   ⏱ A 20s deadline calls back with null (⇒ LIFO). The callback is fired at most
+   ⏱ A 30s deadline calls back with null (⇒ LIFO). The callback is fired at most
       once, from whichever of pick / auto / timeout lands first. */
-const CHAIN_PICK_TIMEOUT_MS = 20000;
+/* ⏱ v121v137 — 30s, matching the counter window. Owner: "give all reaction
+   modals … 30 second … to make a choice." This one was 20. */
+const CHAIN_PICK_TIMEOUT_MS = 30000;
 function _openTriggerOrderPicker(links, event, done) {
   let fired = false;
   let timer = null;
@@ -162858,7 +162860,11 @@ async function tryPromptCounter(state, opts) {
   // but a thrown sync error inside the executor would skip finally. The
   // wrapping try/catch + _resolveSafely guarantee resolve(false) eventually.
   try {
-    const windowSec = Math.max(3, Math.min(30, (cheapest && (cheapest.counterWindow | 0)) || 15));
+    /* ⏱ v121v137 — 30 SECONDS, not 15. Owner: "give players 30 second from 15
+       seconds to make a choice." The ceiling moves to 60 so a card can still
+       author a LONGER window than the new default; a card that explicitly says
+       15 keeps 15, because that is an authored decision rather than the default. */
+    const windowSec = Math.max(3, Math.min(60, (cheapest && (cheapest.counterWindow | 0)) || 30));
     return await new Promise((resolve) => {
       let _settled = false;
       const _resolveSafely = (val) => {
@@ -170504,7 +170510,7 @@ function renderCardDetailModal() {
         <div style="font-size:0.78rem;color:#a89878">When it fires:</div>
         <div style="color:#e8e0ff;font-size:0.85rem;margin-top:2px">${escapeHtml(CARD_COUNTER_EFFECT_LABELS[_ce] || _ce)}</div>
         ${CARD_COUNTER_EFFECT_DETAIL[_ce] ? `<div style="color:#d8c7a0;font-size:0.76rem;margin-top:3px;line-height:1.4">${escapeHtml(CARD_COUNTER_EFFECT_DETAIL[_ce])}</div>` : ''}
-        <div style="font-size:0.74rem;color:#bfae87;margin-top:5px">Response window: <strong style="color:#ffd166">${(card.counterWindow | 0) || 15}s</strong>${card.isCounterUnit ? ' · Deploys next to your hero' : ''}</div>
+        <div style="font-size:0.74rem;color:#bfae87;margin-top:5px">Response window: <strong style="color:#ffd166">${(card.counterWindow | 0) || 30}s</strong>${card.isCounterUnit ? ' · Deploys next to your hero' : ''}</div>
       </div>
     </div>` : '';
 
@@ -178117,6 +178123,16 @@ function _startAIHardDeadline() {
     App._aiTurnDeadline = setTimeout(() => {
       if (!App.state || App.state.gameOver || App.state.turn !== 'ai') return;
       if (!App.ui || !App.ui.aiBusy) return;
+      /* ⏱ v121v137 — DO NOT GUILLOTINE A PLAYER WHO IS STILL CHOOSING. With the
+         counter window at 30s and the order picker at 30s, two prompts in one AI
+         turn can legitimately outlast 45s. Raising the constant instead would
+         weaken the guard against a REAL hang for every other turn, so the
+         deadline simply re-arms while a prompt is open: a genuine hang still
+         dies 45s after the player stops being asked anything. */
+      if (typeof _playerChoiceModalOpen === 'function' && _playerChoiceModalOpen()) {
+        try { _startAIHardDeadline(); } catch (e) {}
+        return;
+      }
       try { console.warn('[ai] HARD DEADLINE — AI turn exceeded 45s. Force-ending.'); } catch (e) {}
       try { _resetCounterPromptState(); } catch (e) {}
       try { if (App.state) App.state._counterChain = []; } catch (e) {}
@@ -178157,7 +178173,60 @@ function _anyCinematicActive() {
 // the animation is gone, nothing can be skipped." Shows a brief, throttled hint
 // so a blocked click doesn't feel dead. Called from every battle action entry
 // point (tile/unit click, ability button, card play, end turn).
+/* 🧊 v121v137 — IS A CHOICE MODAL OWNING THE SCREEN RIGHT NOW?
+
+   Owner: "stop the AI from making moves and players from making moves when a
+   player have a Modal up and have to select."
+
+   ⚠ THE MODES ANSWERED BY A BOARD CLICK ARE DELIBERATELY NOT LISTED.
+     sacrificeTargeting, skillTargeting, consumableTargeting, the generic
+     targeting queue and fusionPlace all dock a bar and then WAIT FOR A CLICK
+     ON A UNIT OR A TILE — renderSacrificePrompt is pointedly not a .keep-modal
+     for that reason. Freezing the board for those would block the only gesture
+     that can answer them and strand the player until a timeout. They already
+     stop the AI by other means (they only arise on the player's own turn).
+
+   ⚠ THE INFORMATIONAL PANELS ARE NOT LISTED EITHER — the unit inspector, the
+     card detail and the battle log are things you OPEN to read, not decisions
+     the game is waiting on, and freezing the turn behind them would be a way to
+     stall a multiplayer opponent on purpose. */
+function _playerChoiceModalOpen() {
+  try {
+    const u = (typeof App !== 'undefined' && App.ui) ? App.ui : null;
+    if (!u) return false;
+    if (u.counterPrompt) return true;          // ⏱ the timed counter window
+    if (u.assaultPrompt) return true;          // ⚔ fire an assault before the act
+    if (u.discardPrompt) return true;          // 🖐 hand limit, before end turn
+    if (u.verdictChoice) return true;          // ⚖ verdict pick
+    if (u.callLockPrompt) return true;         // 🔒 Call Seal element/faction
+    if (u.surveilPick) return true;            // 👁 bury or keep
+    if (u.deckSearch) return true;             // 🔍 deck / graveyard picker
+    if (u.handReveal) return true;             // 🖐 revealed hand viewer
+    if (u.eventEncounter) return true;         // 🎲 event choice
+    if (u.hackPrompt) return true;             // 💻 hack pick
+    if (u.fusionMode) return true;             // 🌌 polycreation material pick
+    if (u.archonMode) return true;             // 👑 archon summon picker
+    if (Array.isArray(u.triggerPrompts) && u.triggerPrompts.length) return true;   // ⚡ respond / decline
+    if (Array.isArray(u.deckSearchQueue) && u.deckSearchQueue.length) return true;
+  } catch (e) {}
+  return false;
+}
+try { window.__mg = window.__mg || {}; window.__mg.choiceOpen = _playerChoiceModalOpen; } catch (e) {}
+
 function _battleInputBlocked() {
+  /* 🧊 v121v137 — a modal that owns the screen also owns the input. Checked
+     BEFORE the cinematic probe so the message names the thing actually in the
+     player's way. */
+  if (typeof _playerChoiceModalOpen === 'function' && _playerChoiceModalOpen()) {
+    try {
+      const _now = Date.now();
+      if (!App._lastModalBlockToast || (_now - App._lastModalBlockToast) > 900) {
+        App._lastModalBlockToast = _now;
+        if (typeof showToast === 'function') showToast('⏸ Answer the prompt first — the board is paused.', 1100);
+      }
+    } catch (e) {}
+    return true;
+  }
   if (typeof _anyCinematicActive !== 'function' || !_anyCinematicActive()) return false;
   try {
     const _now = Date.now();
@@ -178176,6 +178245,22 @@ function _runAIStepWhenClear(waited) {
   waited = waited || 0;
   if (App.battlePrep && App.battlePrep.multiplayer) return;
   if (!App.state || App.state.gameOver || App.state.turn !== 'ai') return;
+  /* 🧊 v121v137 — AND IT WAITS ON THE PLAYER'S OPEN PROMPT TOO. Owner: "stop
+     the AI from making moves … when a player have a Modal up and have to
+     select." The AI asked only about cinematics, so it stepped straight through
+     an open counter window or trigger prompt.
+     ⏱ Its own cap, larger than the cinematic one, because the counter window is
+       now 30s and a prompt is a person deciding rather than an animation that
+       should already have finished. Refreshing _aiLastSchedule is what stops the
+       8s hang-watchdog from force-ending the turn underneath a live prompt.
+     ⚠ No deadlock is possible: the counter prompt is awaited inside the AI's
+       OWN call stack, so this scheduler is not running while that promise is
+       pending — and the cap plus the hard deadline cover anything unforeseen. */
+  if (typeof _playerChoiceModalOpen === 'function' && _playerChoiceModalOpen() && waited < 40000) {
+    App._aiLastSchedule = Date.now();
+    setTimeout(() => _runAIStepWhenClear(waited + 140), 140);
+    return;
+  }
   if (_anyCinematicActive() && waited < 9000) {
     App._aiLastSchedule = Date.now();   // keep the watchdog calm while we wait
     setTimeout(() => _runAIStepWhenClear(waited + 140), 140);
@@ -267554,8 +267639,8 @@ try {
        that works everywhere except the one early path nobody tested. It is
        2KB with no dependencies. -->
 <script src="src/econ/peg.js?v=v121q51"></script>
-<script src="src/battle/effects.js?v=v121v136" defer></script>
-<script src="src/phone/handset.js?v=v121v136" defer></script>
+<script src="src/battle/effects.js?v=v121v137" defer></script>
+<script src="src/phone/handset.js?v=v121v137" defer></script>
 <script src="src/battle/combat.js?v=120m4" defer></script>
 <script src="src/battle/targeting.js?v=121e3hex" defer></script>
 <link rel="stylesheet" href="src/sprites/frames.css?v=120k3">

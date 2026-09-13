@@ -1193,3 +1193,61 @@ modal that opens instantly and one that hitches. Art comes from
 (v121v134) — so a card that resolves anywhere resolves here.
 
 Suite: `_logcards_smoke.mjs` (runs the index builder and the matcher for real).
+
+---
+
+## v121v137 — nobody moves while you are choosing, and you get 30 seconds
+
+Owner: *"Stop the Ai from making moves and players from making moves when a
+player have a Modal up and have to select. Give all reaction modals like select
+card from deck or graveyard, triggers make give players 30 second from 15
+seconds to make a choice."*
+
+⚠ **One correction, because it changes what "30 seconds" means.** The deck and
+graveyard pickers and the trigger prompts were **never on 15 seconds** — they
+have no timer at all and wait indefinitely. Only two things were timed: the
+counter window (15s, authorable 3–30) and the trigger-**order** picker (20s).
+Putting a 30s clock on the untimed ones would *remove* time, not add it. So the
+two real timers go to 30 and the untimed modals stay untimed — the reading that
+makes every modal at least 30 seconds, which is what was asked for.
+
+**The freeze.** `_battleInputBlocked()` only ever asked whether a cinematic was
+playing, so every choice modal left the board fully live underneath it — and the
+AI step loop asked the same question, so it stepped straight through an open
+prompt. A shared `_playerChoiceModalOpen()` now answers both.
+
+⚠ **The trap in "freeze the board"**, and why the predicate is a hand-written
+list rather than "any `App.ui` flag": several choice modes **are answered by
+clicking the board**. `sacrificeTargeting`, `skillTargeting`,
+`consumableTargeting`, the generic on-play targeting queue and `fusionPlace` all
+dock a bar and then wait for a click on a unit or a tile —
+`renderSacrificePrompt` is pointedly not a `.keep-modal` for exactly that reason.
+Freezing the board for those would block the only gesture that can answer them
+and strand the player until a timeout. The informational panels (unit inspector,
+card detail, battle log) are excluded too: you open those to *read*, and freezing
+a turn behind one would be a way to stall a multiplayer opponent on purpose.
+
+The AI waits on the same predicate inside the loop that already polls for
+cinematics and already refreshes `App._aiLastSchedule` — which is what stops the
+8s hang-watchdog force-ending the turn underneath a 30s prompt. Its cap is 40s
+rather than the cinematic 9s, because a prompt is a person deciding rather than
+an animation that should already have finished.
+
+⚠ No deadlock is possible: the counter prompt is awaited inside the AI's **own
+call stack**, so the scheduler is not running while that promise is pending.
+
+⚠ **The 45s hard deadline is not raised.** Two 30s prompts in one AI turn would
+outlast any constant big enough to be safe, and a bigger constant weakens the
+guard against a real hang on every other turn. The deadline **re-arms** while a
+prompt is open, so a genuine hang still dies 45s after the player stops being
+asked anything, and a player who is thinking is never guillotined.
+
+The counter window's ceiling moves to **60**, not 30 — otherwise the new default
+would also be the maximum and no card could author a longer window. A card that
+explicitly says 15 keeps 15: that is an authored decision, not the default. The
+editor input, the save clamp, the template default and the card blurb all move
+together, so the editor cannot author a value the engine clamps away.
+
+Suite: `_choicefreeze_smoke.mjs` (runs the predicate for real — including that an
+empty trigger queue is not an open choice, and that sacrifice targeting does NOT
+freeze).
