@@ -1770,3 +1770,84 @@ would have shipped as a negation with no sound and no way to tell why.
 Suite: `_tokencounter_smoke.mjs` (runs the engine's gating rule for real,
 including that an empty target list answers anything — the editor's "leave all
 unticked" case — and that a field card alone opens the window).
+
+---
+
+## v121v148 — 🍀 Luck is a real hero stat, and it makes battle loot better
+
+> Owner: *"Add a new Stat to heros 'Luck' That will increase the better the loot
+> that the hero and units finds in Battle. And replace the stats increase for
+> Speed for luck in the Skill tree and only give where the points only give you
+> 1% luck."*
+
+⚠ **The swap is player-visible, and was flagged before it was built.** Speed
+drives both movement range *and* attack reach, so a hero who had already spent
+points on those nine stars loses reach and movement on the next load, with the
+Respec button as the only recovery. The owner confirmed: *"yes"*.
+
+### The 1% clamp lives at the BUILDERS, not on each node
+
+This is the part that would have quietly broken the rule. Skill-tree stars come
+from **two** sources:
+
+* hand-authored constellation rows, every one built through `_cS({...})`;
+* an **auto-generator** that derives each branch's theme from the tally of its
+  authored stars, then emits minors at 3/4/5, a Mastery at 6/4 and an Ascendant
+  keystone at 8/6/6.
+
+The moment Luck replaced Speed it became a branch's top stat — so that generator
+would have started handing out **luck 3, 4, 5, 6 and 8** nodes, which is exactly
+what *"only give you 1% luck"* forbids. `_cLuck1` is therefore applied at `_cS`,
+at `minor()` (`if (stat === 'luck') amt = 1;`) and at the Mastery/keystone `fx`
+builders, so the rule is true however a node was produced rather than depending
+on nobody authoring one later. Every other stat passes through untouched.
+
+⚠ **The accumulator had to learn the stat or the whole feature was a no-op.**
+`getHeroCosmicStatBonuses` filters with `if (k in out)`, so `luck` is declared in
+that `out` object — without it every Luck node would have been dropped on the
+floor silently, with the tree still displaying them.
+
+`luck` is also added to `_COS_STAT_LABEL` (`'Luck %'`), `_COS_STAT_DESC` and the
+generated-name bank, so a generated Luck star reads like the rest of the
+constellation instead of printing the raw key.
+
+### The swap itself
+
+Nine Speed grants become `luck: 1`, including the bundled ones (GHOST,
+Versatility, ASCENDANT ARTS, Shadow Clone). Four descriptions that promised
+movement were reworded — *"Fleet: cover more ground each turn"* on a Luck star is
+a lie the player reads every time they open the tree — while the node **names**
+were kept, because saved allocations key off node identity and renaming would
+orphan every hero who had already bought one.
+
+SPD itself is untouched **outside** the tree: items, status effects and unit stat
+blocks all still use it. This was scoped to the skill tree, not to the stat.
+
+### Luck raises loot QUALITY, not frequency
+
+Drop **chance** is deliberately unchanged. The owner asked for *better* loot, and
+the two knobs compound far faster than they look — moving both at once leaves the
+economy untunable afterwards. Two rolls decide quality and Luck bends each:
+
+* **Card drops** roll a rarity from weighted tiers (common 600 … mythic 1.5).
+  `_luckWeightedRarity` scales each tier by `1 + (luck/100) * tier * 0.4`, so the
+  multiplier grows with how rare a tier already *is*: mythic gains
+  proportionally more than rare, and **common is never inflated**.
+* **Item drops** are price-weighted (`w = 3000 / price`) — which is what makes
+  cheap consumables constant and relics jackpot-rare. Luck softens that exponent
+  (1 → 0.7 at cap), flattening the curve toward the pricier end rather than
+  adding a flat bonus, so the *shape* of the table is preserved and only its
+  steepness changes.
+
+Total Luck is capped at **60** (`LUCK_MAX_PCT`): a runaway multiplier on a rarity
+table turns "better loot" into "only mythics", which is not better. At **zero**
+Luck both formulas return the original values byte for byte.
+
+`_playerLuckPct()` sums the live battle hero's cosmic tree plus any Luck authored
+on the hero's own stat block, falling back to `App.battlePrep.hero` for grants
+rolled outside a battle, and never throws — a loot roll must not be the thing
+that breaks a victory screen.
+
+Suite: `_luck_smoke.mjs` (44 checks; runs the re-weighting, the price curve and
+the clamp for real, including that common is never inflated and that a mythic
+stays rare even at max Luck).

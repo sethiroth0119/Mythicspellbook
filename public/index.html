@@ -39507,7 +39507,7 @@ body:has(#pack-opener-frame) #chat-overlay {
   // the console. Bump this every deploy alongside sw.js's CACHE_VERSION. If two
   // machines show different stamps, the older one is on stale code (hard-refresh);
   // if they MATCH but content still differs, it is a DATA/publish issue, not code.
-  window.BUILD_VERSION = 'v121v147';
+  window.BUILD_VERSION = 'v121v148';
   try {
     console.info('%cMythic Spellbook ' + window.BUILD_VERSION + '%c — build check: run  __mg.version',
       'font-weight:700;color:#b48cff', 'color:#7d7499');
@@ -88502,6 +88502,62 @@ function _rollUnitSalvage(unit) {
 // standard pack rarity table. Chance scales with the looted unit's
 // rarity / level and is far higher on bosses. Grants straight into
 // Profile.cardCollection and returns { id, name, rarity } or null.
+/* 🍀 v121v148 — THE PLAYER'S TOTAL LUCK, as a percentage.
+
+   Summed from the hero's cosmic skill tree (each Luck star is exactly 1%, see
+   _cLuck1) plus any Luck on the hero's own stat block, so an authored hero can
+   carry some innately. Capped: a runaway multiplier on a rarity table turns
+   "better loot" into "only mythics", which is not better, it is broken.
+
+   ⚠ Reads the CURRENT battle's player hero when there is one, and falls back to
+     the profile's own hero so out-of-battle grants still see it. Never throws —
+     a loot roll must not be the thing that breaks a victory screen.
+
+   ⚠ QUALITY, NOT FREQUENCY. Luck raises how GOOD a drop is, never how often one
+     happens — the owner asked for "better loot", and the two knobs compound far
+     faster than they look: moving both would be impossible to tune afterwards
+     and would read as a bug long before it read as a buff. Every use below
+     multiplies a WEIGHT, never a drop chance. */
+const LUCK_MAX_PCT = 60;
+function _playerLuckPct() {
+  let luck = 0;
+  try {
+    let heroId = null;
+    try {
+      const h = ((App.state && App.state.units) || []).find(u => u && u.owner === 'player' && u.isHero);
+      heroId = (h && (h.originalCardId || h.cardId || h.id)) || null;
+      if (h && h.stats && isFinite(+h.stats.luck)) luck += +h.stats.luck;
+    } catch (e) {}
+    if (!heroId) { try { heroId = (App.battlePrep && App.battlePrep.hero && App.battlePrep.hero.id) || null; } catch (e) {} }
+    if (heroId && typeof getHeroCosmicStatBonuses === 'function') {
+      const b = getHeroCosmicStatBonuses(heroId);
+      if (b && isFinite(+b.luck)) luck += +b.luck;
+    }
+  } catch (e) {}
+  if (!isFinite(luck) || luck < 0) luck = 0;
+  return Math.min(LUCK_MAX_PCT, luck);
+}
+/* 🍀 Re-weight a rarity table so the RARER tiers get likelier with Luck. The
+   multiplier grows with how rare a tier already is, so 1% of Luck nudges mythic
+   far more than it nudges common — which is what "better loot" means. At 0 Luck
+   this returns the table unchanged, byte for byte. */
+function _luckWeightedRarity(weights, luckPct) {
+  try {
+    if (!weights || !luckPct) return weights;
+    const ORDER = ['common', 'uncommon', 'rare', 'epic', 'legendary', 'mythic'];
+    const out = {};
+    for (const k in weights) {
+      const tier = ORDER.indexOf(k);
+      // tier 0 (common) is untouched; each step up gains 4% of its own weight
+      // per 1% Luck, so the curve steepens toward the top end.
+      const mul = tier <= 0 ? 1 : (1 + (luckPct / 100) * tier * 0.4);
+      out[k] = Math.max(0.0001, (+weights[k] || 0) * mul);
+    }
+    return out;
+  } catch (e) { return weights; }
+}
+try { window.__mg = window.__mg || {}; window.__mg.luck = _playerLuckPct; } catch (e) {}
+
 function _rollLootCard(unit) {
   try {
     if (typeof getCardPoolForPacks !== 'function') return null;
@@ -88518,7 +88574,12 @@ function _rollLootCard(unit) {
     if (Math.random() >= chance) return null;
     const pool = getCardPoolForPacks({ includeHeroes: false }) || [];
     if (!pool.length) return null;
-    const weights = (typeof DEFAULT_PACK_RARITY_WEIGHTS !== 'undefined') ? DEFAULT_PACK_RARITY_WEIGHTS : null;
+    /* 🍀 v121v148 — Luck bends the rarity roll toward the top of the table.
+       The CHANCE of a drop above is untouched: the owner asked for better loot,
+       not more of it, and moving both at once compounds unmanageably. */
+    const _lk = (typeof _playerLuckPct === 'function') ? _playerLuckPct() : 0;
+    const weights = (typeof DEFAULT_PACK_RARITY_WEIGHTS !== 'undefined')
+      ? _luckWeightedRarity(DEFAULT_PACK_RARITY_WEIGHTS, _lk) : null;
     let pick = null;
     for (let i = 0; i < 6 && weights && typeof rollRarityFromWeights === 'function'; i++) {
       const tr = rollRarityFromWeights(weights);
@@ -88568,7 +88629,15 @@ function _rollLootItem(unit) {
       const it = getItemById(e.itemId);
       if (!it) continue;
       const price = Math.max(1, e.price | 0);
-      const w = Math.max(1, Math.round(3000 / price));
+      /* 🍀 v121v148 — the price weighting is what makes cheap consumables
+         constant and the expensive relics jackpot-rare. Luck SOFTENS the
+         exponent (1 → 0.7 at max Luck), flattening the curve toward the pricier
+         end rather than adding a flat bonus, so the shape of the table is
+         preserved and only its steepness changes. At 0 Luck the exponent is
+         exactly 1 and this is the original formula. */
+      const _lkI = (typeof _playerLuckPct === 'function') ? _playerLuckPct() : 0;
+      const _exp = 1 - (_lkI / 100) * 0.5;
+      const w = Math.max(1, Math.round(3000 / Math.pow(price, _exp)));
       pool.push({ id: e.itemId, item: it, w });
     }
     if (!pool.length) return null;
@@ -219839,7 +219908,15 @@ const COSMIC_EL = {
   arcane: '#c77bff', void: '#ff5bc8', tech: '#39e6b0', nature: '#7fe05a',
   cosmic: '#7b8cff', gold: '#e8c474',
 };
-const _cS  = (o) => o;                                   // numeric stat object e.g. {atk:6}
+/* 🍀 v121v148 — LUCK IS ALWAYS 1 PER NODE. Owner: "only give where the points
+   only give you 1% luck." Clamped HERE, at the builder every authored
+   constellation row passes through, rather than trusting each row to say 1 —
+   and mirrored in the auto-generator's own fx builders below, because that
+   generator derives a branch's theme from the authored tally and would
+   otherwise emit luck 3/4/5/6/8 nodes the moment Luck became a top stat.
+   Every other stat passes through untouched. */
+const _cLuck1 = (o) => { try { if (o && typeof o === 'object' && 'luck' in o) o.luck = 1; } catch (e) {} return o; };
+const _cS  = (o) => _cLuck1(o);                          // numeric stat object e.g. {atk:6}
 const _cBr = (name, color, nodes) => ({ name, color, nodes });
 // node tuple author: [tier, lane, type, name, desc, fx, extra?]
 //   type: 'minor' | 'notable' | 'move' | 'key'    extra: {move?, passive?}
@@ -219853,7 +219930,7 @@ const COSMIC_CLASSES = [
     _cBr('Bladestorm', COSMIC_EL.fire, [
       [1, 0, 'minor', 'Edge Training', 'Sharpened fundamentals. Raw weapon damage.', _cS({ atk: 3 })],
       [2, -1, 'minor', 'Brutal Swings', 'Heavier follow-through on every strike.', _cS({ atk: 4 })],
-      [2, 1, 'minor', 'Quick Hands', 'Faster weapon recovery between blows.', _cS({ spd: 3 })],
+      [2, 1, 'minor', 'Quick Hands', 'Quick enough to pocket what others miss.', _cS({ luck: 1 })],
       [3, 0, 'notable', 'Momentum', 'Each consecutive hit on the same target adds +6% damage (stacks 3×).', _cS({ atk: 5, crit: 4 })],
       [4, -1, 'move', 'Whirlwind Strike', 'Spin attack: damages every enemy in adjacent tiles, scaling with ATK.', _cS({}), { move: 'Whirlwind Strike' }],
       [4, 1, 'minor', 'Killer Instinct', 'Trained eye for the weak point.', _cS({ crit: 6 })],
@@ -219958,11 +220035,11 @@ const COSMIC_CLASSES = [
     _cBr('Shadowstep', COSMIC_EL.shadow, [
       [1, 0, 'minor', 'Silent Tread', 'Move unheard.', _cS({ dodge: 4 })],
       [2, -1, 'minor', 'Vanish', 'Slip from sight more readily.', _cS({ dodge: 5 })],
-      [2, 1, 'minor', 'Fleet', 'Cover more ground each turn.', _cS({ spd: 4 })],
+      [2, 1, 'minor', 'Fleet', 'First to the spoils, every time.', _cS({ luck: 1 })],
       [3, 0, 'notable', 'Cloak', 'Enter stealth at the start of battle and after each kill.', _cS({ dodge: 6 })],
       [4, -1, 'move', 'Blink', 'Teleport to any tile within 3 spaces, leaving a smoke decoy.', _cS({}), { move: 'Blink' }],
       [4, 1, 'minor', 'Evasion', 'Phase through the first hit each turn.', _cS({ dodge: 6 })],
-      [5, 0, 'key', 'GHOST', 'While stealthed you are untargetable; breaking stealth with an attack guarantees a critical hit.', _cS({ spd: 4 }), { passive: 'Stealth = untargetable; break = guaranteed crit.' }],
+      [5, 0, 'key', 'GHOST', 'While stealthed you are untargetable; breaking stealth with an attack guarantees a critical hit.', _cS({ luck: 1 }), { passive: 'Stealth = untargetable; break = guaranteed crit.' }],
     ]),
     _cBr('Lethality', '#ff6a6a', [
       [1, 0, 'minor', 'Precision', 'Find the gap in the guard.', _cS({ crit: 5 })],
@@ -220014,7 +220091,7 @@ const COSMIC_CLASSES = [
       [2, 1, 'minor', 'Field Kit', 'Carry more consumables.', _cS({ hp: 4 })],
       [3, 0, 'notable', 'Loadout Synergy', 'Gain +2 to all stats for every accessory slot filled (ring, necklace, charm).', _cS({ def: 3 })],
       [4, -1, 'move', 'Hot Swap', 'Mid-battle, swap your secondary weapon and reload all consumables.', _cS({}), { move: 'Hot Swap' }],
-      [4, 1, 'minor', 'Bandolier', 'One extra consumable slot.', _cS({ spd: 3 })],
+      [4, 1, 'minor', 'Bandolier', 'One extra consumable slot.', _cS({ luck: 1 })],
       [5, 0, 'key', 'LOADOUT MASTERY', 'Gain stacking bonuses per equipped item rarity (Common→+1 … Legendary→+5 to all stats). +1 consumable slot.', _cS({ atk: 4, def: 4 }), { passive: 'Stat stacks scale with each item’s rarity; +1 consumable slot.' }],
     ]),
   ],
@@ -220037,7 +220114,7 @@ const COSMIC_CLASSES = [
     _cBr('Construct', COSMIC_EL.tech, [
       [1, 0, 'minor', 'Assembler', 'Faster fabrication.', _cS({ mag: 3 })],
       [2, -1, 'minor', 'Reinforced', 'Tougher constructs.', _cS({ hp: 6 })],
-      [2, 1, 'minor', 'Servo Boost', 'Constructs strike faster.', _cS({ spd: 3 })],
+      [2, 1, 'minor', 'Servo Boost', 'Constructs sift the wreckage as they work.', _cS({ luck: 1 })],
       [3, 0, 'notable', 'Summon Sentinel', 'Build a mech sentinel that tanks and taunts for you.', _cS({ def: 4 })],
       [4, -1, 'move', 'Deploy Spider-Bots', 'Summon 2 small bots that swarm and self-destruct on enemies.', _cS({}), { move: 'Spider-Bots' }],
       [4, 1, 'minor', 'Hive Link', 'Constructs buff each other.', _cS({ atk: 4 })],
@@ -220121,15 +220198,20 @@ const _COS_STAT_WORDS = {
   res:   ['Clear Mind', 'Warded Soul', 'Null Skin', 'Steady Nerve', 'Hex Resist', 'Iron Will', 'Quiet Blood'],
   hp:    ['Vigor', 'Hardened Flesh', 'Second Heart', 'Enduring Body', 'Deep Lungs', 'Battle Stamina', 'Old Scars'],
   spd:   ['Fleet Step', 'Quick Draw', 'Light Feet', 'Reflex Drill', 'Wind Stride', 'Tempo', 'Sudden Lunge'],
+  // 🍀 v121v148 — Luck's own name bank, so a generated Luck star reads like the
+  // rest of the constellation instead of printing the raw stat key.
+  luck:  ['Fortune', 'Lucky Find', 'Scavenger\'s Eye', 'Long Odds', 'Windfall', 'Fate\'s Favour', 'Treasure Sense'],
   crit:  ['Keen Eye', 'Opening', 'Sharp Instinct', 'Vital Aim', 'Killer Focus', 'Precise Cut', 'Cold Read'],
   dodge: ['Slip', 'Sidestep', 'Shadow Weave', 'Blur', 'Rolling Guard', 'Phantom Step', 'Unseen Angle'],
   rng:   ['Long Reach', 'Far Sight', 'Extended Line', 'Overreach'],
   cost:  ['Efficiency', 'Conservation', 'Frugal Cast', 'Second Wind'],
 };
-const _COS_STAT_LABEL = { atk: 'ATK', def: 'DEF', mag: 'MAG', res: 'RES', hp: 'HP', spd: 'SPD', crit: 'Crit %', dodge: 'Dodge %', rng: 'Range', cost: 'Cost −%' };
+const _COS_STAT_LABEL = { atk: 'ATK', def: 'DEF', mag: 'MAG', res: 'RES', hp: 'HP', spd: 'SPD', crit: 'Crit %', dodge: 'Dodge %', rng: 'Range', cost: 'Cost −%', luck: 'Luck %' };
 const _COS_STAT_DESC = {
   atk: 'Raw striking power.', def: 'Physical resilience.', mag: 'Spell weight and reach.', res: 'Resistance to magic and status.',
   hp: 'Vitality.', spd: 'Tempo and footwork.', crit: 'The eye for a weak point.', dodge: 'Slipping the blow.', rng: 'Reach across the field.', cost: 'Cheaper actions.',
+  // 🍀 v121v148 — what the battlefield gives up to you, and how good it is.
+  luck: 'What the field yields up.',
 };
 const _COS_ROMAN = ['', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX', 'X'];
 const _COS_LEARN_DESC = 'Learn one move from the pool that fits this hero — its elements, or a move the Forge pinned to it or its factions. Goes straight into your skill-attack bay, beside the 4 base moves.';
@@ -220157,7 +220239,7 @@ const _COS_LEGACY = {
   ] },
   phantom: { moves: ['siphonGrasp', 'shadowBolt', 'quickJab'], extras: [
     { type: 'active', name: 'Cloak', flag: 'cloak', activeUses: 1, desc: 'Vanish — untargetable for 1 turn. 1 use per match.', fx: { dodge: 3 } },
-    { type: 'active', name: 'Shadow Clone', flag: 'shadowClone', decoy: true, activeUses: 1, desc: 'Project a shadow duplicate of your hero beside you with 30% HP. The enemy cannot tell which is real; you see a ★ on the true one.', fx: { spd: 2 } },
+    { type: 'active', name: 'Shadow Clone', flag: 'shadowClone', decoy: true, activeUses: 1, desc: 'Project a shadow duplicate of your hero beside you with 30% HP. The enemy cannot tell which is real; you see a ★ on the true one.', fx: { luck: 1 } },
     { type: 'passive', name: 'Nightmare Field', flag: 'nightmareField', desc: 'Nearby enemies suffer random negative emotion procs each turn.', fx: { mag: 3 } },
   ] },
   technician: { moves: ['quickJab', 'pierce', 'sunder'], extras: [
@@ -220204,6 +220286,10 @@ function _cosmicExpandClass(cls) {
     return round ? base + ' ' + (_COS_ROMAN[round] || round) : base;
   };
   const minor = (tier, lane, stat, amt) => {
+    /* 🍀 v121v148 — a GENERATED Luck star is 1 too. This generator picks its
+       stats from the branch's authored tally, so once Luck replaced Speed it
+       would otherwise emit luck 3, 4 and 5 nodes. */
+    if (stat === 'luck') amt = 1;
     const fx = {}; fx[stat] = amt;
     const unit = (stat === 'crit' || stat === 'dodge' || stat === 'cost') ? '%' : '';
     return [tier, lane, 'minor', nameFor(stat), _COS_STAT_DESC[stat] + ' +' + amt + unit + ' ' + _COS_STAT_LABEL[stat] + '.', fx];
@@ -220225,6 +220311,7 @@ function _cosmicExpandClass(cls) {
     add(_cosLegacyRow(6, 3, legacy.extras[bi + 3], () => minor(6, 3, B, 3)));
     // tier 7 — mastery
     const mfx = {}; mfx[A] = 6; mfx[B] = (mfx[B] || 0) + 4;
+    _cLuck1(mfx);   // 🍀 v121v148 — a Mastery star gives 1 Luck, not 6 or 4
     add([7, 0, 'notable', b.name + ' Mastery', 'Command of the ' + b.name + ' path. The branch\'s two pillars, together.', mfx]);
     add(minor(7, -2, C, 4), minor(7, 2, A, 4));
     // tier 8 — the legacy move and skill stars
@@ -220234,6 +220321,7 @@ function _cosmicExpandClass(cls) {
     add(minor(8, -3, B, 5), minor(8, 3, C, 4));
     // tier 9 — ascendant keystone
     const kfx = {}; kfx[A] = 8; kfx[B] = (kfx[B] || 0) + 6; kfx.hp = (kfx.hp || 0) + 6;
+    _cLuck1(kfx);   // 🍀 v121v148 — and an Ascendant keystone gives 1, not 8
     add([9, 0, 'key', 'ASCENDANT ' + String(b.name).toUpperCase(), 'The far end of the ' + b.name + ' constellation. Everything the path taught, sharpened.', kfx, { passive: 'Ascendant of ' + b.name + '.', cost: 5 }]);
   });
   // The fourth sector — LEARNED ARTS.
@@ -220244,10 +220332,10 @@ function _cosmicExpandClass(cls) {
       [2, 1, 'minor', 'Drill', 'Repetition until the motion is owned.', _cS({ atk: 3 })],
       [3, 0, 'notable', 'Discipline', 'The rigour that lets a hero carry more than the class teaches.', _cS({ atk: 3, mag: 3 })],
       [3, -2, 'minor', 'Breath Control', 'Calm between actions.', _cS({ res: 3 })],
-      [3, 2, 'minor', 'Footwork', 'Position before power.', _cS({ spd: 3 })],
+      [3, 2, 'minor', 'Footwork', 'Standing where the good things fall.', _cS({ luck: 1 })],
       [4, -1, 'learn', 'Learned Art I', _COS_LEARN_DESC, _cS({}), { learnSlot: 0 }],
       [4, 1, 'learn', 'Learned Art II', _COS_LEARN_DESC, _cS({}), { learnSlot: 1 }],
-      [5, 0, 'notable', 'Versatility', 'A second style. Every fight has more than one answer.', _cS({ hp: 6, spd: 2 })],
+      [5, 0, 'notable', 'Versatility', 'A second style. Every fight has more than one answer.', _cS({ hp: 6, luck: 1 })],
       [5, -2, 'minor', 'Muscle Memory', 'The body remembers what the mind forgets.', _cS({ atk: 4 })],
       [5, 2, 'minor', 'Spell Memory', 'A sigil traced once is traced forever.', _cS({ mag: 4 })],
       [6, -1, 'learn', 'Learned Art III', _COS_LEARN_DESC, _cS({}), { learnSlot: 2 }],
@@ -220257,7 +220345,7 @@ function _cosmicExpandClass(cls) {
       [7, 2, 'minor', 'Reflex Training', 'The blow that never lands.', _cS({ dodge: 4 })],
       [8, -1, 'minor', 'Veteran Instinct', 'Where to cut, learned the hard way.', _cS({ crit: 5 })],
       [8, 1, 'minor', 'Iron Nerve', 'Unshaken by hex or howl.', _cS({ res: 5 })],
-      [9, 0, 'key', 'ASCENDANT ARTS', 'The learned arts become second nature.', _cS({ atk: 5, mag: 5, hp: 8, spd: 2 }), { passive: 'Master of every learned art.', cost: 5 }],
+      [9, 0, 'key', 'ASCENDANT ARTS', 'The learned arts become second nature.', _cS({ atk: 5, mag: 5, hp: 8, luck: 1 }), { passive: 'Master of every learned art.', cost: 5 }],
     ]));
   }
 }
@@ -220408,7 +220496,9 @@ function getHeroCosmicClassId(heroId) {
 // Aggregate the fx of every allocated cosmic node for this hero. Read straight
 // from Profile (NOT getHeroSkillTree) so buildHero never triggers a save here.
 function getHeroCosmicStatBonuses(heroId) {
-  const out = { atk: 0, def: 0, mag: 0, res: 0, hp: 0, spd: 0, crit: 0, dodge: 0, rng: 0, cost: 0 };
+  /* 🍀 v121v148 — luck is listed here or the aggregator's own
+     `if (k in out)` filter would drop every Luck node on the floor. */
+  const out = { atk: 0, def: 0, mag: 0, res: 0, hp: 0, spd: 0, crit: 0, dodge: 0, rng: 0, cost: 0, luck: 0 };
   if (!heroId || !Profile.heroSkillTrees || !Profile.heroSkillTrees[heroId]) return out;
   const nodes = Profile.heroSkillTrees[heroId].unlockedNodes;
   if (!nodes) return out;
@@ -268734,8 +268824,8 @@ try {
        that works everywhere except the one early path nobody tested. It is
        2KB with no dependencies. -->
 <script src="src/econ/peg.js?v=v121q51"></script>
-<script src="src/battle/effects.js?v=v121v147" defer></script>
-<script src="src/phone/handset.js?v=v121v147" defer></script>
+<script src="src/battle/effects.js?v=v121v148" defer></script>
+<script src="src/phone/handset.js?v=v121v148" defer></script>
 <script src="src/battle/combat.js?v=120m4" defer></script>
 <script src="src/battle/targeting.js?v=121e3hex" defer></script>
 <link rel="stylesheet" href="src/sprites/frames.css?v=120k3">
