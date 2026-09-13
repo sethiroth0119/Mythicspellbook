@@ -1083,3 +1083,113 @@ REQUIRE the frame fallback; it now requires its absence, and the claim it was
 written to protect — art resolved at render time, never stored on the entry,
 because the log is copied into every replay snapshot and sent whole over the
 socket — is asserted unchanged.
+
+---
+
+## v121v135 — an enchantment is placed on a tile next to your hero
+
+Owner: *"When playing a Enchantment it should show heighlighted tiles next to
+the hero to where it can be placed on the battlefield."*
+
+**It was not merely unhighlighted — it was unplayable from hand.** The
+card-detail Play button routes by type and knows four immediate plays: spell,
+weather, a whole-board location, and a tunnelling unit. Everything else falls to
+the `else`, which arms tile targeting by setting `App.ui.selectedCardId`. An
+enchantment landed there, and then:
+
+* the highlight pass built `validPlacement` only for unit / trap / wall /
+  location, so **nothing lit up**; and
+* `onTileClick`'s type switch had branches for unit / location / trap / wall and
+  no other, so **the click did nothing**.
+
+`playSpell`'s enchantment branch — the one that pushes to `state.enchantments` —
+is reachable only for `card.type === 'spell'`, so no player route ever got to it.
+An enchantment in hand armed a targeting mode with no lit tiles and no exit but
+Escape. The highlight and the click therefore gain it **together**: lighting a
+tile the click refuses is the same UI-lies-about-the-rules bug in reverse.
+
+**The shape is the one already settled.** v121v133 put a *summoned* enchantment
+on a tile as a real token in `state.units` marked `isEnchantment`. The hand play
+now makes the same board object, so both routes produce one kind of enchantment
+rather than two that behave differently.
+
+**The entry is kept and linked, not replaced.** `state.enchantments` is read by
+the aura layer (`_auraSources`), the curse release, the zone condition and the
+side-swap; storing the permanent only as a token would silently drop all four.
+So the play writes both — the entry as before, plus `pos` and `tokenId`, and a
+board token. The link is read in one direction only:
+
+* the aura source takes its position from the **live token**, never from the
+  stored `pos`, so the two cannot drift apart; and
+* an entry whose token is no longer alive stops projecting, and is swept.
+
+That is what makes *"they stay on the field until destroyed"* true with no
+removal hook. `alive:false` is set in about forty places in this file, and a
+design that had to be notified at each of them would be broken by the first one
+anybody forgot — so **liveness is derived**, not hooked.
+
+The dry run answers before `_gateOnPlayThenPlace` takes any on-play cost, so a
+refused play never costs the player a discard first, and it returns before the
+negate check and the state write, which both mutate real game state.
+
+⚠ The AI path is untouched — it plays straight into `state.enchantments` with no
+pos and no token, and such an entry goes on anchoring on its owner's hero via
+the `|| heroPos(eo)` fallback, exactly as before.
+
+Suite: `_enchplace_smoke.mjs` (runs the ring, the tile filter and the liveness
+rule for real).
+
+---
+
+## v121v136 — every log row that names a card shows that card, actor ➜ target
+
+Owner: *"I want the card next to every single thing if it mentions them show the
+card art and if is a card attacking or targeting another card show the card art
+and a arrow to the card it attacked or targeted."*
+
+*(This build also carries the v121v135 enchantment placement above — both shipped
+in one deploy.)*
+
+**Why almost no row had art.** `_bcLogArt` draws from `l.cardId`, and only the
+handful of PLAY announcements v121v129 touched ever set one. Every other line —
+every attack, heal, miss, status, trigger, consume, activation — is pushed as
+`{ msg, color }` from one of several **hundred** `log.push` sites across the
+engine. Stamping an id at each is hundreds of edits with no way to verify it
+stayed complete: the next effect anybody authors adds site 301 with no id, and
+the feature silently rots.
+
+**So the card is resolved from the row's own text, at render time, in one place.**
+The log already prints card names — that is why the rows are readable — so a
+name→card index is built once per open of the log from everything this battle
+can mention (board units, both players' hands, decks, graveyards, voids and
+banished piles, the enchantments, the location, the weather) and each row's text
+is matched against it. One card → its art. Two → actor, arrow, target.
+
+It therefore works **retroactively** on every line already in the log, and on
+every line any future effect pushes, without those effects knowing it exists.
+
+⚠ **It cannot leak a hidden card.** The index only ever answers a name the log
+itself already printed in words, so nothing becomes visible that was not already
+on screen. A row flagged `hidden` (a face-down Set) still draws nothing.
+
+The matching rules that make it reliable:
+
+* **longest name wins** and a matched span is consumed — "Savage Demon sword of
+  Sparta" cannot resolve as "Savage Demon";
+* names must sit on **word boundaries**, so one cannot match inside a longer word,
+  and a name under 3 characters never enters the index at all;
+* the two cards drawn are the first two **by position in the sentence**, not by
+  match order — "A strikes B" writes the actor first, while matching runs
+  longest-first, which is unrelated. Sorting by match order would draw whichever
+  name happened to be longer as the attacker;
+* a card acting on itself draws **one** tile, not the same art twice with an
+  arrow between; and it is both halves or neither, because one art and a
+  dangling arrow reads as a bug.
+
+The index is built once for the whole list, because `_bcLogRow` runs up to 400
+times per render and walking both decks that often is the difference between a
+modal that opens instantly and one that hitches. Art comes from
+`_abilityArtBest` — the same resolver the ability panel and the cinematic use
+(v121v134) — so a card that resolves anywhere resolves here.
+
+Suite: `_logcards_smoke.mjs` (runs the index builder and the matcher for real).

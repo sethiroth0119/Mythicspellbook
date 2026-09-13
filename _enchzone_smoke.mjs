@@ -44,10 +44,27 @@ ok(/finds nothing in \$\{owner === 'player' \? 'your' : 'their'\}/.test(SRC),
   ok(!summonable('hero'), 'run for real: and never a hero');
 }
 {
-  /* the cast-from-hand path is deliberately untouched */
-  const ps = SRC.slice(SRC.indexOf("if (card.type === 'enchantment' || card.type === 'curse') {"), SRC.indexOf("if (card.type === 'enchantment' || card.type === 'curse') {") + 900);
-  ok(/enchantments: \[\.\.\.\(s\.enchantments \|\| \[\]\), \{/.test(ps),
-    'a HAND-CAST enchantment still lands on state.enchantments exactly as before — every card authored against that behaves identically');
+  /* ⚠ THIS PIN SAID THE CAST-FROM-HAND PATH WAS UNTOUCHED, and at v121v133 that
+     was right: v133 widened only the SUMMON path, and moving where a cast lands
+     would have been a far larger behavioural change than the one asked for.
+     v121v135 IS that larger change, asked for directly — "when playing a
+     Enchantment it should show highlighted tiles next to the hero to where it
+     can be placed on the battlefield" — so the PLAYER's hand play now lays a
+     permanent on a tile. What this pin was actually protecting is unchanged and
+     is still asserted below: state.enchantments remains the record, it is built
+     in ONE place, and an entry with no tile still anchors on its owner's hero,
+     which is what the AI's plays and the cast path (a chain, a copy effect)
+     produce. See _enchplace_smoke.mjs for the placement itself. */
+  /* ⚠ ANCHORED ON playSpell, NOT on the type test. v121v135 added that same
+     test to getValidPlacementTiles, which sits EARLIER in the file, so an
+     indexOf for it now lands on the placement ring instead of the cast branch —
+     the pin would have been reading a function it was never about. */
+  const _psAt = SRC.indexOf('function playSpell(card) {');
+  const ps = SRC.slice(_psAt, SRC.indexOf('// 🌌 Polycreation spell', _psAt));
+  ok(/enchantments: \[\.\.\.\(s\.enchantments \|\| \[\]\), _enchantEntry\(card, 'player', s\.turnNumber\)\],/.test(ps),
+    'the CAST path still lands on state.enchantments — with no tile, so it anchors on the hero exactly as before');
+  ok(/function _enchantEntry\(card, owner, turnNumber, extra\) \{/.test(SRC),
+    '…and the entry has ONE builder, so the placement and the cast cannot drift into two shapes of the same record');
 }
 
 /* ── 🧭 bug-mtxkwv4m — the back button ───────────────────────────────────────

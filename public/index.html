@@ -5980,6 +5980,11 @@
   /* 🎴 the card that spoke, beside what it did */
   .bchrome .logrow .logart{width:34px;height:46px;flex:none;object-fit:cover;border-radius:3px;
     border:1px solid rgba(255,255,255,.14);box-shadow:0 2px 6px rgba(0,0,0,.5);background:#0d0d14}
+  /* 🎴 v121v136 — actor ➜ target, when a row names two cards */
+  .bchrome .logrow .logpair{display:flex;align-items:center;gap:5px;flex:none}
+  .bchrome .logrow .logarrow{font-size:13px;line-height:1;color:#e8a04c;opacity:.9;flex:none;
+    text-shadow:0 0 6px rgba(232,160,76,.45)}
+  .bchrome .logrow.lk-pair .logart{width:30px;height:41px}
   .bchrome .logrow .txt{display:block;min-width:0}
   .bchrome .logrow .sub{display:block;margin-top:2px;font-size:11.5px;opacity:.72}
   .bchrome .logrow.lk-death{background:linear-gradient(90deg,rgba(255,70,70,.10),transparent 60%)}
@@ -39453,7 +39458,7 @@ body:has(#pack-opener-frame) #chat-overlay {
   // the console. Bump this every deploy alongside sw.js's CACHE_VERSION. If two
   // machines show different stamps, the older one is on stale code (hard-refresh);
   // if they MATCH but content still differs, it is a DATA/publish issue, not code.
-  window.BUILD_VERSION = 'v121v134';
+  window.BUILD_VERSION = 'v121v136';
   try {
     console.info('%cMythic Spellbook ' + window.BUILD_VERSION + '%c — build check: run  __mg.version',
       'font-weight:700;color:#b48cff', 'color:#7d7499');
@@ -101244,6 +101249,12 @@ const getCardRange = (card) => {
   if (card.type === 'spell') return DEFAULT_SPELL_RANGE;
   if (card.type === 'trap')  return DEFAULT_TRAP_RANGE;
   if (card.type === 'wall')  return DEFAULT_UNIT_PLACE_RANGE;
+  /* 🔮 v121v135 — an enchantment is laid down beside the hero, like a unit.
+     Owner: "it should show highlighted tiles NEXT TO THE HERO to where it can
+     be placed on the battlefield." It already fell through to the same 1 by
+     accident; saying so means a later change to the default cannot quietly
+     move the ring the owner asked for. */
+  if (card.type === 'enchantment' || card.type === 'curse') return DEFAULT_UNIT_PLACE_RANGE;
   return 1;
 };
 
@@ -101278,6 +101289,12 @@ const getValidPlacementTiles = (card, hero, state) => {
   }
   if (card.type === 'wall') {
     return cells.filter(p => !state.board[p.y][p.x].wall && !state.board[p.y][p.x].trap && !getOccupant(p, state.units));
+  }
+  /* 🔮 v121v135 — an enchantment TAKES A TILE, so it needs an empty one, on the
+     same terms as a unit. Without this branch it fell through to the bare ring
+     below and would have lit up ground a unit is already standing on. */
+  if (card.type === 'enchantment' || card.type === 'curse') {
+    return cells.filter(p => !getOccupant(p, state.units) && !(state.board[p.y][p.x] && state.board[p.y][p.x].wall));
   }
   return cells;
 };
@@ -108040,8 +108057,24 @@ function _auraSources(state) {
       state.enchantments.forEach((e, i) => {
         if (!e || !e.card || !e.card.id) return;
         const eo = e.owner === 'ai' ? 'ai' : 'player';
+        /* 🔮 v121v135 — one the player LAID DOWN stands on a tile, so its auras
+           radiate from there rather than from the hero. The position is read off
+           the LIVE token, never off the stored e.pos, so the two can never drift
+           apart; and a token that is no longer alive ends the enchantment —
+           "they stay on the field until destroyed". Liveness is DERIVED here on
+           purpose: alive:false is set in about forty places in this file, and a
+           design that had to be notified at each of them would be broken by the
+           first one anybody forgot.
+           ⚠ An entry with NO token — the AI's plays, and the cast path — still
+             anchors on its owner's hero, exactly as before. */
+        let ep = null;
+        if (e.tokenId) {
+          const tk = (state.units || []).find(u => u && u.id === e.tokenId);
+          if (!tk || !tk.alive) return;
+          if (tk.pos) ep = { x: tk.pos.x, y: tk.pos.y };
+        }
         out.push({ id: '_aura_ench_' + i, cardId: e.card.id, name: e.card.name || 'Enchantment',
-                   owner: eo, alive: true, pos: heroPos(eo), _fieldSource: true, _enchantment: true });
+                   owner: eo, alive: true, pos: ep || heroPos(eo), _fieldSource: true, _enchantment: true });
       });
     }
     if (Array.isArray(state.board)) {
@@ -122772,6 +122805,24 @@ const startTurn = (state, who) => {
     log.length = 0;
     (s.log || []).forEach(l => log.push(l));
   }
+
+  /* 🔮 v121v135 — A DESTROYED PERMANENT LEAVES THE FIELD. The aura layer already
+     stops reading an entry whose token is dead (see _auraSources), so this sweep
+     is bookkeeping rather than the rule — but without it the entry sits in
+     state.enchantments forever, travels into every replay snapshot and over the
+     socket, and still answers "you control an enchantment". */
+  try {
+    if (Array.isArray(s.enchantments) && s.enchantments.some(e => e && e.tokenId)) {
+      const alive = s.enchantments.filter(e => {
+        if (!e || !e.tokenId) return true;                       // no token = hero-anchored
+        const tk = (s.units || []).find(u => u && u.id === e.tokenId);
+        if (tk && tk.alive) return true;
+        log.push({ msg: `💥 ${(e.card && e.card.name) || 'An enchantment'} is destroyed — its power fades.`, color: 'amber' });
+        return false;
+      });
+      if (alive.length !== s.enchantments.length) s = { ...s, enchantments: alive, log: log };
+    }
+  } catch (err) { try { console.warn('[enchantSweep]', err); } catch (_) {} }
 
   // ⛧ CURSE RELEASE (v120c6) — the mandatory exit. A curse with a `turnCount`
   // release ("Fuse") lifts on its own once its turns are up; `never` holds until
@@ -168393,11 +168444,114 @@ function _bcLogArt(l) {
     return '<img class="logart" src="' + escapeHtml(art) + '" alt="" loading="lazy" decoding="async" onerror="this.style.display=\'none\'">';
   } catch (e) { return ''; }
 }
-function _bcLogRow(l) {
+/* 🎴 v121v136 — NAME → CARD, for everything this battle can mention.
+
+   Owner: "I want the card next to every single thing if it mentions them show
+   the card art." Only the play announcements carry an `l.cardId`; every other
+   line is pushed as { msg, color } from one of several hundred log.push sites,
+   so the id cannot come from the entry without editing all of them — and the
+   next effect anybody authors would add one more site with no id.
+
+   The log already PRINTS the names, so the names are what we match. Built once
+   per render of the log, never stored on an entry: the log is copied into every
+   replay snapshot and sent whole over the socket, and an index on it would be
+   paid for a thousand times over — the same reason _bcLogArt resolves art at
+   render time rather than baking a URL in.
+
+   ⚠ NO LEAK IS POSSIBLE. This only ever answers a name the log already printed
+     in words, so nothing becomes visible that was not already on screen. */
+function _bcCardNameIndex(s) {
+  const out = [];
+  const seen = Object.create(null);
+  const add = (name, cardId, cardType) => {
+    if (!name || !cardId) return;
+    const nm = String(name).trim();
+    // Two characters is not a name — it is a substring waiting to match the
+    // middle of a word and put the wrong card beside the wrong sentence.
+    if (nm.length < 3 || seen[nm]) return;
+    seen[nm] = 1;
+    out.push({ name: nm, cardId: cardId, cardType: cardType || 'unit' });
+  };
+  try {
+    (s.units || []).forEach(u => {
+      if (!u) return;
+      add(u.name, u.originalCardId || u.cardId, u.isHero ? 'hero' : (u.cardType || 'unit'));
+    });
+    for (const side of ['player', 'ai']) {
+      const p = s[side] || {};
+      for (const zone of ['hand', 'deck', 'graveyard', 'void', 'banished']) {
+        (p[zone] || []).forEach(c => { if (c) add(c.name, c.id, c.type); });
+      }
+    }
+    (s.enchantments || []).forEach(e => { if (e && e.card) add(e.card.name, e.card.id, e.card.type); });
+    if (s.activeLocation) add(s.activeLocation.name, s.activeLocation.id, 'location');
+    if (s.weather && s.weather.card) add(s.weather.card.name, s.weather.card.id, 'weather');
+  } catch (e) {}
+  // LONGEST FIRST — "Savage Demon sword of Sparta" must not resolve as "Savage
+  // Demon". With the matcher refusing overlaps, this ordering is what decides it.
+  out.sort((a, b) => b.name.length - a.name.length);
+  return out;
+}
+
+/* Which cards does this row talk about? At most two are ever drawn. */
+function _bcLogCardsIn(l, idx) {
+  const out = [];
+  if (!l || l.hidden) return out;                 // 🃏 a face-down Set stays hidden
+  if (l.cardId) out.push({ cardId: l.cardId, cardType: l.cardType || 'unit' });
+  const msg = String((l && l.msg) || '');
+  if (!msg || !idx || !idx.length) return out;
+  const isWordChar = (ch) => !!ch && /[A-Za-z0-9]/.test(ch);
+  const hits = [], taken = [];
+  for (const e of idx) {
+    let i = msg.indexOf(e.name);
+    while (i !== -1) {
+      const before = i > 0 ? msg[i - 1] : '';
+      const after = msg[i + e.name.length] || '';
+      const clean = !isWordChar(before) && !isWordChar(after);
+      const overlaps = taken.some(r => i < r.e && (i + e.name.length) > r.s);
+      if (clean && !overlaps) { hits.push({ at: i, cardId: e.cardId, cardType: e.cardType }); taken.push({ s: i, e: i + e.name.length }); break; }
+      i = msg.indexOf(e.name, i + 1);
+    }
+    if (hits.length >= 4) break;                  // far more than the two we draw
+  }
+  // BY POSITION IN THE SENTENCE, not by match order: the actor is written first
+  // in "A strikes B", and matching runs longest-name-first, which is unrelated.
+  hits.sort((a, b) => a.at - b.at);
+  for (const h of hits) {
+    if (out.length >= 2) break;
+    if (out.some(o => o.cardId === h.cardId)) continue;   // "X heals X" draws one card
+    out.push(h);
+  }
+  return out;
+}
+
+/* One art tile. Shares _abilityArtBest with the ⚡ panel and the cinematic, so a
+   card that resolves anywhere resolves here (v121v134). */
+function _bcArtImg(c) {
+  const art = (typeof _abilityArtBest === 'function') ? _abilityArtBest(c && c.cardId, false) : null;
+  if (!art) return '';
+  return '<img class="logart" src="' + escapeHtml(art) + '" alt="" loading="lazy" decoding="async" onerror="this.style.display=\'none\'">';
+}
+
+function _bcLogRow(l, idx) {
   if (!l) return '';
-  const art = _bcLogArt(l);
+  /* 🎴 v121v136 — the cards this row is ABOUT, not just the one that was
+     stamped on it. Two → actor, arrow, target: owner, "if is a card attacking
+     or targeting another card show the card art and a arrow to the card it
+     attacked or targeted". */
+  const cards = _bcLogCardsIn(l, idx);
+  let art = '';
+  if (cards.length >= 2) {
+    const a = _bcArtImg(cards[0]), b = _bcArtImg(cards[1]);
+    // Both halves or neither — one art and a dangling arrow reads as a bug.
+    if (a && b) art = '<span class="logpair">' + a + '<span class="logarrow" aria-label="acts on">➜</span>' + b + '</span>';
+    else art = a || b;
+  } else if (cards.length === 1) {
+    art = _bcArtImg(cards[0]);
+  }
+  if (!art) art = _bcLogArt(l);                   // the stamped-id path, unchanged
   const em = art ? '' : '<span class="em">' + escapeHtml(l.icon || (l.kind === 'death' ? '💀' : l.kind === 'status' ? '✨' : '')) + '</span>';
-  return '<div class="logrow log-' + (l.color || 'ink') + (l.kind ? ' lk-' + l.kind : '') + '">'
+  return '<div class="logrow log-' + (l.color || 'ink') + (l.kind ? ' lk-' + l.kind : '') + (cards.length >= 2 ? ' lk-pair' : '') + '">'
     + art + em
     + '<span class="txt">' + escapeHtml(l.msg || '')
     + (l.sub ? '<span class="sub">' + escapeHtml(l.sub) + '</span>' : '')
@@ -168416,7 +168570,11 @@ function _bcLogModal(s) {
     ? `<div class="logrow"><span class="txt">No entries yet.</span></div>`
     : (visible.length === 0
         ? `<div class="logrow"><span class="txt">No entries match your filters.</span></div>`
-        : visible.slice(-400).reverse().map(l => _bcLogRow(l)).join(''));
+        /* 🎴 v121v136 — ONE index for the whole list. Built here rather than
+           inside _bcLogRow because that runs up to 400 times per render, and
+           walking both decks, both graveyards and the board that often is the
+           difference between a modal that opens instantly and one that hitches. */
+        : (() => { const _idx = _bcCardNameIndex(s); return visible.slice(-400).reverse().map(l => _bcLogRow(l, _idx)).join(''); })());
   const hiddenNote = hiddenCount > 0 ? `<span class="bc-log-hidden">${hiddenCount} hidden</span>` : '';
   return `
     <div class="bchrome bc-modal-backdrop" id="battle-log-backdrop" onclick="try{if(event.target===this)_closeBattleLog()}catch(e){}">
@@ -168788,7 +168946,14 @@ function renderBoard() {
   }
   if (moveCard) {
     const ph = s.units.find(u => u.owner === 'player' && u.isHero);
-    if (moveCard.type === 'unit' || moveCard.type === 'trap' || moveCard.type === 'wall') {
+    /* 🔮 v121v135 — an enchantment lights its tiles too. Owner: "when playing a
+       Enchantment it should show highlighted tiles next to the hero to where it
+       can be placed on the battlefield." This list and onTileClick's type
+       switch are the UI-lies-about-the-rules pair: an enchantment was in
+       NEITHER, so holding one armed targeting mode with nothing lit and no
+       click that did anything. Both gain it together. */
+    if (moveCard.type === 'unit' || moveCard.type === 'trap' || moveCard.type === 'wall'
+        || moveCard.type === 'enchantment' || moveCard.type === 'curse') {
       validPlacement = getValidPlacementTiles(moveCard, ph, s);
     } else if (moveCard.type === 'location') {
       for (let y = 0; y < BOARD_H; y++) for (let x = 0; x < BOARD_W; x++) {
@@ -171490,6 +171655,10 @@ function onTileClick(x, y) {
     else if (card.type === 'location') _gateOnPlayThenPlace(card, () => placeLocation(card, {x, y}), () => placeLocation(card, {x, y}, { validateOnly: true }));
     else if (card.type === 'trap') placeTrap(card, {x, y});
     else if (card.type === 'wall') _gateOnPlayThenPlace(card, () => placeWall(card, {x, y}), () => placeWall(card, {x, y}, { validateOnly: true }));
+    /* 🔮 v121v135 — the other half of the highlight above. Charged through the
+       same on-play cost gate as unit / location / wall, so all of them pay
+       identically and a rejected play never takes the cost first. */
+    else if (card.type === 'enchantment' || card.type === 'curse') _gateOnPlayThenPlace(card, () => placeEnchantment(card, {x, y}), () => placeEnchantment(card, {x, y}, { validateOnly: true }));
     return;
   }
 
@@ -176969,6 +177138,109 @@ function playWeather(card) {
   if (typeof checkPostAction === 'function') checkPostAction(); else renderBattle();
 }
 
+/* 🔮 v121v135 — ONE SHAPE FOR THE ENTRY, built in one place. state.enchantments
+   is read by the aura layer, the curse release, the zone condition and the
+   side-swap; two constructors for it is how those four quietly disagree. */
+function _enchantEntry(card, owner, turnNumber, extra) {
+  const isCurse = (card.type === 'curse');
+  return Object.assign({
+    card: { ...card }, owner: owner, turnPlayed: turnNumber | 0,
+    // Curse bookkeeping travels on the ENTRY, not the card, so a second copy of
+    // the same curse releases on its own schedule.
+    isCurse: isCurse,
+    curseTarget: isCurse ? (card.curseTarget || 'enemyHero') : undefined,
+    curseRelease: isCurse ? (card.curseRelease || { onCondition: 'never' }) : undefined,
+  }, extra || {});
+}
+
+/* 🔮 v121v135 — PLAY AN ENCHANTMENT ONTO A TILE.
+
+   Owner: "when playing a Enchantment it should show highlighted tiles next to
+   the hero to where it can be placed on the battlefield", and earlier,
+   "enchantments get placed on the board like units do."
+
+   Writes BOTH halves and links them: the state.enchantments entry every
+   existing system already reads, plus a real board token so the permanent can
+   be seen, walked around and destroyed. The entry carries `tokenId`; nothing
+   has to be notified when the token dies, because the aura layer reads the
+   token's liveness directly (see _auraSources) — `alive:false` is set in about
+   forty places in this file, and a design needing a hook at each of them is
+   broken by the first one anybody forgets.
+
+   `validateOnly` is the dry run _gateOnPlayThenPlace makes BEFORE taking any
+   on-play cost, so a play this refuses never costs the player a discard. */
+function placeEnchantment(card, pos, opts) {
+  const _dry = !!(opts && opts.validateOnly);
+  const s = App.state;
+  const _isCurse = (card.type === 'curse');
+  const say = (m, t) => { if (!_dry) { try { showToast(m, t); } catch (e) {} } };
+  // 🔒 Lockdown — an enchantment is cast from hand, so it answers to the same
+  // lock as a spell.
+  if (typeof _battleIsLocked === 'function' && _battleIsLocked(s, 'player', 'spell')) {
+    say('🔒 Locked — you can\'t cast spells for the rest of this turn.');
+    return false;
+  }
+  {
+    const _pg = (typeof _phaseAllows === 'function') ? _phaseAllows('play') : { ok: true };
+    if (!_pg.ok) { say(_pg.reason, 3200); return false; }
+  }
+  const _reqFail = (typeof _checkPlayRequirement === 'function') && _checkPlayRequirement(card, s, 'player');
+  if (_reqFail) { say('🔒 ' + _reqFail); return false; }
+  const ph = (s.units || []).find(u => u && u.owner === 'player' && u.isHero && u.alive);
+  if (!ph) { say('No hero on the field.'); return false; }
+  const _cost = (typeof getEffectiveCardCost === 'function') ? getEffectiveCardCost(card, s, 'player') : (card.cost | 0);
+  if ((s.player.energy | 0) < _cost) { say('Not enough energy.'); return false; }
+  const valid = getValidPlacementTiles(card, ph, s);
+  if (!valid.some(p => p.x === pos.x && p.y === pos.y)) {
+    const r = getCardRange(card);
+    say(r === 1 ? 'Must place adjacent to your hero' : `Must place within ${r} tiles of your hero`);
+    return false;
+  }
+  if (_dry) return true;                      // legal — the cost gate may proceed
+  if (typeof _playerNegateAbort === 'function' && _playerNegateAbort(card)) return false;   // 🚫 answerable like any other play
+  // The board token. It never acts — it is a permanent standing on a tile — but
+  // it is a real unit, so it renders, blocks its tile and can be destroyed,
+  // which is what "stays on the field until destroyed" means.
+  let _tok = null;
+  try {
+    const prof = (typeof getUnitProfile === 'function') ? getUnitProfile(card.id) : { level: 1, xp: 0 };
+    _tok = (typeof buildUnit === 'function') ? buildUnit(card, 'player', { x: pos.x, y: pos.y }, ph.heroPassive, prof.level, prof.xp) : null;
+    if (_tok) {
+      _tok.hasMoved = true; _tok.hasAttacked = true;      // a permanent takes no turn
+      _tok.isEnchantment = true; _tok.cardType = card.type;
+      _tok._fromHand = true;                              // it WAS called from hand
+    }
+  } catch (e) { try { console.warn('[enchant token]', e); } catch (_) {} }
+  App.state = {
+    ...s,
+    units: _tok ? [...(s.units || []), _tok] : (s.units || []),
+    enchantments: [...(s.enchantments || []), _enchantEntry(card, 'player', s.turnNumber, {
+      pos: { x: pos.x, y: pos.y },
+      tokenId: _tok ? _tok.id : undefined,
+    })],
+    player: { ...s.player, hand: s.player.hand.filter(c => c.instanceId !== card.instanceId), energy: (s.player.energy | 0) - _cost },
+    log: [...s.log, { msg: _isCurse
+      ? `⛧ ${card.name} takes root on the field — it will not lift on its own.`
+      : `✨ ${card.name} settles onto the field — its power persists.`, color: 'green',
+      kind: 'play', cardId: card.id, cardType: card.type }],
+  };
+  // An arrival effect fires from the permanent's OWN tile now, rather than from
+  // the hero — it has a real position for the first time.
+  try {
+    if (card.onPlay && card.onPlay.type && typeof applyOnPlayEffect === 'function') {
+      const _anchor = _tok || (App.state.units || []).find(u => u && u.owner === 'player' && u.isHero && u.alive);
+      if (_anchor) App.state = applyOnPlayEffect(App.state, _anchor, card);
+    }
+  } catch (e) { try { console.warn('[enchantment onPlay]', e); } catch (_) {} }
+  try { recordCardPlayed(card); } catch (e) {}
+  App.ui.selectedCardId = null; App.ui.cardDetailId = null;
+  try { if (typeof playSfx === 'function') playSfx('cardPlace'); } catch (e) {}
+  try { if (_tok && typeof _markSummonAnim === 'function') _markSummonAnim(_tok); } catch (e) {}
+  try { playSpellActivationVfx(card, { label: _isCurse ? 'CURSE' : 'ENCHANTMENT' }); } catch (e) {}
+  if (typeof checkPostAction === 'function') checkPostAction(); else renderBattle();
+  return true;
+}
+
 function playSpell(card) {
   const s = App.state;
   // 🔒 Lockdown — a lock-spells counter shut you out of casting for the rest of the turn.
@@ -177005,16 +177277,14 @@ function playSpell(card) {
     const _cost = (typeof getEffectiveCardCost === 'function') ? getEffectiveCardCost(card, s, 'player') : (card.cost | 0);
     if ((s.player.energy | 0) < _cost) { try { showToast('Not enough energy.'); } catch (e) {} return; }
     if (_playerNegateAbort && _playerNegateAbort(card)) return;   // 🚫 answerable like any other play
+    /* ⚠ NO TILE HERE, DELIBERATELY. This branch is the CAST path — reached only
+       when something hands an enchantment to playSpell (a chain, a copy effect)
+       rather than the player laying it down. Such an entry has no pos and no
+       token, and goes on anchoring its auras on the owner's hero exactly as it
+       always did. The player's own play goes through placeEnchantment. */
     App.state = {
       ...s,
-      enchantments: [...(s.enchantments || []), {
-        card: { ...card }, owner: 'player', turnPlayed: s.turnNumber | 0,
-        // Curse bookkeeping travels on the entry, not the card, so a second
-        // copy of the same curse releases on its own schedule.
-        isCurse: _isCurse,
-        curseTarget: _isCurse ? (card.curseTarget || 'enemyHero') : undefined,
-        curseRelease: _isCurse ? (card.curseRelease || { onCondition: 'never' }) : undefined,
-      }],
+      enchantments: [...(s.enchantments || []), _enchantEntry(card, 'player', s.turnNumber)],
       player: { ...s.player, hand: s.player.hand.filter(c => c.instanceId !== card.instanceId), energy: (s.player.energy | 0) - _cost },
       log: [...s.log, { msg: _isCurse
         ? `⛧ ${card.name} settles over the enemy — it will not lift on its own.`
@@ -267284,8 +267554,8 @@ try {
        that works everywhere except the one early path nobody tested. It is
        2KB with no dependencies. -->
 <script src="src/econ/peg.js?v=v121q51"></script>
-<script src="src/battle/effects.js?v=v121v134" defer></script>
-<script src="src/phone/handset.js?v=v121v134" defer></script>
+<script src="src/battle/effects.js?v=v121v136" defer></script>
+<script src="src/phone/handset.js?v=v121v136" defer></script>
 <script src="src/battle/combat.js?v=120m4" defer></script>
 <script src="src/battle/targeting.js?v=121e3hex" defer></script>
 <link rel="stylesheet" href="src/sprites/frames.css?v=120k3">

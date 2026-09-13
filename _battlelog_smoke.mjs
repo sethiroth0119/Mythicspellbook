@@ -10,7 +10,11 @@ const HS = readFileSync('./public/src/phone/handset.js', 'utf8').replace(/\r\n/g
 const HUD = readFileSync('./public/base/hud.jsx', 'utf8').replace(/\r\n/g, '\n');
 
 /* ── 1. the log shows the card ── */
-ok(/function _bcLogRow\(l\) \{/.test(SRC) && /visible\.slice\(-400\)\.reverse\(\)\.map\(l => _bcLogRow\(l\)\)/.test(SRC), 'every row is built from the entry, not interpolated into one string');
+/* ⚠ v121v136 gave _bcLogRow a SECOND ARGUMENT — the name→card index, built once
+   for the whole list because the row function runs up to 400 times per render.
+   The claim this pin makes is unchanged (one row built per entry, never one
+   interpolated string); only the arity moved, so the pin follows it. */
+ok(/function _bcLogRow\(l, idx\) \{/.test(SRC) && /visible\.slice\(-400\)\.reverse\(\)\.map\(l => _bcLogRow\(l, _idx\)\)/.test(SRC), 'every row is built from the entry, not interpolated into one string');
 /* ⚠ THIS PIN USED TO REQUIRE THE FRAME FALLBACK. v121v134 removed it because the
    owner named it as the wrong thing to show — "it is show the old card frame and
    an emoji" where the card art belongs — so the pin now requires its ABSENCE.
@@ -19,7 +23,14 @@ ok(/function _bcLogRow\(l\) \{/.test(SRC) && /visible\.slice\(-400\)\.reverse\(\
    every replay snapshot and sent whole over the socket, where a data: URL on an
    entry would be paid for a thousand times over. */
 {
-  const f = SRC.slice(SRC.indexOf('function _bcLogArt(l) {'), SRC.indexOf('function _bcLogRow(l) {'));
+  /* ⚠ ENDS AT THE v121v136 INDEX, NOT AT _bcLogRow. That function's signature
+     changed, so an indexOf for 'function _bcLogRow(l) {' returned -1 and
+     slice(start, -1) handed this pin almost the whole file — which then found
+     _abilityFrameUrl somewhere else entirely and failed for the wrong reason.
+     A slice end that can silently become -1 is a pin that tests nothing. */
+  const _artEnd = SRC.indexOf('/* 🎴 v121v136 — NAME → CARD');
+  if (_artEnd < 0) { ok(false, 'the _bcLogArt slice end anchor still exists'); }
+  const f = SRC.slice(SRC.indexOf('function _bcLogArt(l) {'), _artEnd);
   ok(/function _bcLogArt\(l\) \{/.test(SRC) && /_abilityArtBest\(l\.cardId, false\)/.test(f),
     'the art is resolved from the card id at RENDER time, never stored on the entry');
   ok(!/_abilityFrameUrl/.test(f) && !/artUrl:/.test(f),
