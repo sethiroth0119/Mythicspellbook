@@ -39940,7 +39940,7 @@ body:has(#pack-opener-frame) #chat-overlay {
   // the console. Bump this every deploy alongside sw.js's CACHE_VERSION. If two
   // machines show different stamps, the older one is on stale code (hard-refresh);
   // if they MATCH but content still differs, it is a DATA/publish issue, not code.
-  window.BUILD_VERSION = 'v121v155';
+  window.BUILD_VERSION = 'v121v156';
   try {
     console.info('%cMythic Spellbook ' + window.BUILD_VERSION + '%c — build check: run  __mg.version',
       'font-weight:700;color:#b48cff', 'color:#7d7499');
@@ -49438,10 +49438,31 @@ function playMoveVfx(move, attacker, target) {
 
 // 🎼 Fire a move's full VFX + staged-audio sequence. Decoupled from the damage
 // math (timed) so it can never change combat outcomes. Called once per move use.
+/* ⚡ How long after the combat cinematic the impact effect lands. The owner's
+   number: "Play the VFX after the Combat Cinematic 1.5 seconds after to make it
+   more engaging." */
+const MOVE_IMPACT_FX_DELAY_MS = 1500;
 function playMoveFx(move, attacker, target) {
   try {
     if (!move || (!move.vfx && !move.audio)) return;
     if (typeof playMoveVfx === 'function') playMoveVfx(move, attacker, target);
+    /* ⚡ THE IMPACT EFFECT, UNDER THE TARGET, 1.5s LATE.
+       ⚠ The anchor is resolved when it FIRES, not now. A second and a half is
+         long enough for the target to move, die, or the board to scroll, and a
+         point captured here would drop the lightning where the unit used to be.
+         If the unit is no longer locatable the effect is simply dropped — a
+         bolt striking empty ground reads as a bug, not as a miss. */
+    try {
+      const _ifx = move.vfx && move.vfx.impactFx;
+      if (_ifx && target && target.id && typeof _playElementFx === 'function') {
+        setTimeout(() => {
+          try {
+            const pt = (typeof _bbAnchorPoint === 'function') ? _bbAnchorPoint(target.id) : null;
+            if (pt) _playElementFx(_ifx, pt);
+          } catch (e2) {}
+        }, MOVE_IMPACT_FX_DELAY_MS);
+      }
+    } catch (e2) {}
     if (!move.audio) return;
     if (move.audio.voiceLine) setTimeout(() => playMoveAudio(move, 'voiceLine'), 60);
     if (move.audio.chargeUp) setTimeout(() => playMoveAudio(move, 'chargeUp'), 110);
@@ -109467,6 +109488,55 @@ const _EFFECT_VFX_CINE = {
      player has no network, which is when a cached game is most likely running. */
   cosmicPunch:    { label: '👊 Cosmic Punch',     file: 'assets/vfx/vfx-cosmic-punch' },
 };
+/* ⚡ THE ELEMENTAL ARSENAL — thirteen procedural impact effects in ONE page,
+   selected by index. They are registered separately from _EFFECT_VFX_CINE
+   because they are ANCHORED: the page positions its own canvas from ?x= / ?y=
+   so the effect's ground plane lands on the target's tile, where the 3D
+   cinematics above are full-screen one-shots. Same file, thirteen entries —
+   the page draws whichever index it is handed. */
+const _ELEMENT_FX_FILE = 'assets/vfx/vfx-elements';
+const _ELEMENT_FX = {
+  fxMissile:   { ix: 0,  label: '🚀 Missile impact' },
+  fxFire:      { ix: 1,  label: '🔥 Fire spell' },
+  fxLightning: { ix: 2,  label: '⚡ Lightning strike' },
+  fxWater:     { ix: 3,  label: '💧 Water burst' },
+  fxLight:     { ix: 4,  label: '🌟 Light beam' },
+  fxTracer:    { ix: 5,  label: '🔫 Bullet tracer' },
+  fxVoid:      { ix: 6,  label: '🕳 Dark void ball' },
+  fxQuake:     { ix: 7,  label: '🪨 Earthquake' },
+  fxPsychic:   { ix: 8,  label: '🧠 Psychic wave' },
+  fxExplosion: { ix: 9,  label: '💥 Explosion' },
+  fxPoison:    { ix: 10, label: '☠️ Poison gas cloud' },
+  fxFireSlice: { ix: 11, label: '🗡🔥 Fire slice' },
+  fxSwordSlice:{ ix: 12, label: '🗡 Sword slice' },
+};
+/* ⚡ Play one of them centred on a SCREEN point. Transparent, click-through,
+   self-removing; the page reports 'elements:complete' and the frame is torn
+   down on that, with a timeout so a page that never reports cannot leak an
+   overlay onto the battlefield forever. */
+function _playElementFx(id, pt) {
+  try {
+    const e = _ELEMENT_FX[id];
+    if (!e || !pt || typeof document === 'undefined') return;
+    const nx = Math.max(0, Math.min(1, pt.x / Math.max(1, innerWidth)));
+    const ny = Math.max(0, Math.min(1, pt.y / Math.max(1, innerHeight)));
+    const wrap = document.createElement('div');
+    wrap.className = 'element-fx-overlay';
+    wrap.style.cssText = 'position:fixed;inset:0;z-index:1480;pointer-events:none;border:0;background:transparent';
+    const ifr = document.createElement('iframe');
+    ifr.src = _ELEMENT_FX_FILE + '?fx=' + e.ix + '&x=' + nx.toFixed(4) + '&y=' + ny.toFixed(4);
+    ifr.setAttribute('allowtransparency', 'true');
+    ifr.setAttribute('scrolling', 'no');
+    ifr.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;border:0;background:transparent;pointer-events:none';
+    wrap.appendChild(ifr);
+    document.body.appendChild(wrap);
+    let gone = false;
+    const kill = () => { if (gone) return; gone = true; try { wrap.remove(); } catch (e2) {} try { removeEventListener('message', onMsg); } catch (e2) {} };
+    const onMsg = (ev) => { try { if (ev.source === ifr.contentWindow && ev.data && ev.data.type === 'elements:complete') kill(); } catch (e2) {} };
+    addEventListener('message', onMsg);
+    setTimeout(kill, 9000);   // the page's own runtime is ~4.6s
+  } catch (e) {}
+}
 /* 🔊 The sound an effect may fire alongside its VFX. Every id in the SFX table
    is offered, because that table IS the Custom Audio Manager's slot list — an
    uploaded clip overrides the built-in asset inside playSfx, so a card authored
@@ -139361,15 +139431,25 @@ try { window.__mg = window.__mg || {}; window.__mg.menuCharStill = _menuCharStil
 function _mdRoster() {
   const out = [];
   try {
-    const cur = (typeof Forge !== 'undefined' && Array.isArray(Forge.mainMenuHeroes)) ? Forge.mainMenuHeroes : [];
-    for (const h of cur) { if (h && h.src) out.push({ name: h.name || 'Hero', src: h.src }); }
-    if (out.length) return out;
-    /* 🧍 v121v142 — CEDRIC IS THE DEFAULT, ahead of the hero-art fallbacks below.
-       An ADMIN-CURATED roster still wins (above): that is an explicit decision
-       someone made in the Character Manager, and silently overriding it would
-       make that screen a lie. Everything else now gets Cedric.
-       ⚠ The hero-art fallbacks are KEPT rather than deleted — they are the last
-         thing between a missing asset and an empty silhouette. */
+    /* 🧍 v121v156 — CEDRIC IS THE MENU CHARACTER. There is no rotation.
+       Owner: "Remove this and stop it from trying to show characters I just
+       want the live image at the start showing."
+
+       ⚠ THE ADMIN-CURATED ROSTER USED TO BE READ HERE AND IS DELIBERATELY GONE.
+         v142 gave it precedence on the reasoning that "an admin-curated roster
+         still wins — that is an explicit decision someone made in the Character
+         Manager, and silently overriding it would make that screen a lie". The
+         owner has since made the opposite decision explicitly. Reading the
+         PUBLISHED list here is also why clearing the Character Manager appeared
+         not to work even after v155 fixed the local persistence: the entry was
+         gone from the working copy and still on screen, because the menu was
+         never looking at the working copy.
+       ⚠ Removed rather than reordered. Left below Cedric it would be dead code
+         that still reads as a feature, and the next person would "fix" the
+         order back. The Character Manager still edits and publishes its list;
+         it simply no longer decides what the main menu shows.
+       ⚠ The hero-art fallbacks below STAY — they are the last thing between a
+         missing Cedric asset and an empty silhouette. */
     try { return [_cedricMenuEntry()]; } catch (e) {}
     const defs = (typeof getAllHeroes === 'function') ? getAllHeroes()
       : (typeof STARTER_HEROES !== 'undefined' ? STARTER_HEROES : []);
@@ -157354,6 +157434,12 @@ function renderMoveEditor() {
             <div class="small-text ink-dim" style="margin:0.2rem 0 0.4rem">Give signature / Ace moves cinematic punch. <strong>VFX</strong> shakes &amp; zooms the battlefield on cast. <strong>Audio</strong> fires at each beat — type a built-in sound name (autocomplete) or a file path like <code>assets/Audio/earthquake.wav</code>.</div>
           </div>
           ${dataList}
+          <div class="editor-field full"><label>⚡ Impact VFX <span class="ink-dim" style="font-weight:400">— plays UNDER the target, 1.5s after the combat cinematic</span></label>
+            <select id="mv-vfx-impact">
+              <option value="">— None —</option>
+              ${Object.keys(_ELEMENT_FX).map(k => '<option value="' + k + '"' + ((vfx.impactFx === k) ? ' selected' : '') + '>' + escapeHtml(_ELEMENT_FX[k].label) + '</option>').join('')}
+            </select>
+          </div>
           <div class="editor-field"><label>📷 Camera Shake</label><select id="mv-vfx-shake">
             ${['none', 'light', 'heavy'].map(o => `<option value="${o}" ${(vfx.cameraShake || 'none') === o ? 'selected' : ''}>${o[0].toUpperCase() + o.slice(1)}</option>`).join('')}
           </select></div>
@@ -157682,8 +157768,14 @@ function bindMoveEditor() {
       const shake = _g('mv-vfx-shake') || 'none';
       const screen = _g('mv-vfx-screen') || 'none';
       const zoom = !!(document.getElementById('mv-vfx-zoom') && document.getElementById('mv-vfx-zoom').checked);
-      if (shake !== 'none' || screen !== 'none' || zoom) move.vfx = { cameraShake: shake, screenFx: screen, zoom: zoom };
-      else delete move.vfx;
+      /* ⚡ the impact effect rides on move.vfx with the camera settings rather
+         than inventing a second field — and it alone is enough to keep the
+         object, or picking ONLY an impact effect would save nothing. */
+      const impactFx = _g('mv-vfx-impact') || '';
+      if (shake !== 'none' || screen !== 'none' || zoom || impactFx) {
+        move.vfx = { cameraShake: shake, screenFx: screen, zoom: zoom };
+        if (impactFx) move.vfx.impactFx = impactFx;
+      } else delete move.vfx;
       const stages = ['onCast', 'chargeUp', 'impact', 'hitConfirm', 'killBlow', 'afterEffect', 'voiceLine'];
       const audio = {};
       stages.forEach(st => { const val = (_g('mv-audio-' + st) || '').trim(); if (val) audio[st] = val; });
@@ -270212,8 +270304,8 @@ try {
        that works everywhere except the one early path nobody tested. It is
        2KB with no dependencies. -->
 <script src="src/econ/peg.js?v=v121q51"></script>
-<script src="src/battle/effects.js?v=v121v155" defer></script>
-<script src="src/phone/handset.js?v=v121v155" defer></script>
+<script src="src/battle/effects.js?v=v121v156" defer></script>
+<script src="src/phone/handset.js?v=v121v156" defer></script>
 <script src="src/battle/combat.js?v=120m4" defer></script>
 <script src="src/battle/targeting.js?v=121e3hex" defer></script>
 <link rel="stylesheet" href="src/sprites/frames.css?v=120k3">

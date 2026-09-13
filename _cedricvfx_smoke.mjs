@@ -24,15 +24,35 @@ ok(/const CEDRIC_MENU_STILL = '\/assets\/artwork\/ui\/cedric-still\.webp';/.test
 ok(/CEDRIC_MENU_ANIM\s*=\s*'\//.test(SRC) && /CEDRIC_MENU_STILL\s*=\s*'\//.test(SRC),
   'BOTH PATHS ARE ROOT-ABSOLUTE — the menu runs in an iframe at main-menu/, so a relative "assets/…" would resolve to main-menu/assets/… and 404');
 {
-  const f = SRC.slice(SRC.indexOf('function _mdRoster() {'), SRC.indexOf('function _mdRoster() {') + 1400);
-  ok(/if \(out\.length\) return out;/.test(f),
-    'an ADMIN-CURATED roster still wins — that is an explicit decision made in the Character Manager');
+  /* ⚠ Anchored on the NEXT function rather than a byte count. A fixed 1400-char
+     window broke the moment the block comment above the Cedric return grew,
+     which is a fragile way to fail: the code was right and the slice was short. */
+  const _lo = SRC.indexOf('function _mdRoster() {');
+  const _hi = SRC.indexOf('\nfunction ', _lo + 10);
+  ok(_lo > 0 && _hi > _lo, 'the _mdRoster body is anchored end to end');
+  const f = SRC.slice(_lo, _hi);
+  /* ⚠ v121v156 — THESE PINS WERE INVERTED, DELIBERATELY, ON THE OWNER'S CALL.
+     v142 gave the admin-curated roster precedence and this suite pinned that,
+     on the reasoning that "silently overriding it would make that screen a
+     lie". The owner asked twice for the opposite — "Remove this and stop it
+     from trying to show characters I just want the live image at the start
+     showing" — and reading the PUBLISHED roster here is exactly why clearing
+     the Character Manager appeared not to work even after v155 fixed the local
+     persistence: the entry was gone from the working copy and still on screen,
+     because the menu was never looking at the working copy.
+
+     The check did not get weaker. It now asserts the STRONGER property: the
+     menu has ONE source, so nothing can put a character back on it. */
+  ok(!/if \(out\.length\) return out;/.test(f),
+    'THE ADMIN-CURATED ROSTER NO LONGER DRIVES THE MENU — it was read first, which is why a cleared Character Manager still showed a character');
   ok(/try \{ return \[_cedricMenuEntry\(\)\]; \} catch \(e\) \{\}/.test(f),
-    'CEDRIC IS THE DEFAULT, ahead of the hero-art fallbacks');
-  ok(/The hero-art fallbacks are KEPT rather than deleted/.test(f),
-    '…and the hero fallbacks survive as the last thing between a missing asset and an empty silhouette');
-  const adminAt = f.indexOf('if (out.length) return out;'), cedAt = f.indexOf('_cedricMenuEntry()');
-  ok(adminAt > 0 && cedAt > adminAt, '…in that order', 'admin@' + adminAt + ' cedric@' + cedAt);
+    'Cedric IS the menu character — one source, no rotation');
+  ok(/THE ADMIN-CURATED ROSTER USED TO BE READ HERE AND IS DELIBERATELY GONE/.test(f),
+    '…and the removal is explained in place, so nobody restores the precedence as a "fix"');
+  ok(/The hero-art fallbacks below STAY/.test(f),
+    '…while the hero fallbacks survive as the last thing between a missing asset and an empty silhouette');
+  ok(/Removed rather than reordered/.test(f),
+    'removed rather than reordered — left below Cedric it would be dead code that still reads as a feature');
 }
 
 /* ── the still-frame fallback ─────────────────────────────────────────────── */

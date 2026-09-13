@@ -2424,3 +2424,84 @@ so a card that names its own cinematic still wins.
 Suites: `_fuelexploit_smoke.mjs` (56 checks, runs the arithmetic on the eight real
 measured marks), `_citname_smoke.mjs` (repaired to lift the shipped predicate),
 `_cinemerge_smoke.mjs`, `_cedricsize_smoke.mjs`.
+
+---
+
+## v121v156 — ⚡ the Elemental Arsenal on moves, and the menu stops rotating characters
+
+### 🧍 The menu shows the live image. Full stop.
+
+> Owner: *"Remove this and stop it from trying to show characters I just want the
+> live image at the start showing."*
+
+v155 fixed the **local** half — an admin clearing the Character Manager now has
+that clear persist. But the menu never read the local copy alone: `_mdRoster`
+returned the admin-curated roster **first**, and "Character 16" was still in the
+**published** set. So the entry was gone from the working copy and still on the
+screen — which is exactly what was being reported.
+
+⚠ That precedence was a v142 decision of mine (*"an admin-curated roster still
+wins… silently overriding it would make that screen a lie"*). The owner has made
+the opposite decision explicitly, twice.
+
+⚠ **Removed, not reordered.** Left below Cedric it would be dead code that still
+reads as a feature, and the next person would "fix" the order back. The Character
+Manager still edits and publishes its list; it simply no longer decides what the
+main menu shows. The hero-art fallbacks stay — they are the last thing between a
+missing Cedric asset and an empty silhouette.
+
+### ⚡ The Elemental Arsenal, on moves, under the target, 1.5s late
+
+> Owner: *"…so when players select a unit or hero move to attack the VFX play
+> Under the target… the Lighting strike VFX should look like its hitting the
+> attack target just as like missle. Play the VFX after the Combat Cinematic 1.5
+> seconds after."*
+
+**Not one effect function was touched**, and that is the point. All thirteen draw
+into a **fixed 1000 × 562.5 logical space**, and the page maps that whole box onto
+its canvas:
+
+```
+g.setTransform(canvas.width/1000, 0, 0, canvas.height/562.5, 0, 0)
+```
+
+Every effect is composed around `x=500` with its ground plane at `y=380` — so that
+point is **always** 50% across and 67.6% down the canvas, at any size. "Play it
+under the target" is therefore achieved by **positioning and sizing the canvas
+element**, and nothing else. Verified live at 1280×800: requested 640,496 → ground
+plane landed at 640,496. If those effects are ever revised, the placement keeps
+working.
+
+⚠ **Embed mode keeps the demo DOM.** The effect code reads `$('ground')` and
+`$('loop')` every frame and would throw on the first render without them, so the
+chrome is hidden by CSS rather than stripped. The **ground plate is forced off** —
+it is a big opaque ellipse meant to give a preview a floor, and over a battlefield
+it blacks out the board. A visit with no `?fx=` is left completely untouched, so
+the artist's own preview still works.
+
+⚠ **The anchor is resolved when the effect fires, not when it is scheduled.** 1.5
+seconds is long enough for the target to move, die, or the board to scroll, and a
+point captured at schedule time would drop the lightning where the unit *used* to
+be. No anchor means no effect — a bolt striking empty ground reads as a bug, not
+as a miss.
+
+It hangs off `playMoveFx`, which the file already documents as *"decoupled from
+the damage math (timed) so it can never change combat outcomes"* — exactly the
+property a delayed cosmetic needs. The id rides on `move.vfx` beside the camera
+settings, and ⚠ `impactFx` alone keeps that object: without it in the save
+condition, picking *only* an impact effect would have saved nothing.
+
+Thirteen entries, one page, selected by index — Lightning is 2 and Missile is 0,
+the owner's two worked examples. Authored per move as **⚡ Impact VFX**.
+
+### A suite pin inverted, and a fragile slice fixed
+
+`_cedricvfx_smoke` pinned the roster precedence and failed correctly. Inverted
+rather than deleted: it now asserts the **stronger** property — the menu has one
+source, so nothing can put a character back on it. It also used a fixed
+1400-character slice window that broke the moment the comment above the return
+grew; the code was right and the slice was short. Now anchored on the next
+function.
+
+Suite: `_elemfx_smoke.mjs` (39 checks; runs the placement arithmetic for real at
+three viewports and pins the 1000×562.5 contract the whole integration rests on).
