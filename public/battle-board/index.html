@@ -218,7 +218,7 @@ body{ font-family:"EB Garamond",serif; color:#e9dab2; user-select:none; }
 <div class="hint" id="hint">click a card, then a tile — or click a unit and a tile to move it</div>
 
 
-<script>window.BB_BUILD='v121g2-targeting';
+<script>window.BB_BUILD='v121v149-aim';
 "use strict";
 /* 🔌 BBX — THE STAGE HOOK SEAM.
    The board page is a classic (non-module) script, so it cannot `import`.
@@ -9328,8 +9328,17 @@ function drawTeleArc(t){
 function drawOneArc(a, t, weight){
   if (!a || !a.from || !a.to) return;
   const W = (weight == null) ? 1 : weight;
+  /* 🏹 v121v149 — two more sides, for the AIMING arrow.
+       ok  the hovered tile or unit is a LEGAL target / a legal placement
+       no  it is not
+     Both reuse colours the board already assigns those meanings elsewhere
+     (PAINT.place green, the attack red), so the arrow agrees with the tiles
+     underneath it instead of introducing a third palette. Any other value
+     still falls through to the original mine/foe pair. */
+  const aimOk   = (a.side === 'ok');
+  const aimDeny = (a.side === 'no');
   const mine = a.side !== 'foe';
-  const col  = mine ? '#7fd8ff' : '#ff5a4a';
+  const col  = aimOk ? '#7fe89f' : aimDeny ? '#ff5a4a' : (mine ? '#7fd8ff' : '#ff5a4a');
   const A = gw(a.from.x, a.from.z, tileElev(a.from.x, a.from.z) + 0.52);
   const B = gw(a.to.x,   a.to.z,   tileElev(a.to.x,   a.to.z)   + 0.52);
   const span = Math.hypot(B.x-A.x, B.z-A.z);
@@ -9351,8 +9360,12 @@ function drawOneArc(a, t, weight){
   ctx.strokeStyle = rgba('#04080e', 0.62 * W); ctx.lineWidth = w + 4; ctx.stroke();
   ctx.strokeStyle = rgba(col, 0.34 * W);       ctx.lineWidth = w * 2.4; ctx.stroke();
   ctx.strokeStyle = rgba(col, 0.98 * W);       ctx.lineWidth = w;       ctx.stroke();
-  /* travelling charge — the arc reads as intent, not as a static rope */
-  for (let k=0;k<3;k++){
+  /* travelling charge — the arc reads as intent, not as a static rope.
+     🏹 v121v149 — and that is exactly why a DENIED arrow does not get it. Flow
+     toward the target reads as "this is happening"; on a tile the click is
+     about to refuse, the animation would be the board contradicting the rule
+     it is trying to state. Denied stays a static line with a head. */
+  for (let k=0;k<3 && !aimDeny;k++){
     const u = ((t*0.85 + k/3) % 1) * N;
     const i = Math.min(N-1, u|0), f = u - i;
     const px = S[i].x + (S[i+1].x - S[i].x)*f, py = S[i].y + (S[i+1].y - S[i].y)*f;

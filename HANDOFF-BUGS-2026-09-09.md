@@ -1851,3 +1851,89 @@ that breaks a victory screen.
 Suite: `_luck_smoke.mjs` (44 checks; runs the re-weighting, the price curve and
 the clamp for real, including that common is never inflated and that a mythic
 stays rare even at max Luck).
+
+---
+
+## v121v149 — 🏹 the aiming arrow: who you are pointing at, and whether you may
+
+> Owner: *"add the arrow for when a player is targeting to see who the player is
+> hovering over or a Tile they are hovering over. Add the arrow for when a
+> player is placing a unit or enchantment have the arrow green when it can be
+> place in a tile and red when it cannot."*
+
+Both halves are one arrow:
+
+* **targeting** — an arc from the actor to whatever the pointer is over, unit or
+  bare tile;
+* **placement** — the same arc, **green** when the hovered tile will accept the
+  card and **red** when it will not.
+
+### The load-bearing claim is not that an arrow is drawn
+
+It is that **green and red can never disagree with the click gate.**
+
+The telegraph's own comments are emphatic on this point: it *must not become a
+second opinion about the rules*. Every arrow the attack fan draws comes from the
+very array `renderBattle` handed the click gate that same render, precisely so
+the board can never offer an arrow the click then refuses — the
+UI-lies-about-the-rules bug those comments warn about twice.
+
+The aiming arrow obeys the same constraint. `renderBattle` already builds every
+legal set for every aiming mode, so it now publishes them as-is under
+`App._bbPaint.aim`:
+
+| mode | set |
+|---|---|
+| a unit / wall / trap / enchantment / curse / location played from hand | `validPlacement` (already carries the v135 enchantment branch) |
+| consumable, skill, **and** Polycreation placement | `consumableTargets` — they already share one pipeline |
+| the queued effect-target step | `_tgtSet` |
+| sacrifice targeting | `_sacSet` |
+
+`_bbStagePushTele` then only asks *"is the hovered tile in that list"*. Green
+means the click will accept it and red means it will refuse it **by
+construction**, not by two pieces of code agreeing.
+
+### Where the arrow starts
+
+A queued effect arrow starts at its **caster** — the queue entry already carries
+`casterId`. Everything else starts at the hero, who is the actor holding the card
+or the item. ⚠ With no hero alive there is no honest origin, so **no arrow is
+drawn**: an arrow from nowhere is worse than none.
+
+### Two smaller calls
+
+⚠ **The colours are the board's own existing vocabulary, not new ones.** `ok` is
+`#7fe89f`, the exact green `PAINT.place` already strokes legal deploy tiles with;
+`no` is `#ff5a4a`, the attack red. So a green arrow lands on a green tile and
+reads as one statement rather than introducing a third palette. Anything that is
+not an aim side still falls through to the original `mine`/`foe` pair, so the
+attack telegraph is untouched.
+
+⚠ **A denied arrow loses the travelling charge.** Those dots read as intent
+flowing toward the target; on a tile the click is about to refuse, the animation
+would be the picture contradicting the rule it is trying to state. Denied is a
+static red line with a head — it points, it does not promise.
+
+### It owns the telegraph while it is up
+
+Aiming is a modal question, so the arrow clears the move ribbon and the attack
+fan. Two routes drawn at once is the board telling two stories — the exact
+failure the AI-trail branch above it is an `else if` to avoid. It needs a live
+hover, so pointer-leave (the stage sends `x < 0`) removes it on the very next
+push: no timer, no stale arrow left pointing at nothing.
+
+`BB_VER` and `BB_BUILD` both move to `v121v149-aim`, because the board document
+changed and that query string is the iframe's only cache-buster.
+
+### A stale check, fixed rather than re-baselined
+
+`_ritualart_smoke` pinned `BB_VER` to the literal range `v121v2[6-9]-`, so it
+passed for exactly four builds and was **guaranteed** to fail the next time the
+board legitimately moved — which is what happened here. The baseline was not
+raised. The window was replaced with the claim it was actually making: `BB_VER`
+equals the board's own `BB_BUILD`. That pair is what keeps a client off a stale
+board; the four-build range never checked it at all.
+
+Suite: `_aimarrow_smoke.mjs` (runs the legality decision for real, including that
+an empty legal set makes every tile red — a mode with nothing playable never
+shows green).

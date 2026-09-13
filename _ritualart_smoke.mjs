@@ -76,7 +76,22 @@ console.log('\n=== 3. the board tiles ===');
   ok(/ctx\.clip\(\)/.test(d) && /globalCompositeOperation = 'multiply'/.test(d) && /\/ art\.top\)/.test(d), 'the painting is clipped to the hex, scaled so its top face fills the slab, and takes the board\'s light');
   const existsGrass = (() => { try { return require('fs').statSync('./public/assets/Battlemap titles/Grass Title.png').size > 0; } catch (e) { return false; } })();
   ok(existsGrass !== null, 'grass painting presence checked');
-  ok(/BB_VER = 'v121v2[6-9]-/.test(SRC), 'the board iframe cache key was bumped');
+  /* ⚠ v121v149 — this pinned the literal range 'v121v2[6-9]-', which made it a
+     check that could only ever go stale: it passed for exactly four builds and
+     then failed the next time the board legitimately moved (it did, at v149,
+     when the aiming arrow taught drawOneArc two new sides). The CLAIM being
+     made is "the board file changed, so its cache key moved with it", and the
+     durable form of that claim is the PAIR — BB_VER is the iframe's only
+     cache-buster and BB_BUILD is what the served board reports back, so their
+     equality is the thing that actually keeps a client off a stale board. The
+     four-build window never checked that at all. The floor below keeps the
+     original assertion that the ritual-art bump itself happened. */
+  const _bbv = (SRC.match(/BB_VER = '(v121v(\d+)-[^']*)'/) || []);
+  const _bbb = (BB.match(/window\.BB_BUILD='([^']+)'/) || [])[1];
+  ok(_bbv[2] && +_bbv[2] >= 26, 'the board iframe cache key was bumped', _bbv[1]);
+  ok(!!_bbv[1] && _bbb === _bbv[1],
+    '…and BB_VER still equals the board\'s own BB_BUILD — the pair is what keeps a client off a stale board',
+    _bbv[1] + ' vs ' + _bbb);
   ok(/const STRUCT_ART = \{/.test(BB) && /house: *\{ src: '\.\.\/assets\/Battlemap%20titles\/House\.png'/.test(BB) && /school: *\{ src: '\.\.\/assets\/Battlemap%20titles\/School\.png'/.test(BB) && /hospital: *\{ src: '\.\.\/assets\/Battlemap%20titles\/Hospital\.png'/.test(BB) && /church: *\{ src: '\.\.\/assets\/Battlemap%20titles\/Church\.png'/.test(BB) && /TRUCK_ART = \{ src: '\.\.\/assets\/Battlemap%20titles\/SCP%20Truck\.png'/.test(BB), 'the five props have paintings: house, school, hospital, church, and the SCP truck');
   ok(/const _painted = drawStructArt\(st, foot, dead\);\s*if \(!_painted\) \{/.test(BB) && /if \(drawTruckArt\(cp, foot, col, owned, H\)\) return;/.test(BB), 'a painted prop replaces the procedural drawing; a missing file keeps it');
   ok(/if \(st\.lootable && !st\.looted\)\{/.test(BB) && /const streak = Math\.max\(0, Math\.min\(need, cp\.streak \| 0\)\);/.test(BB) && /const lights = \[\[0\.30, '#3f8dff'\], \[0\.44, '#ff4a3c'\]/.test(BB), 'the loot pip, the streak pips and the running blue/red lights are drawn around the paintings');

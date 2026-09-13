@@ -39507,7 +39507,7 @@ body:has(#pack-opener-frame) #chat-overlay {
   // the console. Bump this every deploy alongside sw.js's CACHE_VERSION. If two
   // machines show different stamps, the older one is on stale code (hard-refresh);
   // if they MATCH but content still differs, it is a DATA/publish issue, not code.
-  window.BUILD_VERSION = 'v121v148';
+  window.BUILD_VERSION = 'v121v149';
   try {
     console.info('%cMythic Spellbook ' + window.BUILD_VERSION + '%c — build check: run  __mg.version',
       'font-weight:700;color:#b48cff', 'color:#7d7499');
@@ -125385,7 +125385,7 @@ const _BME_TORDER = Object.keys(_BME_TERRAIN);
 //   v121e3-hex: the hex battlefield merge. The board is a THIRD document now
 //           (neither side's file survived whole), so it takes a NEW string —
 //           reusing either branch's literal would serve one of them stale.
-const BB_VER = 'v121v28-cpai';
+const BB_VER = 'v121v149-aim';
 // terrain key → board tile type. Anything unlisted is plain ground.
 const BB_TERRAIN_TYPE = { water:'hazard', lava:'hazard', blight:'hazard' };
 // editor prop key → the board's billboard prop vocabulary
@@ -127394,6 +127394,33 @@ function _bbStagePushTele() {
       // can stand" and "what threatens me" must never read as the same thing.
       if (App.ui && App.ui.actionMode === 'move' && sel && sel.owner === 'player') {
         payload.threat = _bbTeleThreat(s);
+      }
+      /* 🏹 v121v149 — THE AIMING ARROW, and it OWNS the telegraph while it is up.
+         ═══════════════════════════════════════════════════════════════════════
+         Written last, and it clears what came before it, because aiming is a
+         modal question: the player has a card or an effect in hand and the only
+         thing the board should be saying is "this one, and yes or no". A move
+         ribbon or an eight-arrow attack fan drawn underneath it would be the
+         board telling two stories at once — the exact failure the AI-trail
+         branch above is an else-if to avoid.
+
+         The legality test is a lookup in the set renderBattle handed the CLICK
+         GATE this same render, not a second opinion about the rules. So green
+         means the click will accept the tile and red means it will refuse it,
+         by construction rather than by agreement.
+
+         ⚠ Only fires with a live hover. The stage sends x < 0 on pointer-leave,
+           App._bbHover goes null, and the arrow disappears on the very next
+           push — no timer, no stale arrow left pointing at nothing. */
+      const aim = p.aim;
+      if (aim && aim.src && h && h.x >= 0) {
+        const ax = h.x | 0, az = h.z | 0;
+        const legal = (aim.tiles || []).some(t => t && (t.x | 0) === ax && (t.y | 0) === az);
+        payload.arc  = { from: { x: aim.src.x | 0, z: aim.src.z | 0 },
+                         to:   { x: ax, z: az },
+                         side: legal ? 'ok' : 'no' };
+        payload.arcs = [];
+        payload.path = []; payload.dest = null;
       }
     }
   } catch (e) {}
@@ -170038,7 +170065,48 @@ function renderBoard() {
   // unit highlighted nothing. Placed here — immediately before the cell loop
   // that reads the same arrays — it can never drift out of step again.
   try {
+    /* 🏹 v121v149 — THE AIMING ARROW's set and origin.
+       Owner: an arrow while targeting, and a green / red arrow while placing.
+       Built from the sets this render ALREADY handed the click gate, never
+       re-derived: _bbStagePushTele only asks whether the hovered tile is in
+       this list, so a green arrow cannot appear on a tile the click refuses
+       and a red one cannot appear on a tile it accepts.
+       ⚠ Placement wins when both are somehow live: a card in hand is the more
+         specific intent, and it is the case with the explicit colour rule. */
+    let _aim = null;
+    try {
+      const _heroU = (s.units || []).find(u => u && u.owner === 'player' && u.isHero && u.alive);
+      const _heroP = (_heroU && _heroU.pos) ? { x: _heroU.pos.x, z: _heroU.pos.y } : null;
+      if (moveCard && validPlacement.length) {
+        // green / red — the owner's explicit case. The set is validPlacement
+        // itself, so an enchantment aims at exactly the tiles v135 lit up.
+        if (_heroP) _aim = { kind: 'place', src: _heroP, tiles: validPlacement.slice() };
+      } else {
+        const _tiles = [];
+        // the queued effect step, whose own caster is the honest origin
+        let _src = _heroP;
+        if (_tgtSet && _tgtSet.size) {
+          for (const u of (s.units || [])) {
+            if (u && u.alive && u.pos && _tgtSet.has(u.id)) _tiles.push({ x: u.pos.x, y: u.pos.y });
+          }
+          try {
+            const q = App.ui.targeting.queue[App.ui.targeting.idx];
+            const c = q && (s.units || []).find(u => u && u.id === q.casterId && u.alive && u.pos);
+            if (c) _src = { x: c.pos.x, z: c.pos.y };
+          } catch (e2) {}
+        }
+        if (_sacSet && _sacSet.size) {
+          for (const u of (s.units || [])) {
+            if (u && u.alive && u.pos && _sacSet.has(u.id)) _tiles.push({ x: u.pos.x, y: u.pos.y });
+          }
+        }
+        // consumable, skill and Polycreation placement all land in this one list
+        for (const t of consumableTargets) if (t) _tiles.push({ x: t.x, y: t.y });
+        if (_tiles.length && _src) _aim = { kind: 'target', src: _src, tiles: _tiles };
+      }
+    } catch (e) { _aim = null; }
     App._bbPaint = { move: validMoves, attack: validAttacks, place: validPlacement, swap: validSwaps,
+                     aim: _aim,
                      sel: (sel && sel.pos) ? { x: sel.pos.x, z: sel.pos.y } : null };
   } catch (e) {}
   for (let y = 0; y < BOARD_H; y++) {
@@ -268824,8 +268892,8 @@ try {
        that works everywhere except the one early path nobody tested. It is
        2KB with no dependencies. -->
 <script src="src/econ/peg.js?v=v121q51"></script>
-<script src="src/battle/effects.js?v=v121v148" defer></script>
-<script src="src/phone/handset.js?v=v121v148" defer></script>
+<script src="src/battle/effects.js?v=v121v149" defer></script>
+<script src="src/phone/handset.js?v=v121v149" defer></script>
 <script src="src/battle/combat.js?v=120m4" defer></script>
 <script src="src/battle/targeting.js?v=121e3hex" defer></script>
 <link rel="stylesheet" href="src/sprites/frames.css?v=120k3">
