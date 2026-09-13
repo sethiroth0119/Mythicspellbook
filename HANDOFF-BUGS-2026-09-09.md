@@ -2130,3 +2130,103 @@ unchanged.
 
 Suite: `_polyseize_smoke.mjs` (42 checks; runs the usability decision, the alias
 and the diversion for real).
+
+---
+
+## v121v152 — 🎬 the three rebuilt cinematics, integrated (+ Cedric actually breathes)
+
+> Owner: *"Replace the cinematic animation for these animations we already have
+> with these new one and make sure card art is showing before the end result
+> where it shows the Sprite or unit Character Box Portrait."*
+> and, on the menu: *"Switch the still photo with the breathing Cedric we have here."*
+
+Three separate sessions each rebuilt one cinematic — Kalon (cosmic portal),
+Polycreation fusion, Archon (ritual) — each on its own branch cut from
+**v121v118**, each bumping **the same** version knobs, none deployed. This repo
+was at v151. Most of the work here is the things three parallel branches cannot
+know about each other.
+
+| taken from | what |
+|---|---|
+| `claude/practical-rubin-su6622` | `public/vfx/kalon.html` — rift → pull → the frame flipping at the camera → burst → reveal |
+| `claude/sweet-noether-r2tleu` | `public/vfx/archon.html` — tribute card frames → ritual burn → portal → fall → land |
+| `claude/wonderful-gauss-3fmz6c` | the `fcx-` fusion cinematic inside `index.html` (CSS block + six functions) |
+
+### The shared stamp — the trap all three handoffs led with
+
+Each `vfx/*.html` carries a `VFX_BUILD` that must **exactly** equal
+`_MECH_VFX_STAMP` in `index.html`. Presence is not enough: a cached page from an
+older deploy still carries *a* stamp. On a mismatch the host reloads once and
+then **hides the overlay entirely**, which reads as *"the cinematic silently
+stopped working"*.
+
+The branches had **kalon at `v120t5`** and **archon at `v120t6`** against a repo
+at **`v120t3`**. Taking either one alone would have silently killed the other
+two. All four (three pages + the host) now read **`v120t7`**.
+
+### Two things neither original session could have seen
+
+⚠ **The service worker would not have parsed.** The cherry-pick left **two**
+`const CACHE_VERSION` declarations in `sw.js` — a redeclaration, a SyntaxError,
+and no service worker at all. Nothing upstream catches this: the `htmlsyntax`
+gate does not read `sw.js`. `_cinemerge_smoke` now asserts exactly one.
+
+⚠ **Fusion would have played two cinematics back to back.** The rebuilt overlay
+is mounted from the poly-confirm handler and runs 6.2s; when it finishes it calls
+`_resolvePolycreationFusion`, whose **tail** fires the old `vfx/fusion.html` for
+another 7s — **13.2 seconds** of cinematic for one summon. The rebuild was
+authored from the confirm side; the resolver's tail predates it by many builds.
+
+Owner's call: the new cinematic owns the sequence (card art through the fusion,
+then the unit reads as its sprite on the board). ⚠ The old overlay is
+**suppressed, not deleted** — the mount sets a flag and the resolver **consumes**
+it, so a fusion resolved by some path that never mounted the new overlay still
+gets a cinematic rather than a silent summon.
+
+### Card art before the body
+
+Already true in all three by construction, and now pinned so it cannot quietly
+regress:
+
+* **Kalon** is sent the base **card face** and flips *that* into the new form —
+  the same `CK.card` call x-squashed, which is why it reads as a becoming rather
+  than a cross-fade;
+* **Archon** is sent the tribute **card faces**, which fan in and burn before the
+  Archon falls through the portal;
+* **Fusion** draws every frame — materials *and* the result — from `_polyArtSrc`.
+
+⚠ The body slot is never `null`: a null key is **skipped** by the page's `set()`,
+which would leave its placeholder mech on screen. It falls back to the card face,
+because a picture of the right unit beats the wrong unit.
+
+### 🧍 Cedric
+
+The loop is now the **jacket-only** one the owner pointed at — re-encoded to
+640×960 at 9fps, **3.6MB**, *smaller* than the 6.0MB whole-body loop it replaces.
+Far fewer pixels change per frame, so it compresses better and reads calmer; 9fps
+is not a compromise when the motion is a slow wind drift.
+
+⚠ **The reason the still was winning was a guess.** `_menuCharStill` had three
+branches; two are requests from a person (`prefers-reduced-motion`, the game's own
+`gfxQuality`) and one **inferred** from `hardwareConcurrency <= 4 ||
+deviceMemory <= 4`. That third one was firing: a capable laptop reports those
+numbers and silently lost the feature, with nothing on screen to say why. It is
+removed. The header comment — which still explained why that probe was copied
+from `combat.js` — was rewritten, because a comment describing deleted code is
+worse than none: the next reader goes looking, and helpfully puts it back.
+
+`_cedricvfx_smoke`'s pin was **inverted, not deleted**. It now asserts the
+stronger rule: the still is served only when a person asked for less.
+
+### Not done
+
+* **None of the three has run in a real battle.** Every frame in the three
+  handoffs is the page driven standalone with stand-in art. The gates and the
+  edge check pass; a live Kalon transform / Archon summon / fusion is the real
+  test.
+* The fusion **backdrop artwork** is still missing — drop a file at
+  `public/assets/background/Backgrounds/fusion-cine-bg.png` and it picks up with
+  no code change. The shipped gradient fallback carries the layer until then.
+
+Suite: `_cinemerge_smoke.mjs` (43 checks; runs the host's stamp rule for real,
+including that presence is not equality).

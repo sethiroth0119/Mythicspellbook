@@ -44,10 +44,24 @@ ok(/CEDRIC_MENU_ANIM\s*=\s*'\//.test(SRC) && /CEDRIC_MENU_STILL\s*=\s*'\//.test(
   ok(/prefers-reduced-motion: reduce/.test(f), 'reduced motion gets the still');
   ok(/getSettings\(\)\.gfxQuality/.test(f) && /if \(q === 'low'\) return true;/.test(f),
     "…so does the player's own graphics setting, which _memShedGraphics latches to low under memory pressure");
-  ok(/nav\.hardwareConcurrency <= 4/.test(f) && /nav\.deviceMemory <= 4/.test(f),
-    '…and a weak device, by the same test combat.js already uses');
-  ok(/THE PROBE IS COPIED FROM combat\.js's lowPower\(\), deliberately/.test(f),
-    'the reason it is copied rather than reinvented is written down — two differently-shaped opinions about one machine is how "why does it animate on MY laptop" becomes unanswerable');
+  /* ⚠ v121v152 — THIS PIN WAS INVERTED, DELIBERATELY, ON THE OWNER'S CALL.
+     It used to REQUIRE the combat.js hardware probe (4 cores / 4GB → still).
+     The owner was looking at the still on their own machine and asked for the
+     breathing Cedric: that branch was the only test here that GUESSED, and it
+     was the one firing — a capable laptop reports those numbers and silently
+     lost the animation, with nothing on screen to say why or any way to change
+     it. The cost premise behind it was a 6MB whole-body loop; the loop is now
+     the jacket-only one at 3.6MB.
+
+     The check did not get weaker. It now asserts the STRONGER rule: the still
+     is served only when a PERSON asked for less — never because we inferred
+     something about their hardware. The two branches above are that rule. */
+  ok(!/hardwareConcurrency/.test(f) && !/deviceMemory/.test(f),
+    'THE HARDWARE SNIFF IS GONE — no silent downgrade based on a guess about the reader');
+  ok(/A THIRD BRANCH USED TO LIVE HERE and its removal is the point/.test(f),
+    '…and the removal is explained in place, so nobody helpfully puts the probe back');
+  ok(/Do not reinstate it/.test(f),
+    '…including what to reach for instead: the asset, not a silent guess');
 }
 ok(/THE DECISION IS MADE IN THE PARENT, not the iframe/.test(SRC),
   'the parent decides and hands the iframe a finished src — _mmData never sends the graphics setting across, so the iframe could not decide correctly even if asked');
