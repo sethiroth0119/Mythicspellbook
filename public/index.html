@@ -39386,6 +39386,55 @@ body:has(#pack-opener-frame) #chat-overlay {
     transition: opacity 480ms ease;
   }
   #boot-splash.fade-out { opacity: 0; pointer-events: none; }
+
+  /* ⚔ BATTLE LOADING SCREEN (v121v139). Same shape as the boot splash above —
+     fixed cover, weighted progress bar, fade-out — because the player already
+     knows what that means and a second visual language for "wait" is a cost with
+     no benefit. The art ships as AVIF/WebP with a JPEG fallback (3.5MB source →
+     ~260-350KB): a screen whose whole job is to cover startup lag must not be a
+     download that causes it. */
+  #battle-loading {
+    position: fixed; inset: 0; z-index: 99998;
+    background-color: #05030c;
+    background-image:
+      linear-gradient(180deg, rgba(5,3,12,0.30) 0%, rgba(5,3,12,0.20) 55%, rgba(5,3,12,0.92) 100%),
+      image-set(url('assets/artwork/ui/battle-loading.avif') type('image/avif'),
+                url('assets/artwork/ui/battle-loading.webp') type('image/webp'),
+                url('assets/artwork/ui/battle-loading.jpg')  type('image/jpeg'));
+    background-size: cover; background-position: center; background-repeat: no-repeat;
+    display: flex; flex-direction: column; align-items: center; justify-content: flex-end;
+    color: #f3e7c8; font-family: 'Cinzel','Times New Roman',serif;
+    transition: opacity 520ms ease;
+  }
+  #battle-loading.fade-out { opacity: 0; pointer-events: none; }
+  .btl-wrap { width: min(720px, 78vw); margin: 0 0 7vh; text-align: center; }
+  .btl-title {
+    font-size: clamp(1rem, 2.4vw, 1.5rem); font-weight: 800; letter-spacing: .18em;
+    text-transform: uppercase; color: #f6e3b0; margin-bottom: 0.9rem;
+    text-shadow: 0 2px 18px rgba(0,0,0,.9), 0 0 26px rgba(255,170,90,.25);
+  }
+  /* The plate under the bar mirrors the ornate rail in the art. */
+  .btl-bar-wrap {
+    position: relative; height: 16px; border-radius: 9px; overflow: hidden;
+    background: linear-gradient(180deg, rgba(6,4,14,.92), rgba(14,9,26,.92));
+    border: 1px solid rgba(196,150,255,.42);
+    box-shadow: 0 3px 16px rgba(0,0,0,.75), inset 0 0 12px rgba(120,70,200,.28);
+  }
+  .btl-bar {
+    height: 100%; width: 0%;
+    background: linear-gradient(90deg, #6a3fd0, #8f5ae8 40%, #c9a2ff 70%, #efe0ff);
+    box-shadow: 0 0 16px rgba(180,120,255,.75);
+    transition: width 420ms cubic-bezier(.25,.9,.35,1);
+  }
+  .btl-step {
+    margin-top: 0.7rem; font-size: clamp(.68rem, 1.4vw, .82rem); letter-spacing: .1em;
+    color: #cbb9e8; text-transform: uppercase; min-height: 1.1em;
+    text-shadow: 0 2px 10px rgba(0,0,0,.9);
+  }
+  @media (prefers-reduced-motion: reduce) {
+    #battle-loading { transition: none; }
+    .btl-bar { transition: none; }
+  }
   .boot-splash-logo {
     width: min(520px, 78vw);
     max-height: 38vh;
@@ -39458,7 +39507,7 @@ body:has(#pack-opener-frame) #chat-overlay {
   // the console. Bump this every deploy alongside sw.js's CACHE_VERSION. If two
   // machines show different stamps, the older one is on stale code (hard-refresh);
   // if they MATCH but content still differs, it is a DATA/publish issue, not code.
-  window.BUILD_VERSION = 'v121v137';
+  window.BUILD_VERSION = 'v121v144';
   try {
     console.info('%cMythic Spellbook ' + window.BUILD_VERSION + '%c — build check: run  __mg.version',
       'font-weight:700;color:#b48cff', 'color:#7d7499');
@@ -39707,6 +39756,117 @@ body:has(#pack-opener-frame) #chat-overlay {
       try { if (splash && !splash.classList.contains('fade-out')) window.BootSplash.done(); } catch (e) {}
     }, 12000);
     window.BootSplash._cancelSafety = function () { clearTimeout(safety); };
+  })();
+
+  /* ⚔ BATTLE LOADING (v121v139) — the boot splash's twin, for the opening of a
+     match. Owner: "the game lags hard before the battle starts… have the ai wait
+     until cards are drawn from both players and lag is over. Also that progress
+     bar… make it move to the full of the game starting."
+
+     ⚠ THE BAR TRACKS REAL WORK, not a timer. The owner chose that, and it is the
+       only version that cannot reach 100% while the game is still hitching —
+       which is the complaint. Weights are rough shares of a cold start:
+
+         state  .15  both hands dealt (initGame slices them in the same tick)
+         stage  .35  the board iframe finished its ~435ms of bakes (board:ready)
+         reveal .20  the 900ms camera pull-back has run
+         settle .30  frames are genuinely smooth again — MEASURED, see below
+
+     ⚠ THE settle STEP IS THE HONEST PART. "Lag is over" is not a duration anyone can
+       guess from a desk: it depends on the machine. So it is measured — eight
+       consecutive rAF deltas under 40ms — and it is the largest single weight
+       because it is the thing the player actually feels.
+
+     ⚠ A FLOOR AND A CEILING. 800ms minimum so a fast rematch does not flash the
+       screen for three frames; a 12s ceiling (BootSplash's own safety value) so a
+       machine that never settles is never stranded here. */
+  (function () {
+    var el = null, bar = null, stepEl = null;
+    var WEIGHTS = { state: 0.15, stage: 0.35, reveal: 0.20, settle: 0.30 };
+    var progress = null, shownAt = 0, safety = null, rafId = 0, doneCalled = false;
+    var smooth = 0, lastT = 0;
+    var MIN_MS = 800, MAX_MS = 12000, SETTLE_FRAMES = 8, SETTLE_MS = 40;
+
+    function applyBar() {
+      if (!bar) return;
+      var total = 0;
+      for (var k in WEIGHTS) total += Math.max(0, Math.min(1, (progress && progress[k]) || 0)) * WEIGHTS[k];
+      bar.style.width = Math.round(total * 100) + '%';
+    }
+    /* Measure real frame health. Nothing else in the opening can tell us the
+       stutter has passed, and a fixed delay would be a guess that is wrong on
+       every machine but the one it was tuned on. */
+    function watchFrames() {
+      cancelAnimationFrame(rafId);
+      lastT = 0; smooth = 0;
+      var tick = function (t) {
+        if (!el) return;
+        if (lastT) {
+          var dt = t - lastT;
+          if (dt < SETTLE_MS) smooth++; else smooth = 0;
+          API.set('settle', Math.min(1, smooth / SETTLE_FRAMES));
+          if (smooth >= SETTLE_FRAMES) { API.markReady(); return; }
+        }
+        lastT = t;
+        rafId = requestAnimationFrame(tick);
+      };
+      rafId = requestAnimationFrame(tick);
+    }
+    var API = {
+      /* Is the opening still covered? The AI and the opening deal both ask. */
+      active: function () { return !!el; },
+      show: function (label) {
+        if (el) return;
+        doneCalled = false;
+        progress = { state: 0, stage: 0, reveal: 0, settle: 0 };
+        el = document.createElement('div');
+        el.id = 'battle-loading';
+        el.setAttribute('role', 'status');
+        el.setAttribute('aria-label', 'Battle loading');
+        el.innerHTML = '<div class="btl-wrap">'
+          + '<div class="btl-title">' + (label || 'Entering the realm') + '</div>'
+          + '<div class="btl-bar-wrap"><div class="btl-bar" id="battle-loading-bar"></div></div>'
+          + '<div class="btl-step" id="battle-loading-step">Dealing the opening hands…</div>'
+          + '</div>';
+        document.body.appendChild(el);
+        bar = document.getElementById('battle-loading-bar');
+        stepEl = document.getElementById('battle-loading-step');
+        shownAt = Date.now();
+        applyBar();
+        watchFrames();
+        clearTimeout(safety);
+        safety = setTimeout(function () { try { API.done(true); } catch (e) {} }, MAX_MS);
+      },
+      set: function (key, value, label) {
+        if (!progress) return;
+        if (key in progress) progress[key] = Math.max(progress[key], Math.max(0, Math.min(1, value)));
+        if (label && stepEl) stepEl.textContent = label;
+        applyBar();
+      },
+      /* Every milestone is in — but honour the floor so the screen cannot blink. */
+      markReady: function () {
+        if (!el || doneCalled) return;
+        var waited = Date.now() - shownAt;
+        if (waited < MIN_MS) { setTimeout(function () { API.done(); }, MIN_MS - waited); return; }
+        API.done();
+      },
+      done: function (forced) {
+        if (!el || doneCalled) return;
+        doneCalled = true;
+        clearTimeout(safety); safety = null;
+        cancelAnimationFrame(rafId); rafId = 0;
+        for (var k in progress) progress[k] = 1;
+        applyBar();
+        if (stepEl) stepEl.textContent = forced ? 'Starting anyway…' : 'Ready.';
+        var gone = el;
+        el = null; bar = null; stepEl = null;     // .active() is false from here
+        gone.classList.add('fade-out');
+        setTimeout(function () { try { gone.remove(); } catch (e) {} }, 560);
+        /* 🃏 The hand deals NOW, not on the first render underneath the screen. */
+        try { if (typeof window._btlAfterLoad === 'function') window._btlAfterLoad(); } catch (e) {}
+      },
+    };
+    window.BattleLoading = API;
   })();
 
   // ============================================================================
@@ -61170,6 +61330,27 @@ function addToDeck(cardKeys, key) {
     if (typeof showToast === 'function') showToast('Only one hero per deck — remove the current one first.');
     return cardKeys;
   }
+  /* 🜂 v121v138 — RULE: A REALM CARD IS NEVER IN THE MAIN DECK. Owner: "Evo Units
+     can only be in the realm deck they do not get added to the main deck they are
+     like the fusions and Archons."
+     ⚠ This gate was MISSING, not merely missing for Evo units. An Archon is an
+       ordinary unit carrying archonSummon.enabled, so getAllDeckableCards buckets
+       it as a unit and this function — which gates size, copies, ownership and
+       heroes — accepted it. A card in the main deck is a card you can DRAW, and
+       drawing the thing the Realm Deck exists to summon makes the summon
+       condition that pays for it free.
+     ⚠ It lives HERE because addToDeck is the choke point every deck source funnels
+       through (see the copy-cap note below: buildDeckFromKeys, the AI builders and
+       _legalizeDeck each re-derived their own idea of a rule and each broke it).
+       A hand-edited save replayed through buildDeckFromKeys is covered too. */
+  try {
+    const _rc = (typeof resolveDeckCard === 'function') ? resolveDeckCard(key) : null;
+    const _kind = (typeof _realmOnlyKind === 'function') ? _realmOnlyKind(_rc) : null;
+    if (_kind) {
+      if (typeof showToast === 'function') showToast('🜂 ' + _kind + 's live in your Realm Deck, not your main deck.', 3000);
+      return cardKeys;
+    }
+  } catch (e) {}
   return [...cardKeys, key];
 }
 function removeFromDeck(cardKeys, key) {
@@ -80182,7 +80363,7 @@ function _hoverButtonsFor(u, s) {
     }
   }
   // MOVE — dropped entirely once the unit has moved (or can never move).
-  if (!u.hasMoved && !_incap && !faceDown && !u.isWall) {
+  if (!u.hasMoved && !_incap && !faceDown && !_isStationaryUnit(u)) {
     let range = 0;
     try { range = (typeof getMoveRange === 'function') ? (getMoveRange(u, s.weather) | 0) : 0; } catch (e) {}
     btns.push({ act: 'move', lbl: 'Move', c: '#3fc6b4', icon: 'boot',
@@ -101463,10 +101644,36 @@ const _getMoveRangeRaw = (unit, weather) => {
   return Math.max(1, speed);
 };
 
+/* 🧱🔮 v121v141 — DOES THIS THING MOVE? One predicate, because the answer is
+   needed at six separate gates and adding it to five of them is how the sixth
+   goes wrong: getSwapTargets has never excluded walls, so a wall whose keyword
+   row promises "never moves, can't be dragged or take a Move command" could be
+   walked across the board by swapping it with the hero. That is fixed here as a
+   side effect of asking the question in one place.
+
+   Owner, on enchantments: "Enchantments cannot move remove the fact that they
+   can move they are like walls." v121v135 stamped the token hasMoved/hasAttacked
+   on arrival, but those are TURN flags that the turn refresh clears — so from
+   its second turn the enchantment was an ordinary, mobile unit. */
+function _isStationaryUnit(u) {
+  return !!(u && (u.isWall || u.isEnchantment));
+}
+/* Forced movement — knockback, push, pull. A wall resists unless it is
+   explicitly flagged pushable; an enchantment carries no such flag, so it never
+   budges. Kept separate from _isStationaryUnit because a pushable wall DOES
+   move when shoved while still never taking a Move command of its own. */
+function _resistsForcedMove(u) {
+  if (!u) return false;
+  if (u.isEnchantment) return true;
+  return !!(u.isWall && !(u.wall && u.wall.canBePushed));
+}
+try { window.__mg = window.__mg || {}; window.__mg.stationary = _isStationaryUnit; } catch (e) {}
+
 const getValidMoves = (unit, units, weather, board) => {
-  // 🧱 Wall Units are stationary structures — zero move tiles ever. This one
-  // line blocks Move Piece, drag-to-move, and the AI from relocating it.
-  if (unit && unit.isWall) return [];
+  // 🧱 Wall Units and 🔮 board enchantments are stationary structures — zero move
+  // tiles ever. This one line blocks Move Piece, drag-to-move, and the AI from
+  // relocating either.
+  if (_isStationaryUnit(unit)) return [];
   if ((unit.statusEffects || []).some(e => STATUS_EFFECTS[e.type] && STATUS_EFFECTS[e.type].skipTurn)) return [];
   // ⛽ STALLED — a unit that has burned its last Fuel counter cannot move at
   // all. Same shape as the skipTurn statuses above (zero tiles, no path), so
@@ -104066,7 +104273,14 @@ function _summonZone(id) { return SUMMON_ZONES.find(z => z.id === id) || SUMMON_
 function _isSummonableCard(c) {
   if (!c) return false;              // a hole in a pile is not a summonable card
   const t = c.type || 'unit';        // …but a real card with no type IS a unit
-  return t === 'unit' || t === 'summon' || t === 'enchantment' || t === 'curse';
+  /* 🧬 v121v140 — AN EVO UNIT IS A UNIT. Owner: "Evo Units are units."
+     This test answers "may this card be put on a tile", and without an evo type on the
+     list the Evo unit would have been refused BY THE VERY SUMMON THAT EXISTS TO
+     BRING IT OUT of the Realm Deck — the Cocoon-of-Evolution feature would have
+     failed the moment it was built. It stays Realm-deck-only for DECKBUILDING
+     (isRealmOnlyCard, v121v138); that is a separate question from what it is
+     once it reaches the board, which is a unit. */
+  return t === 'unit' || t === 'summon' || t === 'evo' || t === 'enchantment' || t === 'curse';
 }
 // Rough power score — used only to decide which unit the AI deploys first.
 function _summonCardPower(c) {
@@ -108548,6 +108762,13 @@ const _EFFECT_VFX_CINE = {
   toxicFumes:     { label: '☠️ Toxic Fumes',     file: 'assets/vfx/vfx-toxic-fumes' },
   alienInfection: { label: '👾 Alien Infection', file: 'assets/vfx/vfx-alien-infection' },
   graveReach:     { label: '🧟 Grave Reach',     file: 'assets/vfx/vfx-grave-reach' },
+  /* 👊 v121v142 — the Cosmic Punch the owner asked for back in v121v131; the
+     package was missing its cosmic-punch.js then, so it was blocked. It ships as
+     a THREE.Group subclass rather than a page, so vfx-cosmic-punch.html hosts it
+     against the VENDORED three.min.js in this folder — the package's own preview
+     imports three from jsDelivr, and a CDN dependency fails exactly when the
+     player has no network, which is when a cached game is most likely running. */
+  cosmicPunch:    { label: '👊 Cosmic Punch',     file: 'assets/vfx/vfx-cosmic-punch' },
 };
 /* 🔊 The sound an effect may fire alongside its VFX. Every id in the SFX table
    is offered, because that table IS the Custom Audio Manager's slot list — an
@@ -111556,19 +111777,34 @@ function _afxAnnounce(before, after, unit, card, opts) {
     const cardId = card._afxCardId || card.id || card.cardId
                  || (unit && (unit.originalCardId || unit.cardId)) || null;
     let art = null;
+    /* 🎴 v121v140 — THE FOURTH ABILITY SURFACE. Owner, with a screenshot of a
+       frame PNG wearing a unicorn emoji: "when a hero or unit use their ability
+       show the card art not this emoji stuff."
+
+       v121v134 fixed the ⚡ panel, the cinematic and the battle log and MISSED
+       this one, which builds the spec ActivateFX draws as a full-screen card
+       face. It still ran the pre-v134 lookup — refuse every blob:, then fall to
+       the thumbnail tier — which is exactly the code v134 identified as the bug:
+       _lazyLoadCardArt stores EVERY streamed card art as a blob:, so the art the
+       board is already drawing was resident and thrown away. With artUrl null,
+       activate.js falls to frameUrl + an .afx-glyph of s.icon. That is the
+       screenshot.
+
+       Passing true asks for FULL art: this fills the screen, so a 160px thumb is the
+       last thing it should settle for. */
     try {
-      if (typeof getCardArt === 'function' && cardId) {
-        const a = getCardArt(cardId);
-        // A blob: URL can be revoked by the art LRU mid-beat — the broken-image
-        // icon that bug produces is exactly what _announceAbility documents.
-        if (a && String(a).slice(0, 5) !== 'blob:') art = a;
-      }
-      if (!art && typeof _abilityCardArt === 'function' && cardId) art = _abilityCardArt(cardId) || null;
+      if (typeof _abilityArtBest === 'function' && cardId) art = _abilityArtBest(cardId, true) || null;
     } catch (e) {}
     // No illustration ⇒ the card's own FRAME png (a static asset that always
     // loads) with the card's icon still sitting in its window. An empty dark
     // rectangle where the card should be is the worst of the three, and the
     // first DOM capture showed exactly that.
+    // ⚠ v121v140 — THIS FALLBACK STAYS, unlike the battle log's. There the owner
+    //   named the card back as the wrong thing to show in a 34px row; here it is
+    //   a FULL-SCREEN card face, and activate.js's own note says the bare dark
+    //   rectangle is the worst outcome of the three. It is now only reached by a
+    //   card with no art anywhere, rather than by every card whose art happened
+    //   to be a blob: URL.
     let frame = null;
     try {
       if (typeof _abilityFrameUrl === 'function') {
@@ -112383,8 +112619,9 @@ function _applyOnPlayOneRaw(state, unit, card) {
     const dist = (u) => distance(u.pos, { x: ox, y: oy });
     const cands = (state.units || []).filter(u => u && u.alive && u.id !== unit.id && u.pos && inRadius(u)
       && (side === 'all' ? true : (side === 'ally' ? isAlly(u) : isEnemy(u)))
-      // A wall that isn't flagged pushable is scenery — it never budges.
-      && !(u.isWall && !(u.wall && u.wall.canBePushed)));
+      // A wall that isn't flagged pushable is scenery — it never budges, and
+      // 🔮 v121v141 an enchantment on the board is scenery with no flag at all.
+      && !_resistsForcedMove(u));
     // ⚠ ORDER MATTERS when several units move at once. Each step tests occupancy
     // against the LIVE board, so processing in the wrong order makes units block one
     // another for no reason: pull NEAREST-first so they pack inward, push
@@ -116692,7 +116929,10 @@ function _archonReqDetailHtml(card) {
     const rankLabel = ({ lesser: 'Lesser', ascended: 'Ascended', divine: 'Divine', primordial: 'Primordial' })[sp.catalystRank || 'lesser'] || 'Lesser';
     const tierLabel = ({ lesser: 'Lesser', greater: 'Greater', divine: 'Divine', primordial: 'Primordial' })[sp.tier || 'lesser'] || 'Lesser';
     const range = Math.max(1, Math.min(4, (sp.offeringRange | 0) || 2));
-    const kalon = (sp.kalonCost | 0) || 1;
+    /* ⚡ v121v144 — a 0 here is deliberate (a free Archon), not a missing value,
+       so it must print as 0 rather than being rounded up to 1 in the rules text
+       the player reads. */
+    const kalon = Number.isFinite(+sp.kalonCost) ? Math.max(0, +sp.kalonCost | 0) : 1;
     // Catalyst requirement (rank + optional faction/element).
     const catReq = [];
     if (sp.catalyst && sp.catalyst.faction) catReq.push(facName(sp.catalyst.faction));
@@ -116730,6 +116970,72 @@ function _archonReqDetailHtml(card) {
 function isArchonCard(card) {
   return !!(card && card.archonSummon && card.archonSummon.enabled);
 }
+
+/* 🧬 v121v138 — EVO UNIT. The third Realm-deck-only type, alongside Archons and
+   Fusion Kalons. An Evo unit is what a Cocoon-of-Evolution unit becomes when it
+   has collected enough evolution counters: it is never drawn, never decked, and
+   only ever arrives by being summoned out of the Realm Deck.
+   Owner: "Evo Units can only be in the realm deck they do not get added to the
+   main deck they are like the fusions and Archons." */
+/* 🪖 v121v143 — DOES THIS CARD TYPE HAVE A UNIT'S BODY? (stats, moves, passives,
+   factions.) Owner: "Evo Units are just like Summons and units they are units
+   that can fight… you have them as Spells."
+   ⚠ That was a bug in v121v138/v140: the the evo type was added to the dropdown and
+     the ENGINE was taught it may stand on a tile, but the EDITOR's own
+     type === unit-or-hero-or-summon test was not, so the unit form never
+     rendered and there was nothing to give it to fight with. One predicate, so
+     the next type with a body is one line instead of four sites that disagree. */
+/* ⚠ The save side needs no change — the stat capture is
+   gated on document.getElementById('ed-hp'), so it reads whatever the editor put
+   on screen. Rendering the unit form IS the whole fix; the stats were never
+   refused, only never offered. Worth knowing before anyone hunts for a save bug
+   that does not exist. */
+function isUnitLikeType(t) {
+  const k = String(t || 'unit').toLowerCase();
+  return k === 'unit' || k === 'hero' || k === 'summon' || k === 'evo';
+}
+try { window.__mg = window.__mg || {}; window.__mg.unitLikeType = isUnitLikeType; } catch (e) {}
+
+function isEvoCard(card) {
+  if (!card) return false;
+  if (card.isEvoUnit) return true;
+  return String(card.type || '').toLowerCase() === 'evo';
+}
+function getAllEvoCards() {
+  const out = [];
+  try { (Forge.customCards || []).forEach(c => { if (isEvoCard(c)) out.push(c); }); } catch (e) {}
+  try {
+    if (typeof Catalog !== 'undefined' && Array.isArray(Catalog.cards)) {
+      Catalog.cards.forEach(c => { if (isEvoCard(c)) out.push(c); });
+    }
+  } catch (e) {}
+  return out;
+}
+
+/* 🜂 THE REALM-DECK-ONLY RULE, in ONE predicate.
+
+   Owner, twice: these three types live in the Realm Deck and never in the main
+   deck. The Realm Deck's add button has always enforced its half ("Only Archons
+   and Fusion/Polycreation cards can enter the Realm Deck"); nothing enforced the
+   other direction, so an Archon — an ordinary unit carrying archonSummon.enabled
+   — was accepted straight into the MAIN deck by addToDeck, which gates size,
+   copies, ownership and heroes and says nothing about Realm types. A card in the
+   main deck is a card you can DRAW, and drawing the thing the Realm Deck exists
+   to summon makes the summon condition that pays for it free.
+
+   _realmOnlyKind names the type so a message can say WHICH rule was hit; a
+   fourth Realm type later is one line here rather than a hunt through the file. */
+function _realmOnlyKind(card) {
+  try {
+    if (!card) return null;
+    if (typeof isEvoCard === 'function' && isEvoCard(card)) return 'Evo unit';
+    if (typeof isArchonCard === 'function' && isArchonCard(card)) return 'Archon';
+    if (typeof isFusionKalon === 'function' && isFusionKalon(card)) return 'Fusion';
+  } catch (e) {}
+  return null;
+}
+function isRealmOnlyCard(card) { return !!_realmOnlyKind(card); }
+try { window.__mg = window.__mg || {}; window.__mg.realmOnly = isRealmOnlyCard; } catch (e) {}
 
 // All custom + catalog cards forged as Archons.
 function getAllArchonCards() {
@@ -120629,7 +120935,7 @@ const executeMove = (state, attacker, target, move) => {
   // not before. That is the point — the old destination was not a direction.
   if (updatedTarget.alive && move.knockback && move.knockback > 0
       && (Math.random() * 100 < ((move.knockbackChance == null) ? 100 : move.knockbackChance))
-      && !(updatedTarget.isWall && !(updatedTarget.wall && updatedTarget.wall.canBePushed))) {
+      && !_resistsForcedMove(updatedTarget)) {   // 🔮 v121v141 — enchantments too
     const ax = attacker.pos.x, ay = attacker.pos.y;
     const tx = updatedTarget.pos.x, ty = updatedTarget.pos.y;
     const kdir = hexDirToward(ax, ay, tx, ty);   // away from the attacker, snapped to one of six
@@ -120671,7 +120977,7 @@ const executeMove = (state, attacker, target, move) => {
   // instead of the mirror-image zigzag the Math.sign() pair produced.
   if (updatedTarget.alive && move.pull && move.pull > 0
       && (Math.random() * 100 < ((move.pullChance == null) ? 100 : move.pullChance))
-      && !(updatedTarget.isWall && !(updatedTarget.wall && updatedTarget.wall.canBePushed))) {
+      && !_resistsForcedMove(updatedTarget)) {   // 🔮 v121v141 — enchantments too
     const ax = attacker.pos.x, ay = attacker.pos.y;
     const tx = updatedTarget.pos.x, ty = updatedTarget.pos.y;
     const pdir = hexDirToward(tx, ty, ax, ay);   // toward the attacker, snapped to one of six
@@ -126022,7 +126328,14 @@ function _bbMount(opts) {
     window.addEventListener('message', (e) => {
       if (e.origin !== window.location.origin) return;
       const d = e.data; if (!d || typeof d.type !== 'string' || d.type.indexOf('board:') !== 0) return;
-      if (d.type === 'board:ready') { _bbPost('init', _bbSnapshot()); return; }
+      if (d.type === 'board:ready') {
+        /* ⚔ v121v139 — the iframe's bakes are done. This is the single largest
+           real milestone in the opening (its own budget note measures ~435ms in
+           one frame), so it carries the largest non-settle weight. */
+        try { if (window.BattleLoading) window.BattleLoading.set('stage', 1, 'Field raised — steadying the view…'); } catch (e) {}
+        _bbPost('init', _bbSnapshot());
+        return;
+      }
       try { if (App._bbCtx && typeof App._bbCtx.onMessage === 'function') App._bbCtx.onMessage(d); } catch (_) {}
     });
   }
@@ -127257,6 +127570,22 @@ function _bbStageMount() {
       if (f.classList.contains('ready')) return;
       f.classList.add('ready');
       _bbStagePost('reveal', {});
+      /* ⚔ v121v139 — THIS is the moment the camera pull-back actually starts:
+         the stage is told to (re)start its opening at the instant it becomes
+         visible. REVEAL.DUR in battle-board/index.html is 900ms, so the milestone
+         completes 900ms later. It is the one step of the four that IS a fixed
+         duration — it is an animation we own, not work whose cost depends on the
+         machine — so it is the only one honest to drive off a timer.
+         ⚠ If REVEAL.DUR ever changes, this number moves with it, exactly as the
+           opening-deal delays already have to. */
+      try {
+        if (window.BattleLoading && window.BattleLoading.active()) {
+          window.BattleLoading.set('reveal', 0.6, 'Pulling back…');
+          setTimeout(function () {
+            try { if (window.BattleLoading) window.BattleLoading.set('reveal', 1, 'Steadying the view…'); } catch (e2) {}
+          }, 900);
+        }
+      } catch (e2) {}
     } catch (e) {}
   };
   f.addEventListener('load', _bbShow);
@@ -137821,12 +138150,59 @@ function _heroArtSrc(d) {
     return '';
   } catch (e) { return ''; }
 }
+/* 🧍 CEDRIC — THE STANDARD MENU CHARACTER (v121v142).
+   Owner: "Have this breathing Cedric be the standard default across all pages
+   from on out." One definition, read by every surface through _mdRoster(). */
+const CEDRIC_MENU_ANIM  = '/assets/artwork/ui/cedric-idle.webp';   // 4s loop, 640px, 5.96MB
+const CEDRIC_MENU_STILL = '/assets/artwork/ui/cedric-still.webp';  // its own first frame, 125KB
+
+/* Should this device get the still instead of the loop?
+
+   ⚠ THE PROBE IS COPIED FROM combat.js's lowPower(), deliberately. That is the
+     only device-capability test in the codebase, and a second one shaped
+     differently would be a second opinion about the same machine — the kind of
+     disagreement that makes "why is it animating on MY laptop" unanswerable.
+
+   gfxQuality is included because it is the player's OWN setting, and because
+   _memShedGraphics() latches it to 'low' under memory pressure: a machine that
+   is already struggling should stop paying for this without being asked. */
+function _menuCharStill() {
+  try {
+    if (typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches) return true;
+  } catch (e) {}
+  try {
+    const q = (typeof getSettings === 'function') ? (getSettings().gfxQuality || 'high') : 'high';
+    if (q === 'low') return true;
+  } catch (e) {}
+  try {
+    const nav = (typeof navigator !== 'undefined') ? navigator : {};
+    if (typeof nav.hardwareConcurrency === 'number' && nav.hardwareConcurrency > 0 && nav.hardwareConcurrency <= 4) return true;
+    if (typeof nav.deviceMemory === 'number' && nav.deviceMemory <= 4) return true;
+  } catch (e) {}
+  return false;
+}
+/* ⚠ THE DECISION IS MADE IN THE PARENT, not the iframe. The iframe is handed a
+   finished src and needs no new knowledge — and _mmData() does not send the
+   graphics setting across, so the menu could not make this call correctly even
+   if it were asked to. */
+function _cedricMenuEntry() {
+  return { name: 'Cedric', src: _menuCharStill() ? CEDRIC_MENU_STILL : CEDRIC_MENU_ANIM };
+}
+try { window.__mg = window.__mg || {}; window.__mg.menuCharStill = _menuCharStill; } catch (e) {}
+
 function _mdRoster() {
   const out = [];
   try {
     const cur = (typeof Forge !== 'undefined' && Array.isArray(Forge.mainMenuHeroes)) ? Forge.mainMenuHeroes : [];
     for (const h of cur) { if (h && h.src) out.push({ name: h.name || 'Hero', src: h.src }); }
     if (out.length) return out;
+    /* 🧍 v121v142 — CEDRIC IS THE DEFAULT, ahead of the hero-art fallbacks below.
+       An ADMIN-CURATED roster still wins (above): that is an explicit decision
+       someone made in the Character Manager, and silently overriding it would
+       make that screen a lie. Everything else now gets Cedric.
+       ⚠ The hero-art fallbacks are KEPT rather than deleted — they are the last
+         thing between a missing asset and an empty silhouette. */
+    try { return [_cedricMenuEntry()]; } catch (e) {}
     const defs = (typeof getAllHeroes === 'function') ? getAllHeroes()
       : (typeof STARTER_HEROES !== 'undefined' ? STARTER_HEROES : []);
     const owned = (typeof Profile !== 'undefined' && Profile.heroes) || {};
@@ -145419,8 +145795,21 @@ function startBattleWithPrep(playerGoesFirst) {
   // ⚡ Fresh match ⇒ every card is "first sighting" again, so the full explain
   // beat plays once per ability per match rather than once per install.
   try { if (window.ActivateFX) window.ActivateFX.resetMatch(); } catch (e) {}
+  /* ⚔ v121v139 — COVER THE OPENING. Raised BEFORE the screen flip and the first
+     render, because the stutter the owner reported is the board iframe's ~435ms
+     of bakes plus the eight push bursts on board:ready, all of which happen
+     under this first paint. `state` is already 1: initGame slices BOTH hands in
+     the same object literal in one tick, so "cards are drawn from both players"
+     is true the moment we get here. */
+  try {
+    if (window.BattleLoading) {
+      window.BattleLoading.show('Entering the realm');
+      window.BattleLoading.set('state', 1, 'Hands dealt — raising the field…');
+    }
+  } catch (e) {}
   App.screen = 'battle';
   render();
+  try { if (window.BattleLoading) window.BattleLoading.set('reveal', 0.35, 'Raising the field…'); } catch (e) {}
   // If AI goes first, kick off the AI controller immediately
   if (!playerGoesFirst) {
     App.ui.aiBusy = true;
@@ -147561,11 +147950,11 @@ function renderForge() {
 
 // ============ FORGE: cards tab ============
 function renderForgeCards() {
-  const typeLabel = (t) => { const n = ({ unit:'Unit', hero:'Hero', spell:'Spell', trap:'Trap', weather:'Weather', wall:'Wall', location:'Location', enchantment:'Enchantment' })[t]; return n ? `${getTypeIcon(t)} ${n}` : t; };
+  const typeLabel = (t) => { const n = ({ unit:'Unit', hero:'Hero', spell:'Spell', trap:'Trap', weather:'Weather', wall:'Wall', location:'Location', enchantment:'Enchantment', evo:'Evo Unit' })[t]; return n ? `${getTypeIcon(t)} ${n}` : t; };
   const cardMeta = (c) => {
     const t = c.type || 'unit';
     const cost = `Cost ${c.cost} <span class="energy-orb"></span>`;
-    if (t === 'unit' || t === 'hero') {
+    if (isUnitLikeType(t) && t !== 'summon') {
       const s = c.stats || {};
       const kalon = c.kalonForm ? ` · ${getKalonIcon('1.1em')} Kalon` : '';
       return `${cost} · ${typeLabel(t)} · ${s.hp || 0} HP · ${s.atk||0}/${s.def||0}/${s.mag||0}/${s.res||0}/${s.spd||0}${kalon}`;
@@ -148468,7 +148857,11 @@ function renderCardEditor() {
   // buildUnit reads card.stats when the summon is spawned. The unit-only
   // sub-toggles (Wall, Counter Unit) stay gated on `type === 'unit'` so they
   // don't appear for summons.
-  const isUnitLike = type === 'unit' || type === 'hero' || type === 'summon';
+  /* 🪖 v121v143 — an Evo unit is unit-like: it gets the full stat block, the
+     learnset, passives and factions, because it is summoned onto the board to
+     FIGHT. The save side needs no change — the stat capture is gated on
+     document.getElementById('ed-hp'), so it reads whatever is rendered. */
+  const isUnitLike = isUnitLikeType(type);
 
   const cardElems = getElementsOf(card);
   const primary = cardElems[0] || 'nature';
@@ -148571,12 +148964,21 @@ function renderCardEditor() {
     { id: 'wall',     label: '🧱 Wall (50 HP barrier)' },
     { id: 'location', label: '🌋 Location (tile effect)' },
     { id: 'summon',   label: '🌀 Summon (NON-deckable — spawned by other effects)' },
+    /* 🧬 EVO UNIT (v121v138, moved here v121v140). Owner: "Evo Units are units
+       It should be under summon." It sits beside Summon because that is what it
+       is — a unit that only ever ARRIVES by being summoned, never drawn: a
+       Cocoon-of-Evolution unit collects evolution counters and, at its
+       threshold, sacrifices itself to summon this out of the REALM DECK.
+       addToDeck refuses it from the main deck; the deck-builder + button routes
+       it to the Realm Deck. */
+    { id: 'evo',      label: '🧬 Evo Unit (REALM DECK only — summoned by evolution counters, never drawn)' },
     { id: 'counter',  label: '⏱ Counter (hand-playable on opponent\'s turn)' },
     // 🧬 Bred Unit — offspring of two units (the breeding system). Saved as a
     // real UNIT (type 'unit' + isBred flag) so every engine path — decks,
     // board play, passives, sprites — treats it identically; the flag + the
     // bredParents lineage are what the breeding system builds on.
     { id: 'bred',     label: '🧬 Bred Unit (offspring of two units — inherits parent traits & moves)' },
+
   ].map(t => `<option value="${t.id}" ${((t.id === 'bred' && card.isBred) || (type === t.id && !(t.id === 'unit' && card.isBred))) ? 'selected' : ''}>${t.label}</option>`).join('');
 
   const rarityOpts = RARITIES.map(r => `<option value="${r.id}" ${rarity === r.id ? 'selected' : ''}>${r.name}</option>`).join('');
@@ -150578,7 +150980,7 @@ function renderCardEditor() {
         ].map(o => `<option value="${o.id}" ${(_arc.tier || 'lesser') === o.id ? 'selected' : ''}>${o.label}</option>`).join('')}
       </select>
     </div>
-    <div class="editor-field"><label>Kalon Source Cost</label><input id="ed-archon-kalon" type="number" min="0" max="20" value="${(_arc.kalonCost | 0) || 1}"></div>
+    <div class="editor-field"><label>Kalon Source Cost</label><input id="ed-archon-kalon" type="number" min="0" max="20" value="${Number.isFinite(+_arc.kalonCost) ? Math.max(0, Math.min(20, +_arc.kalonCost | 0)) : 1}" title="0 = this Archon costs no Kalon Source to summon."></div>
     <div class="editor-field"><label>Offering Range (tiles from Catalyst)</label><input id="ed-archon-range" type="number" min="1" max="4" value="${(_arc.offeringRange | 0) || 2}"></div>
     <div class="editor-field"><label>Primordial Creator (Realm Alignment)</label>
       <select id="ed-archon-creator">
@@ -154808,7 +155210,16 @@ function captureEditorIntoCard(card) {
         enabled: true,
         catalystRank: v('ed-archon-rank') || 'lesser',
         tier: v('ed-archon-tier') || 'lesser',
-        kalonCost: Math.max(0, Math.min(20, parseInt(v('ed-archon-kalon'), 10) || 1)),
+        /* ⚡ v121v144 — 0 IS A REAL VALUE. Owner: "Archon Summon should not
+           consume Kalon Source Points. Have it where I can make it zero." The old
+           `|| 1` could not tell "unset" from "deliberately zero" because 0 is
+           falsy, so a typed 0 was written back as 1 and the setting never stuck.
+           The engine already spends Math.max(0, kalonCost|0), so 0 is simply a
+           free summon — nothing downstream needed changing. */
+        kalonCost: (() => {
+          const _k = parseInt(v('ed-archon-kalon'), 10);
+          return Math.max(0, Math.min(20, isFinite(_k) ? _k : 1));
+        })(),
         offeringRange: Math.max(1, Math.min(4, parseInt(v('ed-archon-range'), 10) || 2)),
         creator: v('ed-archon-creator') || '',
         catalyst: { faction: catFac || '', element: catEl || '' },
@@ -159786,6 +160197,24 @@ function _playPhaseBanner(phaseId) {
 function _playOpeningDeal() {
   try {
     if (typeof window !== 'undefined' && window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    /* 🃏 v121v139 — NOT UNDERNEATH THE LOADING SCREEN. This fires off the
+       once-per-match turn-key baseline, which happens on the FIRST RENDER — and
+       from v121v139 that render is behind the loading cover, so the whole deal
+       would play where nobody could see it and the 1800ms class removal would
+       strip it before the screen lifted. Deferred to the moment the cover
+       clears, which is also when the camera pull-back is visible: the owner
+       asked for the hand to fade in WITH the zoom-out, and this is what makes
+       the two the same gesture again. */
+    if (window.BattleLoading && window.BattleLoading.active()) {
+      window._btlAfterLoad = function () {
+        window._btlAfterLoad = null;
+        try {
+          document.body.classList.add('bt-dealing');
+          setTimeout(() => { try { document.body.classList.remove('bt-dealing'); } catch (e) {} }, 1800);
+        } catch (e) {}
+      };
+      return;
+    }
     document.body.classList.add('bt-dealing');
     setTimeout(() => { try { document.body.classList.remove('bt-dealing'); } catch (e) {} }, 1800);
   } catch (e) {}
@@ -165237,7 +165666,7 @@ function renderDeckSearchModal() {
           + `border:1px solid ${ELEMENT_DATA[e].color || '#777'};color:#e8e0ff;font-size:0.74rem">`
           + `${getElemIcon(e, '1.1em')} ${escapeHtml(ELEMENT_DATA[e].name || e)}</span>`
         : '').join('');
-      const isUnitLike = c.type === 'unit' || c.type === 'hero' || c.type === 'summon';
+      const isUnitLike = isUnitLikeType(c.type);   // 🪖 v121v143 — Evo units too
       const statsBlock = (isUnitLike && c.stats)
         ? `<div style="margin-top:0.7rem">${renderStatBars(c.stats)}</div>` : '';
       return `
@@ -167368,6 +167797,10 @@ function renderUnitModal() {
           const kw = [];
           if (u.flying) kw.push({ name: '🪶 Flying', desc: 'Immune to ground/melee attacks. Magic and ranged attacks can still hit.' });
           if (u.isWall) kw.push({ name: '🧱 Wall — Cannot Move', desc: 'Stationary structure: never moves, can\'t be dragged or take a Move command. Still occupies & blocks its tile and can be attacked/destroyed.' + (u.wall && u.wall.canAttack === false ? ' Cannot attack.' : '') });
+          /* 🔮 v121v141 — the same promise, in the same place, for a permanent
+             standing on a tile. A rule the player cannot read is a rule they
+             discover by clicking and being refused. */
+          if (u.isEnchantment) kw.push({ name: '🔮 Enchantment — Cannot Move', desc: 'A permanent: it stays on the tile it was placed on until something destroys it. Never moves, can\'t be dragged, swapped or pushed. Still occupies & blocks its tile and can be attacked/destroyed.' });
           if (kw.length === 0) return '';
           return `
             <div class="modal-section">
@@ -171509,6 +171942,12 @@ function getSwapTargets(unit, units) {
     u.alive &&
     u.owner === unit.owner &&
     u.id !== unit.id &&
+    /* 🧱🔮 v121v141 — SWAP RELOCATES A UNIT, so a stationary one is not a partner.
+       This gate was MISSING for walls too: the wall keyword row promises "never
+       moves, can't be dragged or take a Move command", and swapping it with the
+       hero walked it across the board anyway. Asked here in the same predicate
+       the Move gates use, so the two can never disagree. */
+    !_isStationaryUnit(u) &&
     distance(u.pos, hero.pos) <= 1   // partner must be next to the hero (one of its six)
   );
 }
@@ -171861,7 +172300,7 @@ function onTileClick(x, y) {
     const _telMove = lookupMove(App.ui.selectedMoveId);
     if (_telMove && _telMove.teleport === true && (_telMove.target === 'tile' || _telMove.target === 'self' || !_telMove.target)) {
       // Validate the destination — already-checked no-occupant + no-wall above.
-      if (sel.isWall) { showToast('🧱 Walls cannot move.'); return; }
+      if (_isStationaryUnit(sel)) { showToast(sel.isEnchantment ? '🔮 Enchantments cannot move.' : '🧱 Walls cannot move.'); return; }
       // 🚫 Walls / tombstones / out-of-bounds — bail with a clean message.
       const _destWall = s.board[y] && s.board[y][x] && s.board[y][x].wall;
       if (_destWall) { showToast('🧱 Cannot teleport onto a wall.'); return; }
@@ -171896,7 +172335,7 @@ function onTileClick(x, y) {
   }
   // Movement only happens when the player explicitly entered Move mode via the modal
   if (App.ui.actionMode !== 'move') return;
-  if (sel.isWall) { if (typeof showToast === 'function') showToast('🧱 This unit is a Wall and cannot move.'); return; }
+  if (_isStationaryUnit(sel)) { if (typeof showToast === 'function') showToast(sel.isEnchantment ? '🔮 This is an Enchantment — it stays where it was placed.' : '🧱 This unit is a Wall and cannot move.'); return; }
   if (sel.hasMoved) return;
   const valid = getValidMoves(sel, s.units, s.weather);
   if (!valid.some(p => p.x === x && p.y === y)) return;
@@ -173712,6 +174151,11 @@ const _UNIT_SUMMON_VFX = {
   prince:       { label: '⚔️ Prince Changer of Adams — Rift Slash',   file: 'assets/vfx/vfx-prince.html' },
   sethiroth:    { label: '🌀 Sethiroth — Portal Walk',                file: 'assets/vfx/vfx-sethiroth.html' },
   outerGod:     { label: '👁 Azathoth — Outer God Summon',            file: 'assets/vfx/vfx-outer-god-summon.html' },
+  /* 🌑⚡ v121v142 — two new arrivals. Geomax posts {type:'geomax:complete'} to its
+     parent when its 6.4s runtime ends, which is the shape this host already
+     expects from an iframe cinematic. */
+  geomax:       { label: '🌑 Geomax — Devourer of Existence',         file: 'assets/vfx/vfx-geomax.html' },
+  lordGary:     { label: '🌀 Lord Gary — Gate of Zemore',             file: 'assets/vfx/vfx-lord-gary.html' },
   aceGeneric:   { label: '👑 ACE — Generic Arrival',                  file: 'vfx/ace?theme=_default' },
 };
 let _summonCineBusy = false;
@@ -174354,6 +174798,13 @@ const _ACE_VFX_NAME_MAP = [
   { id: 'prince',       any: ['prince changer', 'changer of adams'] },
   { id: 'sethiroth',    any: ['sethiroth'] },
   { id: 'outerGod',     any: ['azathoth', 'outer god'] },
+  /* 🌑⚡ v121v142 — registered HERE as well as in _UNIT_SUMMON_VFX, and that is
+     the half that matters: this list is what fires the cinematic when the card's
+     own summonVfx field was never set or was stripped on publish, which the
+     comment above this table already documents as the common case. Registering
+     only the picker would leave these working in the Forge and dead in a match. */
+  { id: 'geomax',       any: ['geomax'] },
+  { id: 'lordGary',     any: ['lord gary'] },
 ];
 function _aceVfxIdForUnit(u) {
   try {
@@ -178257,6 +178708,22 @@ function _runAIStepWhenClear(waited) {
        OWN call stack, so this scheduler is not running while that promise is
        pending — and the cap plus the hard deadline cover anything unforeseen. */
   if (typeof _playerChoiceModalOpen === 'function' && _playerChoiceModalOpen() && waited < 40000) {
+    App._aiLastSchedule = Date.now();
+    setTimeout(() => _runAIStepWhenClear(waited + 140), 140);
+    return;
+  }
+  /* ⚔ v121v139 — AND IT WAITS FOR THE OPENING TO FINISH. Owner: "have the ai
+     wait until cards are drawn from both players and lag is over."
+     The AI was kicked with scheduleAIStep(900) against a 900ms camera pull-back
+     whose own comment says it does not gate input — and applyAnimSpeed can make
+     that 900 SHORTER, while the last hand card does not finish arriving until
+     ~1520ms. So the AI could legitimately move before the player's hand had
+     finished being dealt.
+     ⚠ It belongs HERE, beside the modal wait, rather than in a second mechanism:
+       one place decides whether the AI may step, so the two answers cannot
+       disagree. BattleLoading's own 12s ceiling bounds this independently of the
+       15s cap below. */
+  if (window.BattleLoading && window.BattleLoading.active() && waited < 15000) {
     App._aiLastSchedule = Date.now();
     setTimeout(() => _runAIStepWhenClear(waited + 140), 140);
     return;
@@ -236619,7 +237086,9 @@ function renderBaseVault() {
         </div>
         <div class="vault-tools">
           ${heroPickerHtml}
-          <button class="btn-mini" id="vault-crafting">🔨 Crafting</button>
+<!-- 🔨 CRAFTING REMOVED (v121v144) — "Remove this crafting button from the Vault
+               base." The Crafting screen itself is untouched and still reachable from
+               its own routes; this took away one entrance, not the room. -->
           <button class="btn-mini" id="vault-auto-stow">⤓ Auto-Stow</button>
 <!-- ⟳ ROTATE REMOVED — "remove the rotate item from the grid in base vault, it
                do not matter anymore." Grid rotation only mattered while items had
@@ -236709,12 +237178,6 @@ function renderBaseVault() {
   document.getElementById('vault-back').onclick = () => {
     App.screen = App.vaultReturnScreen || 'camp';
     App.vaultReturnScreen = null;
-    render();
-  };
-  const craftingBtn = document.getElementById('vault-crafting');
-  if (craftingBtn) craftingBtn.onclick = () => {
-    App.craftingReturnScreen = 'baseVault';
-    App.screen = 'crafting';
     render();
   };
   // 🪙 The Cinder Shop tab hosts the real shop body, so it needs the real
@@ -238369,7 +238832,16 @@ function renderCrafting() {
   `;
 
   document.getElementById('cr-back').onclick = () => {
-    App.screen = App.craftingReturnScreen || 'baseVault';
+    /* 🔙 v121v144 — the default was 'baseVault', and the Vault's Crafting button
+       was the ONLY caller that ever set craftingReturnScreen. Every other
+       entrance (the Camp Heights portal, portal furniture, the hub) left it
+       null, so Back dropped those players into the base Vault — a room they had
+       not come from. With that button removed the default was wrong for every
+       remaining route, so it is the title hub now.
+       ⚠ The field itself is KEPT: a caller that knows where the player came from
+         should still be able to say so, and a future entrance can set it. Only
+         the fallback changed. */
+    App.screen = App.craftingReturnScreen || 'title';
     App.craftingReturnScreen = null;
     render();
   };
@@ -250350,6 +250822,66 @@ function _nodeInvHoursOf(n) {
   const since = (at && isFinite(at)) ? at : Date.now() - 24 * 3600 * 1000;
   return Math.max(0, Math.min(NODE_INV_CAP_H, (Date.now() - since) / 3600000));
 }
+
+/* 📦 v121v144 — THE SAME CLOCK, FOR A TERRITORY-WAR NODE.
+   A TW node has no meta, so _nodeInvHoursOf above always fell through to its
+   "assume 24h" default: the panel read "24.0 h" on every node forever because
+   nothing was ever reading a real timestamp. The clock lives in
+   tw_node_inventory (sql/135), keyed by the TEXT node id, because
+   tw_node_owners.node_id is text and economy_nodes.id is a uuid and this file
+   already records that the two can never be made into one lookup. */
+function _twInvSinceOf(nodeId) {
+  try {
+    App._twInvAt = App._twInvAt || {};
+    const v = App._twInvAt[nodeId];
+    if (v === undefined) { _twInvFetch(nodeId); return null; }
+    return v;
+  } catch (e) { return null; }
+}
+function _twInvHoursOf(nodeId) {
+  const since = _twInvSinceOf(nodeId);
+  const from = (since && isFinite(since)) ? since : (Date.now() - 24 * 3600 * 1000);
+  return Math.max(0, Math.min(NODE_INV_CAP_H, (Date.now() - from) / 3600000));
+}
+async function _twInvFetch(nodeId) {
+  try {
+    App._twInvAt = App._twInvAt || {};
+    if (App._twInvAt[nodeId] !== undefined) return;
+    App._twInvAt[nodeId] = null;
+    if (!(Cloud && Cloud.ready && Cloud.client)) return;
+    const me = (Profile.cloud && Profile.cloud.userId) || null;
+    if (!me) return;
+    const r = await Cloud.client.from('tw_node_inventory').select('inv_at')
+      .eq('node_id', nodeId).eq('user_id', me).maybeSingle();
+    const at = r && r.data && r.data.inv_at;
+    App._twInvAt[nodeId] = at ? new Date(at).getTime() : null;
+    try { render(); } catch (e) {}
+  } catch (e) {}
+}
+
+/* 📦 WHAT THIS NODE ACTUALLY PRODUCES, per hour, before the multiplier.
+   Owner: "Make sure it gives players their node resource yield."
+   selNode.resourceYield is exactly what the RESOURCE YIELD panel on the same
+   modal renders ("FUEL +7/hr"), so reading it here is what makes the two agree.
+   A node with no authored yield falls back to the old flat rate on its own
+   resource, so nothing that used to pay out stops paying. */
+function _twNodeYieldRates(selNode) {
+  const out = [];
+  try {
+    const ry = selNode && selNode.resourceYield;
+    if (ry && typeof ry === 'object') {
+      for (const k in ry) { const v = +ry[k]; if (k && isFinite(v) && v > 0) out.push({ res: k, perH: v }); }
+    }
+  } catch (e) {}
+  if (!out.length) out.push({ res: String((selNode && selNode.resource) || 'supplies'), perH: NODE_INV_BASE_PER_H });
+  return out;
+}
+function _twInvAmounts(selNode, hours, mult) {
+  const h = Math.max(0, Math.min(NODE_INV_CAP_H, +hours || 0));
+  return _twNodeYieldRates(selNode)
+    .map((r) => ({ res: r.res, qty: Math.floor(h * r.perH * mult) }))
+    .filter((r) => r.qty > 0);
+}
 async function _nodeInvCityLevelFetch(nodeId) {
   try {
     App._nodeCityLv = App._nodeCityLv || {};
@@ -250376,8 +250908,11 @@ function _nodeInventorySectionHtml(selNode) {
     App._nodeCityLv = App._nodeCityLv || {}; if (App._nodeCityLv[id] == null) _nodeInvCityLevelFetch(id);
     const cityLv = Math.max(1, App._nodeCityLv[id] | 0 || 1);
     const mult = _nodeInvMult(tier, powerLv, cityLv);
-    const hours = _nodeInvHoursOf(selNode);
-    const ready = _nodeInvYield(hours, tier, powerLv, cityLv);
+    /* 📦 v121v144 — the TW clock, not meta.invAt: a TW node has no meta, so the
+       old call always returned its 24h default and this number never moved. */
+    const hours = _twInvHoursOf(id);
+    const rows = _twInvAmounts(selNode, hours, mult);
+    const ready = rows.reduce((a, r) => a + r.qty, 0);
     const full = hours >= NODE_INV_CAP_H - 0.01;
     return `
       <div class="tw-nd-section-hdr">— 📦 NODE INVENTORY</div>
@@ -250386,9 +250921,9 @@ function _nodeInventorySectionHtml(selNode) {
           <span class="tw-nd-claim-badge">${m.icon || '📦'} ${escapeHtml(m.name || res)}</span>
           <span class="tw-nd-claim-owner"><b>${ready.toLocaleString()}</b> ready · ${hours.toFixed(1)} h${full ? ' · shelf full' : ''}</span>
         </div>
-        <div class="tw-nd-claim-hint" style="margin:6px 0">Fills at ${NODE_INV_BASE_PER_H}/h × <b>×${mult.toFixed(2)}</b> — node tier ${tier} · node power LV ${powerLv} · city LV ${cityLv}. Raise all three to reach ×1.5. Holds ${NODE_INV_CAP_H} h.</div>
+        <div class="tw-nd-claim-hint" style="margin:6px 0">${rows.map((r) => { const rm = (typeof _meta === 'function' && _meta(r.res)) || { name: r.res }; return escapeHtml(rm.name || r.res) + ' ' + (hours > 0.01 ? '+' + (r.qty / hours).toFixed(1) : '+0') + '/h'; }).join(' · ')} × <b>×${mult.toFixed(2)}</b> — node tier ${tier} · node power LV ${powerLv} · city LV ${cityLv}. Raise all three to reach ×1.5. Holds ${NODE_INV_CAP_H} h.</div>
         <div class="tw-nd-claim-row">
-          <button class="btn-mini btn-primary" ${ready > 0 ? '' : 'disabled'} onclick="__mg._nodeInvCollect('${escapeHtml(id)}')">📦 Collect ${ready.toLocaleString()} ${escapeHtml(m.name || res)}</button>
+          <button class="btn-mini btn-primary" ${ready > 0 ? '' : 'disabled'} onclick="__mg._nodeInvCollect('${escapeHtml(id)}')">📦 Collect ${ready.toLocaleString()} ${rows.length === 1 ? escapeHtml((((typeof _meta === 'function' && _meta(rows[0].res)) || {}).name) || rows[0].res) : 'resources'}</button>
         </div>
       </div>`;
   } catch (e) { return ''; }
@@ -250396,22 +250931,51 @@ function _nodeInventorySectionHtml(selNode) {
 window.__mg = window.__mg || {};
 window.__mg._nodeInvCollect = async function (nodeId) {
   try {
-    const n = ((typeof FoundationReserve !== 'undefined' && FoundationReserve.nodes) || []).find((x) => x && x.id === nodeId) || (App._twSelNode && App._twSelNode.id === nodeId ? App._twSelNode : null);
+    /* 📦 v121v144 — THE NODE COMES FROM THE MODAL'S OWN SELECTION.
+       The old lookup was the bug: FoundationReserve.nodes are PRN rows keyed by
+       economy_nodes.id (a UUID) while this modal shows TERRITORY-WAR nodes keyed
+       'N-01' (tw_node_owners.node_id, TEXT), so the find() missed on EVERY
+       click — the same mismatch this file already documents for the "Make
+       capital" button. The second half read App._twSelNode, which is referenced
+       there and NOWHERE ELSE in the file: never assigned, always null. So every
+       click ended at "That node is not loaded — reopen it." */
+    const n = (App._twNodeSel && App._twNodeSel.id === nodeId) ? App._twNodeSel
+            : ((typeof FoundationReserve !== 'undefined' && FoundationReserve.nodes) || []).find((x) => x && x.id === nodeId)
+            || null;
     if (!n) { showToast('That node is not loaded — reopen it.', 2600); return; }
     if (!(Cloud && Cloud.ready && Cloud.client)) { showToast('Sign in to collect from your node.', 2600); return; }
-    const res = String(n.resource || 'supplies');
     const tier = Math.max(1, (n.meta && n.meta.level | 0) || (n.level | 0) || 1);
     const powerLv = Math.max(1, (App._npRows && App._npRows[nodeId] && App._npRows[nodeId].level | 0) || 1);
     const cityLv = Math.max(1, (App._nodeCityLv && App._nodeCityLv[nodeId]) | 0 || 1);
-    const r = await Cloud.client.rpc('node_inventory_claim', { p_node_id: nodeId, p_cap_hours: NODE_INV_CAP_H });
+    /* The TW claim RPC (sql/135): TEXT node id, ownership checked against
+       tw_node_owners. The old call was node_inventory_claim(uuid) against
+       economy_nodes — a table this node is not in, so it could never have
+       succeeded even if the lookup above had found the node. */
+    const r = await Cloud.client.rpc('tw_node_inventory_claim', { p_node_id: String(nodeId), p_cap_hours: NODE_INV_CAP_H });
     const d = r && r.data;
-    if (!d || !d.ok) { showToast(d && d.why === 'not-owner' ? 'Only the node owner collects its inventory.' : 'Could not collect — try again.', 3000); return; }
-    const qty = _nodeInvYield(+d.hours || 0, tier, powerLv, cityLv);
-    n.meta = n.meta || {}; n.meta.invAt = +d.now || Date.now();
-    if (qty <= 0) { showToast('Nothing on the shelf yet — it fills by the hour.', 2600); try { render(); } catch (e) {} return; }
-    addRes(res, qty); try { saveProfile(); } catch (e) {}
-    const m = (typeof _meta === 'function' && _meta(res)) || { name: res, icon: '📦' };
-    showToast('📦 Collected ' + qty.toLocaleString() + ' ' + (m.name || res) + ' from ' + (n.name || 'your node') + ' (×' + _nodeInvMult(tier, powerLv, cityLv).toFixed(2) + ').', 4200);
+    if (!d || !d.ok) {
+      showToast(d && d.why === 'not-owner' ? 'Only the node owner collects its inventory.'
+              : d && d.why === 'signed-out' ? 'Sign in to collect from your node.'
+              : 'Could not collect — try again.', 3000);
+      return;
+    }
+    App._twInvAt = App._twInvAt || {};
+    App._twInvAt[nodeId] = +d.now || Date.now();
+    const mult = _nodeInvMult(tier, powerLv, cityLv);
+    /* 📦 EVERY RESOURCE THE NODE YIELDS, at the rate its own RESOURCE YIELD
+       panel promises — the owner's "make sure it gives players their node
+       resource yield". The old code paid a flat 10/h of one generic resource
+       while the panel beside it advertised something else entirely. */
+    const rows = _twInvAmounts(n, +d.hours || 0, mult);
+    if (!rows.length) { showToast('Nothing on the shelf yet — it fills by the hour.', 2600); try { render(); } catch (e) {} return; }
+    let _lbl = [];
+    for (const row of rows) {
+      try { addRes(row.res, row.qty); } catch (e) {}
+      const rm = (typeof _meta === 'function' && _meta(row.res)) || { name: row.res };
+      _lbl.push(row.qty.toLocaleString() + ' ' + (rm.name || row.res));
+    }
+    try { saveProfile(); } catch (e) {}
+    showToast('📦 Collected ' + _lbl.join(' · ') + ' from ' + (n.name || 'your node') + ' (×' + mult.toFixed(2) + ').', 4200);
     try { render(); } catch (e) {}
   } catch (e) { try { showToast('Could not collect — ' + ((e && e.message) || e), 3200); } catch (e2) {} }
 };
@@ -251308,7 +251872,7 @@ function renderDeckBuilder() {
       // exactly like the main/side deck card rows.
       return `<div class="pbl-gem-pool-row" data-ctx-key="custom:${escapeHtml(a.id)}" title="Right-click for full details" style="display:flex;align-items:center;gap:0.5rem;padding:0.3rem 0.5rem;border:1px solid rgba(255,200,80,0.25);border-radius:6px;background:${has ? 'rgba(255,200,80,0.1)' : 'rgba(255,255,255,0.02)'};cursor:context-menu${isOwned ? '' : ';opacity:0.55;filter:grayscale(0.5)'}">
         ${iconHtml}
-        <span style="flex:1;font-size:0.82rem;color:#fff3da">${escapeHtml(a.name || a.id)} <span class="ink-dim" style="font-size:0.7rem">${escapeHtml(tier)}${_isFus ? '' : ` · 🌌${(sp.kalonCost | 0) || 1}`}</span></span>
+        <span style="flex:1;font-size:0.82rem;color:#fff3da">${escapeHtml(a.name || a.id)} <span class="ink-dim" style="font-size:0.7rem">${escapeHtml(tier)}${_isFus ? '' : ` · 🌌${Number.isFinite(+sp.kalonCost) ? Math.max(0, +sp.kalonCost | 0) : 1}`}</span></span>
         ${_banned ? `<span style="font-size:0.72rem;color:#ff8a8a">🚫 Banned</span>`
           : has ? `<span style="font-size:0.72rem;color:#ffd86b">✕${_copies}${_cap < MAX_COPIES_PER_CARD ? ` / ${_cap}` : ''}</span>`
           : (isOwned ? (_limit < MAX_COPIES_PER_CARD ? `<span style="font-size:0.72rem;color:#c8b48a">${escapeHtml(RESTRICTION_LABELS[_limit] || '')}</span>` : '')
@@ -251741,6 +252305,26 @@ function renderDeckBuilder() {
     el.onclick = () => {
       if (el.disabled) return;
       const key = el.dataset.add;
+      /* 🜂 v121v138 — A REALM CARD ADDS TO THE REALM DECK. Owner: "show the
+         Fusions and Archon cards in the deck builder list so players can add them
+         to the deck but they will go into the realm deck (Fusions, Archons, Evo
+         Units)." So the button ROUTES rather than refuses — addToDeck still says
+         no (it is the choke point for every other deck source), but a player
+         clicking + on an Archon in the list gets what they meant. */
+      try {
+        const _rc = (typeof resolveDeckCard === 'function') ? resolveDeckCard(key) : null;
+        /* the typeof guard on _realmDeckAdd is an EXPLICIT degradation, not
+           caution: it is assigned further down this same bind pass, so it is
+           always defined by the time a CLICK can run — but without the guard a
+           reordering later would throw here, be swallowed by the catch, and
+           silently fall through to addToDeck's refusal instead of routing. */
+        if (typeof isRealmOnlyCard === 'function' && isRealmOnlyCard(_rc)
+            && typeof _realmDeckAdd === 'function') {
+          _realmDeckAdd(key);
+          render();
+          return;
+        }
+      } catch (e) {}
       withDeckScrollPreserved(() => {
         if (_sideEnabled && App.deckPanelTab === 'side') {
           _addToSide(key);
@@ -251965,6 +252549,35 @@ function renderDeckBuilder() {
   });
 
   // ── Archon Deck pool add/remove (max ARCHON_DECK_MAX, 1 copy each) ─────────
+  /* 🜂 v121v138 — ONE WAY INTO THE REALM DECK, used by its own + button and by
+     the card-list router above. Every rule the Realm Deck already had — the cap,
+     ownership, ban status, the per-card copy limit — is applied here, because a
+     second entrance that skipped them is exactly the second-source-of-truth
+     failure the copy-cap note in this file was written about. Returns true when
+     the card actually went in, so a caller can stay quiet on failure (this
+     already told the player why). */
+  window._realmDeckAdd = function (key) {
+    try {
+      const card = (typeof resolveDeckCard === 'function') ? resolveDeckCard(key) : null;
+      const kind = (typeof _realmOnlyKind === 'function') ? _realmOnlyKind(card) : null;
+      if (!card || !kind) { try { showToast('⚠ Only Archons, Fusions and Evo units can enter the Realm Deck.'); } catch (_) {} return false; }
+      const own = (typeof deckKeyOwnedCount === 'function') ? deckKeyOwnedCount(key) : 1;
+      if (!(own > 0)) { try { showToast("🔒 You don't own that card yet."); } catch (_) {} return false; }
+      if (!Profile.archonDeck || !Array.isArray(Profile.archonDeck.cards)) Profile.archonDeck = { cards: [] };
+      if (Profile.archonDeck.cards.length >= ARCHON_DECK_MAX) { try { showToast('⚠ Realm Deck is full (' + ARCHON_DECK_MAX + ' max)'); } catch (_) {} return false; }
+      const limit = (typeof _cardCopyLimit === 'function') ? _cardCopyLimit(card) : MAX_COPIES_PER_CARD;
+      if (limit === 0) { try { showToast('🚫 That card is BANNED — it cannot be decked.'); } catch (_) {} return false; }
+      const copies = Profile.archonDeck.cards.reduce((acc, k) => {
+        try { const c = resolveDeckCard(k); return acc + ((c && c.id === card.id) ? 1 : 0); } catch (e) { return acc; }
+      }, 0);
+      const cap = Math.min(limit, isFinite(own) ? own : MAX_COPIES_PER_CARD, MAX_COPIES_PER_CARD);
+      if (copies >= cap) { try { showToast('⚠ Limit reached — ' + cap + ' cop' + (cap === 1 ? 'y' : 'ies') + ' of that card allowed.'); } catch (_) {} return false; }
+      Profile.archonDeck.cards.push(key);
+      try { saveProfile(); } catch (_) {}
+      try { showToast('🜂 ' + (card.name || kind) + ' → Realm Deck (' + kind + 's are never in your main deck).', 2600); } catch (_) {}
+      return true;
+    } catch (e) { return false; }
+  };
   document.querySelectorAll('[data-archonpool-add]').forEach(btn => {
     btn.onclick = () => {
       if (btn.disabled) return;
@@ -251977,9 +252590,11 @@ function renderDeckBuilder() {
       if (Profile.archonDeck.cards.length >= ARCHON_DECK_MAX) { try { showToast(`⚠ Realm Deck is full (${ARCHON_DECK_MAX} max)`); } catch (_) {} return; }
       // Only Archons + Fusion/Polycreation Kalons belong in the Realm Deck.
       try {
+        /* 🧬 v121v138 — and Evo units, the third Realm type. One predicate now
+           answers for all three, so a fourth type is one line. */
         const _rd = resolveDeckCard('custom:' + id);
-        const _ok = _rd && ((typeof isArchonCard === 'function' && isArchonCard(_rd)) || (typeof isFusionKalon === 'function' && isFusionKalon(_rd)));
-        if (!_ok) { showToast('⚠ Only Archons and Fusion/Polycreation cards can enter the Realm Deck.'); return; }
+        const _ok = _rd && (typeof isRealmOnlyCard === 'function') && isRealmOnlyCard(_rd);
+        if (!_ok) { showToast('⚠ Only Archons, Fusions and Evo units can enter the Realm Deck.'); return; }
       } catch (e) {}
       // 🜂🌌 Up to 3 copies of the same card, narrowed by its ban / limit status
       // and by how many you own. (Defense-in-depth: the button is already
@@ -252595,7 +253210,7 @@ function renderDeckCardContextModal() {
   if (!card) return '';
   const { kind } = parseCardKey(key);
   const kindLabel = (card.type || kind || 'card').toUpperCase();
-  const isUnitLike = kind === 'unit' || (kind === 'custom' && card.type === 'unit');
+  const isUnitLike = kind === 'unit' || (kind === 'custom' && isUnitLikeType(card.type));   // 🪖 v121v143
   const equipKey = isUnitLike ? ('u_' + card.id) : null;
 
   // Stat block (for units / heroes) — now shows the unit's persistent level + XP, effective
@@ -262904,6 +263519,14 @@ function renderTerritoryWars() {
 
   // Node action panel.
   const selNode = selectedNodeId ? t.nodes.find(n => n.id === selectedNodeId) : null;
+  /* 📦 v121v144 — PUBLISH THE SELECTION so a click handler outside this render
+     can find the node. `t.nodes` is local here, and the TW node it holds is in a
+     DIFFERENT id space from FoundationReserve.nodes (text 'N-01' vs an
+     economy_nodes uuid) — which is why _nodeInvCollect's FoundationReserve
+     lookup missed on every click. Its other branch read App._twSelNode, a name
+     that appeared there and nowhere else in the file and was never assigned;
+     this is that missing assignment, under the name the handler now uses. */
+  try { App._twNodeSel = selNode || null; } catch (e) {}
   const selOwn  = selNode ? st.ownedNodes[selNode.id] : null;
   const iOwn    = !!(selOwn && myCorp && selOwn.ownerCorpId === myCorp.id);
   let actionPanel = '<div class="tw-action-empty small-text ink-dim">Click any node to inspect or act on it.</div>';
@@ -267639,8 +268262,8 @@ try {
        that works everywhere except the one early path nobody tested. It is
        2KB with no dependencies. -->
 <script src="src/econ/peg.js?v=v121q51"></script>
-<script src="src/battle/effects.js?v=v121v137" defer></script>
-<script src="src/phone/handset.js?v=v121v137" defer></script>
+<script src="src/battle/effects.js?v=v121v144" defer></script>
+<script src="src/phone/handset.js?v=v121v144" defer></script>
 <script src="src/battle/combat.js?v=120m4" defer></script>
 <script src="src/battle/targeting.js?v=121e3hex" defer></script>
 <link rel="stylesheet" href="src/sprites/frames.css?v=120k3">

@@ -27,7 +27,17 @@ ok(/if \(a\.kind === 'openFoundry'\) \{[\s\S]{0,500}openFoundry\(\); \} catch \(
 ok(/create or replace function public\.node_inventory_claim\(p_node_id uuid, p_cap_hours numeric default 48\)/.test(SQL) && /if v_owner <> auth\.uid\(\) then return jsonb_build_object\('ok', false, 'why', 'not-owner'\); end if;/.test(SQL) && /jsonb_build_object\('invAt', v_now\)/.test(SQL), 'sql/132: the owner-only claim stamps meta.invAt and returns the hours');
 ok(/\$\{\(typeof _nodeInventorySectionHtml === 'function'\) \? _nodeInventorySectionHtml\(selNode\) : ''\}/.test(SRC), 'the modal shows the inventory section after Node Power');
 ok(/if \(!own\) return '';/.test(SRC.slice(SRC.indexOf('function _nodeInventorySectionHtml'), SRC.indexOf('function _nodeInventorySectionHtml') + 1200)), '…for the node owner only');
-ok(/window\.__mg\._nodeInvCollect = async function \(nodeId\) \{/.test(SRC) && /rpc\('node_inventory_claim', \{ p_node_id: nodeId, p_cap_hours: NODE_INV_CAP_H \}\)/.test(SRC) && /addRes\(res, qty\); try \{ saveProfile\(\); \} catch \(e\) \{\}/.test(SRC), 'Collect claims the hours on the server, then banks the units through addRes');
+/* ⚠ THIS PIN PROTECTED A CALL THAT COULD NEVER WORK FROM THIS SCREEN. It required
+   rpc('node_inventory_claim', { p_node_id: nodeId }) — the uuid RPC against
+   economy_nodes — but the modal that renders this button shows TERRITORY-WAR
+   nodes, whose ids are TEXT ('N-01') in tw_node_owners. v121v144 moved the call
+   to tw_node_inventory_claim (sql/135) for exactly that reason; see
+   _nodeinvfix_smoke.mjs. The CLAIM this pin makes — the hours are claimed on the
+   server, then banked through addRes — is unchanged and still asserted. */
+ok(/window\.__mg\._nodeInvCollect = async function \(nodeId\) \{/.test(SRC)
+   && /rpc\('tw_node_inventory_claim', \{ p_node_id: String\(nodeId\), p_cap_hours: NODE_INV_CAP_H \}\)/.test(SRC)
+   && /addRes\(row\.res, row\.qty\)/.test(SRC) && /try \{ saveProfile\(\); \} catch \(e\) \{\}/.test(SRC),
+  'Collect claims the hours on the server, then banks the units through addRes');
 {
   const block = SRC.slice(SRC.indexOf('/* ═══ 📦 NODE INVENTORY'), SRC.indexOf('/* ═══ end node inventory ═══ */'));
   const api = new Function('App', 'Cloud', 'render', block.slice(0, block.indexOf('function _nodeInvHoursOf')) + '\nreturn { _nodeInvMult, _nodeInvYield, _nodeInvCityLevelFromXp, NODE_INV_BASE_PER_H, NODE_INV_CAP_H };')({}, null, () => {});

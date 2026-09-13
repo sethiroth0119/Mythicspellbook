@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Geomax • Devourer of Existence</title>
+<style>
+[hidden]{display:none!important}*{box-sizing:border-box}html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#03020a;color:#eee3ff;font-family:Georgia,serif}canvas{position:absolute;inset:0;width:100%;height:100%}#scene{position:absolute;inset:0;background:#03020a}#scene:after{content:"";position:absolute;inset:0;pointer-events:none;background:linear-gradient(#000 0%,transparent 15%,transparent 78%,#000 100%);box-shadow:inset 0 0 110px #0009}.top{position:absolute;top:7%;left:7%;font:10px Arial;letter-spacing:5px;color:#bc9fdb}#name{position:absolute;left:7%;bottom:13%;opacity:0;text-shadow:0 3px 20px #000}h1{font-size:clamp(38px,8vw,110px);font-weight:400;letter-spacing:.13em;margin:12px 0;background:linear-gradient(#fff9ef,#c99559);color:transparent;background-clip:text}#name small{font:10px Arial;letter-spacing:5px;color:#e4b77d}#name p{font-size:clamp(11px,1.3vw,19px);letter-spacing:.24em;color:#d0bce9;margin:0}#controls{position:absolute;bottom:25px;left:7%;right:7%;display:flex;align-items:center;gap:12px;font:10px Arial;letter-spacing:2px}button{border:1px solid #b897c655;background:#100b1ccc;color:#eadbf4;padding:10px 15px;cursor:pointer;font:10px Arial;letter-spacing:2px}#status{margin-left:auto;color:#a79ab9}#line{position:absolute;bottom:0;height:2px;background:#daa871;width:0}#error{position:absolute;top:45%;width:100%;text-align:center} @media(max-width:600px){#status{display:none}.top{letter-spacing:2px}#name{bottom:19%}}
+</style>
+<div id="scene"><canvas id="space"></canvas><div class="top">MYTHIC SPELLBOOK &nbsp; / &nbsp; ACE SUMMON</div><div id="name"><small>THE COSMOS FALLS SILENT</small><h1>GEOMAX</h1><p>THE DEVOURER OF EXISTENCE</p></div><div id="error" hidden></div><div id="line"></div></div><div id="controls"><button id="replay">REPLAY</button><button id="sound">SOUND OFF</button><button id="skip">SKIP</button><span id="status">ENTERING THE VOID</span></div>
+<script>
+(()=>{'use strict';
+const $=id=>document.getElementById(id),c=$('space'),g=c.getContext('2d'),sourceArt=new Image(),art=document.createElement('canvas'),embedded=parent!==window,reduced=matchMedia('(prefers-reduced-motion: reduce)').matches;
+const clamp=x=>Math.max(0,Math.min(1,x)),smooth=x=>{x=clamp(x);return x*x*(3-2*x)},lerp=(a,b,t)=>a+(b-a)*t;
+let w,h,dpr,raf,start=0,running=false,ready=false,muted=true,audio,nodes=[];
+const duration=6400,stars=Array.from({length:420},(_,i)=>({a:i*2.39996323,r:Math.sqrt((i+.5)/420),z:(i%19)/19}));
+function resize(){w=innerWidth;h=innerHeight;dpr=Math.min(devicePixelRatio||1,1.5);c.width=w*dpr;c.height=h*dpr;g.setTransform(dpr,0,0,dpr,0,0)}addEventListener('resize',resize);resize();
+function glow(x,y,r,color,alpha=1){if(r<.1)return;g.save();g.globalAlpha=clamp(alpha);const f=g.createRadialGradient(x,y,0,x,y,r);f.addColorStop(0,color);f.addColorStop(.12,color);f.addColorStop(1,'transparent');g.fillStyle=f;g.fillRect(x-r,y-r,2*r,2*r);g.restore()}
+// Continuous skin weights deform one connected mesh: no duplicate cutout edges.
+function deform(u,v,t){
+ if(reduced)return [u,v];
+ // A slow inhale/exhale lifts the head by at most 0.2% of sprite height.
+ // No lateral head motion, rolling, or oscillation of the neck.
+ const breath=(1-Math.cos(t*Math.PI*2/3.4))*.5;
+ const head=Math.max(0,1-(((u-.64)/.16)**2+((v-.19)/.11)**2))**2;
+ let x=u,y=v-head*.002*breath;
+ // Each wing moves as a hinged surface; roots blend into the fixed torso.
+ const flap=(1-Math.cos(t*Math.PI*2/2.5))*.5;
+ function hinge(px,py,weight,angle){
+   const a=angle*flap,dx=u-px,dy=v-py;
+   x+=weight*(dx*Math.cos(a)-dy*Math.sin(a)-dx);
+   y+=weight*(dx*Math.sin(a)+dy*Math.cos(a)-dy);
+ }
+ const left=smooth((.44-u)/.12)*smooth((.37-v)/.10);
+ const upperRight=smooth((u-.67)/.12)*smooth((.15-v)/.06);
+ const lowerRight=smooth((u-.78)/.10)*smooth((v-.41)/.08)*smooth((.78-v)/.10);
+ hinge(.43,.34,left,.12);
+ hinge(.67,.15,upperRight,-.14);
+ hinge(.77,.43,lowerRight,-.10);
+ return [x,y];
+}
+function triangle(a,b,c,A,B,C){const det=(b[0]-a[0])*(c[1]-a[1])-(c[0]-a[0])*(b[1]-a[1]);const xx=((B[0]-A[0])*(c[1]-a[1])-(C[0]-A[0])*(b[1]-a[1]))/det,xy=((B[1]-A[1])*(c[1]-a[1])-(C[1]-A[1])*(b[1]-a[1]))/det,yx=((C[0]-A[0])*(b[0]-a[0])-(B[0]-A[0])*(c[0]-a[0]))/det,yy=((C[1]-A[1])*(b[0]-a[0])-(B[1]-A[1])*(c[0]-a[0]))/det;g.save();g.beginPath();const mx=(A[0]+B[0]+C[0])/3,my=(A[1]+B[1]+C[1])/3;for(const [i,p] of [A,B,C].entries()){const x=p[0]+Math.sign(p[0]-mx)*.35,y=p[1]+Math.sign(p[1]-my)*.35;i?g.lineTo(x,y):g.moveTo(x,y)}g.closePath();g.clip();g.transform(xx,xy,yx,yy,A[0]-xx*a[0]-yx*a[1],A[1]-xy*a[0]-yy*a[1]);g.drawImage(art,0,0);g.restore()}
+function dragon(t){const entrance=smooth(t/1.9),zoom=1,dh=Math.min(h*1.02,w*1.42)*zoom,dw=dh*art.width/art.height,x=w*.58-dw*.5,y=h*.47-dh*.49;g.save();g.globalAlpha=smooth(t/.5);const nx=16,ny=24,pts=[];for(let j=0;j<=ny;j++)for(let i=0;i<=nx;i++){const p=deform(i/nx,j/ny,t);pts.push([x+p[0]*dw,y+p[1]*dh])}for(let j=0;j<ny;j++)for(let i=0;i<nx;i++){const k=j*(nx+1)+i,a=[i/nx*art.width,j/ny*art.height],b=[(i+1)/nx*art.width,j/ny*art.height],cc=[i/nx*art.width,(j+1)/ny*art.height],d=[b[0],cc[1]];triangle(a,b,cc,pts[k],pts[k+1],pts[k+nx+1]);triangle(b,d,cc,pts[k+1],pts[k+nx+2],pts[k+nx+1])}g.restore();const mouth=deform(.685,.205,t);return [x+mouth[0]*dw,y+mouth[1]*dh]}
+const planetImages=["geomax-p0.webp","geomax-p1.webp","geomax-p2.webp"].map(src=>{const img=new Image();img.src=src;return img});
+function planet(x,y,r,i,t){const img=planetImages[i];if(r<.4||!img.complete||!img.naturalWidth)return;g.save();g.translate(x,y);g.rotate(t*.12);glow(0,0,r*1.4,['#74bfff','#7edac9','#91d494'][i],.3);g.beginPath();g.arc(0,0,r,0,Math.PI*2);g.clip();g.drawImage(img,img.naturalWidth*.1,img.naturalHeight*.1,img.naturalWidth*.8,img.naturalHeight*.8,-r,-r,2*r,2*r);g.restore()}
+function render(ms){if(!running)return;const t=Math.min((ms-start)/1000,6.4);draw(t);if(t>=6.4){finish();return}raf=requestAnimationFrame(render)}
+function draw(t){g.clearRect(0,0,w,h);g.fillStyle='#03020a';g.fillRect(0,0,w,h);const size=Math.max(w,h),eat=smooth((t-1.8)/2.6);glow(w*.6,h*.4,size*.65,'#271047',.9);glow(w*.19,h*.62,size*.4,'#172951',.65);g.save();g.globalCompositeOperation='lighter';for(const s of stars){const a=s.a+t*.018,rr=((s.r+t*(reduced?0:.10)*(1-eat))%1)*size*.85,x=w*.52+Math.cos(a)*rr,y=h*.46+Math.sin(a)*rr*.64;g.globalAlpha=.2+s.z*.6;g.strokeStyle=s.z>.75?'#ffc890':'#acb7fa';g.lineWidth=.5+s.z;g.beginPath();g.moveTo(x,y);g.lineTo(x+(x-w*.52)*(reduced?0:.018)*(1-eat),y+(y-h*.46)*.018*(1-eat));g.stroke()}g.restore();
+const mouth=dragon(t);g.save();g.globalCompositeOperation='lighter';if(t>1.5&&t<4.6){for(let i=0;i<110;i++){const p=((t-1.5)*.55+i/110)%1,r=(1-p)*size*.63,a=i*2.4+p*2.5,x=mouth[0]+Math.cos(a)*r,y=mouth[1]+Math.sin(a)*r*.55;g.globalAlpha=Math.sin(p*Math.PI)*.8;g.strokeStyle=i%3?'#c7a3ff':'#ffb764';g.lineWidth=i%7===0?2:1;g.beginPath();g.moveTo(x,y);g.lineTo(mouth[0]+Math.cos(a+.06)*r*.95,mouth[1]+Math.sin(a+.06)*r*.55*.95);g.stroke()}}g.restore();
+for(let i=0;i<3;i++){const p=smooth((t-(1.55+i*.6))/.95);if(p>=1)continue;const sx=w*(.92-i*.045),sy=h*(.21+i*.27),x=lerp(sx,mouth[0],p),y=lerp(sy,mouth[1],p)+Math.sin(p*Math.PI)*h*.12;planet(x,y,Math.min(w,h)*(.075-i*.013)*(1-p),i,t)}
+const feeding=smooth((t-1.7)/.4)*(1-smooth((t-4)/.5));glow(mouth[0],mouth[1],35+feeding*65,'#ff8a31',feeding*.9);glow(mouth[0],mouth[1],8+feeding*18,'#fff4c1',feeding);if(t>4.05){const p=t-4.05;g.save();g.globalAlpha=(1-smooth(p/1.2))*.8;g.strokeStyle='#d9a4ff';g.lineWidth=2;g.beginPath();g.ellipse(mouth[0],mouth[1],p*size*.85,p*size*.42,-.2,0,Math.PI*2);g.stroke();g.restore();glow(mouth[0],mouth[1],size*.45,'#a874e8',Math.exp(-p*8)*.55)}
+const reveal=smooth((t-4.35)/.6);$('name').style.opacity=reveal;$('name').style.transform=`translateY(${(1-reveal)*18}px)`;$('line').style.width=t/6.4*100+'%';$('scene').style.opacity=embedded?1-smooth((t-6)/.4):1;$('status').textContent=t<1.8?'ENTERING THE VOID':t<4.1?'WORLDS CONSUMED':t<6.4?'ACE SUMMONED':'SUMMON COMPLETE'}
+function stopAudio(){nodes.forEach(n=>{try{n.stop()}catch{}});nodes=[]}
+function score(){stopAudio();if(muted)return;try{audio=audio||new AudioContext();audio.resume();for(const [delay,f0,f1,len,vol] of [[0,40,85,2,.13],[1.7,85,34,2.4,.16],[2,190,700,1.8,.035],[4.05,90,24,1.3,.2],[4.2,110,110,1.8,.04],[4.2,164.8,164.8,1.8,.03]]){const o=audio.createOscillator(),v=audio.createGain(),s=audio.currentTime+delay;o.frequency.setValueAtTime(f0,s);o.frequency.exponentialRampToValueAtTime(f1,s+len);v.gain.setValueAtTime(0,s);v.gain.linearRampToValueAtTime(vol,s+.08);v.gain.exponentialRampToValueAtTime(.0001,s+len);o.connect(v).connect(audio.destination);o.start(s);o.stop(s+len);nodes.push(o)}}catch{}}
+function finish(){if(!running)return;running=false;cancelAnimationFrame(raf);stopAudio();$('status').textContent='SUMMON COMPLETE';if(embedded){$('scene').style.opacity=0;parent.postMessage({type:'geomax:complete'},location.origin)}}
+function play(){if(!ready)return;cancelAnimationFrame(raf);running=true;start=performance.now();$('scene').style.opacity=1;score();raf=requestAnimationFrame(render)}
+$('replay').onclick=play;$('skip').onclick=finish;$('sound').onclick=()=>{muted=!muted;$('sound').textContent=muted?'SOUND OFF':'SOUND ON';muted?stopAudio():play()};addEventListener('keydown',e=>{if(e.key==='Escape')finish()});addEventListener('pagehide',()=>{finish();audio?.close()});if(embedded)$('controls').hidden=true;
+window.GeomaxSummon={play,stop:finish,duration,seek(t){if(!ready)return;cancelAnimationFrame(raf);running=false;draw(Math.max(0,Math.min(6.4,t)))}};
+sourceArt.onload=()=>{art.width=sourceArt.width;art.height=sourceArt.height;const ac=art.getContext('2d');ac.drawImage(sourceArt,0,0);const pixels=ac.getImageData(0,0,art.width,art.height),px=pixels.data;const count=art.width*art.height,mask=new Uint8Array(count),queue=new Int32Array(count);for(let n=0;n<count;n++){const i=n*4,lo=Math.min(px[i],px[i+1],px[i+2]),hi=Math.max(px[i],px[i+1],px[i+2]);mask[n]=lo>160&&hi-lo<32?1:0;}for(let seed=0;seed<count;seed++){if(mask[seed]!==1)continue;let head=0,tail=1;queue[0]=seed;mask[seed]=2;while(head<tail){const n=queue[head++],x=n%art.width;for(const q of [x?n-1:-1,x<art.width-1?n+1:-1,n-art.width,n+art.width])if(q>=0&&q<count&&mask[q]===1){mask[q]=2;queue[tail++]=q;}}if(tail>160)for(let j=0;j<tail;j++)px[queue[j]*4+3]=0;}ac.putImageData(pixels,0,0);ready=true;play()};sourceArt.onerror=()=>{$('error').hidden=false;$('error').textContent='Geomax artwork could not load.';if(embedded){running=true;finish()}};sourceArt.src='geomax-dragon.webp';
+})();
+</script></html>

@@ -15,8 +15,18 @@ const SRC = readFileSync('./public/index.html', 'utf8').replace(/\r\n/g, '\n');
    id list, the picker and the placement search. The ONLY thing stopping it
    carrying an enchantment was the type test, so the fix widens that rather than
    building a parallel effect. */
-ok(/return t === 'unit' \|\| t === 'summon' \|\| t === 'enchantment' \|\| t === 'curse';/.test(SRC),
-  'an enchantment and a curse are summonable — the one line that stopped it');
+/* ⚠ THIS PIN CARRIED THE WHOLE LINE VERBATIM, so it failed the moment v121v140
+   added `evo` to it for an unrelated reason ("Evo Units are units"). The claim
+   is about ENCHANTMENTS AND CURSES being on that list, not about who else is —
+   a list that is only ever added to should not make every addition look like a
+   regression. Each type is asserted on its own, so removing one still fails. */
+{
+  const line = (SRC.match(/^\s*return t === 'unit'[^\n]*$/m) || [''])[0];
+  ok(/t === 'enchantment'/.test(line) && /t === 'curse'/.test(line),
+    'an enchantment and a curse are summonable — the one line that stopped it', line.trim());
+  ok(/t === 'unit'/.test(line) && /t === 'summon'/.test(line),
+    '…and units and summons are still on it, so the widening never replaced what was there');
+}
 {
   const f = SRC.slice(SRC.indexOf('function _isSummonableCard(c) {') - 1400, SRC.indexOf('function _isSummonableCard(c) {') + 400);
   ok(/HEROES are deliberately excluded/.test(f),

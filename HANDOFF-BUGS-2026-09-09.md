@@ -1251,3 +1251,331 @@ together, so the editor cannot author a value the engine clamps away.
 Suite: `_choicefreeze_smoke.mjs` (runs the predicate for real — including that an
 empty trigger queue is not an open choice, and that sacrifice targeting does NOT
 freeze).
+
+---
+
+## v121v138 — Evo units, and the Realm-deck-only rule enforced for all three
+
+Owner: *"This will be the new card type that can only go into Realm decks and
+show the Fusions and Archon cards in the deck builder list so players can add
+them to the deck but they will go into the realm deck (Fusions, Archons, Evo
+Units)"* — and, restating it unprompted: *"Evo Units can only be in the realm
+deck they do not get added to the main deck they are like the fusions and
+Archons."*
+
+⚠ **The rule was not being enforced for the two types that already existed.**
+`addToDeck` gates deck size, copy limits, ownership and one-hero-per-deck — and
+says nothing about Archons or Fusion Kalons. An Archon is an *ordinary unit*
+carrying `archonSummon.enabled`, so `getAllDeckableCards` buckets it as a unit
+and the **main** deck accepted it. A card in the main deck is a card you can
+**draw**, and drawing the thing the Realm Deck exists to summon makes the summon
+condition that pays for it free. The Realm Deck's own add button has always
+checked its half ("Only Archons and Fusion/Polycreation cards can enter the Realm
+Deck"); the check simply never existed in the other direction.
+
+So this adds the Evo type **and** closes that hole for all three:
+
+* `isEvoCard` / `_realmOnlyKind` / `isRealmOnlyCard` — one predicate trio that
+  names the type, so a refusal can say which rule was hit and a fourth Realm type
+  later is one line rather than a hunt.
+* `addToDeck` refuses a Realm card outright. It lives there because `addToDeck`
+  is the choke point every deck source funnels through — the copy-cap note in the
+  same file records `buildDeckFromKeys`, two AI builders and `_legalizeDeck` each
+  re-deriving their own idea of a rule and each breaking it — so a hand-edited
+  save replayed through `buildDeckFromKeys` is covered too.
+* The deck-builder **+** button **routes** rather than refuses, because the owner
+  asked for these to be visible in the list and addable from it. It calls one
+  `_realmDeckAdd` that reuses the Realm Deck's own cap, ownership, ban status and
+  per-card copy limit — a second entrance that skipped them would be exactly the
+  second-source-of-truth failure that copy-cap note describes.
+
+An Archon card with `archonSummon.enabled` **false** is an ordinary unit and may
+still be decked.
+
+Suite: `_realmdeck_smoke.mjs` (runs the predicate for real, including that an
+Archon is Realm-only — the case the main deck was silently accepting — and that
+ordinary cards are untouched, so this cannot quietly shrink the main-deck pool).
+
+---
+
+## v121v139 — a battle loading screen that covers the REAL lag, and an AI that waits
+
+Owner: *"The game lags hard before the battle starts so What I want to do is ad
+the loading screen when the camera zoom out happens with the players cards in
+their hand has this fade out to the zoomout from the camera and have the ai wait
+until cards are drawn from both players and lag is over. Also that progress bar
+in the image make it move to the full of the game starting."*
+
+**What was actually wrong — the opening is three things racing, and nothing waits
+for anything:**
+
+* the board iframe boots and **bakes**. `battle-board/index.html`'s own budget
+  note measures three bakes at **~435 ms in one frame** (vista 106, terrain 130,
+  grade 59) plus refinements — and on `board:ready` the host answers with **eight
+  push bursts**;
+* the camera pull-back is 900 ms and its own comment says it **does not gate
+  input**;
+* the AI is kicked with `scheduleAIStep(900)` — and `applyAnimSpeed` can make
+  that **shorter** — while the last hand card does not start arriving until
+  1140 ms and finishes at ~1520 ms.
+
+So the AI could legitimately act **before the player's hand had finished being
+dealt**, on top of a stutter with nothing drawn over it. That is the report.
+
+**The screen** is modelled on the existing `BootSplash` — same shape, same CSS
+idiom, same safety net — and the bar tracks **real work**, which the owner chose
+explicitly and which is the only version that cannot show 100% while the game is
+still hitching:
+
+| step | weight | completed by |
+|---|---|---|
+| `state` | .15 | both hands dealt — `initGame` slices **both** in the same object literal in one tick, which is exactly *"cards are drawn from both players"* |
+| `stage` | .35 | the iframe reported `board:ready` — its bakes are done; the largest real non-settle cost |
+| `reveal` | .20 | the 900 ms camera pull-back has run |
+| `settle` | .30 | **eight consecutive rAF deltas under 40 ms** |
+
+⚠ **`settle` is the honest part.** "Lag is over" is not a duration anybody can
+guess from a desk — it depends on the machine — so it is **measured**, and it
+carries the largest weight because it is what the player actually feels. `reveal`
+is the one step honestly driven by a timer, because it is an animation we own
+rather than work whose cost varies by machine; if `REVEAL.DUR` changes, that
+number moves with it, exactly as the opening-deal delays already must.
+
+⚠ **A floor and a ceiling.** 800 ms minimum so a fast rematch cannot flash the
+screen for three frames; a 12 s ceiling (BootSplash's own safety value) so a
+machine that never settles is never stranded.
+
+⚠ **The AI is held by the same predicate the modals use.** v121v137 taught
+`_runAIStepWhenClear` to wait on a player prompt; the intro is the same kind of
+"not yet" and belongs in the same place, so the two answers cannot disagree. The
+wait refreshes `App._aiLastSchedule`, or the 8 s hang-watchdog would force-end
+the turn underneath the loading screen.
+
+⚠ **The opening deal moves with it.** `_playOpeningDeal` fires off the
+once-per-match turn-key baseline — i.e. on the **first render**, which is now
+behind the cover, where nobody could see it and where its 1800 ms class removal
+would strip it before the screen lifted. It is deferred to the moment the cover
+clears, which is also when the camera pull-back is visible: that is what makes
+the hand fade in *with* the zoom-out, as asked.
+
+The art ships AVIF / WebP / JPEG at **254–344 KB** from a 3.5 MB source — a
+screen whose whole job is to cover startup lag must not be a download that
+causes it.
+
+Suite: `_battleload_smoke.mjs` (runs the weighting and the settle detector for
+real, including that a machine still stuttering sits at 85% and does not claim to
+be ready, and that a stutter RESETS the smooth-frame streak rather than pausing
+it).
+
+---
+
+## v121v140 — the FOURTH ability surface gets the card art; an Evo unit is a unit
+
+Owner, with a screenshot of a frame PNG wearing a unicorn emoji: *"When a hero or
+unit use their ability Show the card art not this emoji stuff."* And: *"Evo Units
+are units It should be under summon."*
+
+**The first is a miss in my own earlier fix.** v121v134 replaced the art lookup on
+THREE surfaces — the ⚡ panel, the activation cinematic, the battle log — and
+missed a **fourth**: `_afxAnnounce`, which builds the spec the ActivateFX module
+draws as a full-screen card face. It still ran the pre-v134 lookup (refuse every
+`blob:`, then fall to the thumbnail tier) — exactly the code v134 identified as
+the bug, since `_lazyLoadCardArt` stores every streamed card art as a `blob:`. So
+the art the board was already drawing was resident and thrown away, and
+`activate.js` fell to `frameUrl` + an `.afx-glyph` of `s.icon`. That is the
+screenshot.
+
+⚠ The frame fallback is **kept** here, unlike in the log: there the owner named
+the card back as wrong in a 34px row; this is a full-screen card face, and
+`activate.js`'s own note says a bare dark rectangle is the worst of the three.
+
+**The second looks like menu ordering and is not.** `_isSummonableCard` — the
+test for "may this card be put on a tile" — listed unit / summon / enchantment /
+curse. An `evo` type is none of those, so the Evo unit would have been refused
+**by the very summon that exists to bring it out** of the Realm Deck, and the
+Cocoon feature would have failed the moment it was built. It is a unit on the
+board now, while staying Realm-deck-only for deckbuilding — separate questions,
+and the code says so.
+
+Suite: `_evoart_smoke.mjs`. `_enchzone_smoke`'s summonable pin carried the whole
+line verbatim and so failed on an unrelated addition; it now asserts each type
+separately, because a list that is only ever added to should not make every
+addition look like a regression.
+
+---
+
+## v121v141 — an enchantment on the board is scenery
+
+Owner: *"Enchantments cannot move remove the fact that they can move they are like
+walls."*
+
+⚠ **v121v135 only stopped it on its first turn.** The token was stamped
+`hasMoved`/`hasAttacked` at placement — but those are **turn** flags that the
+turn refresh clears, so from its second turn the enchantment was an ordinary,
+fully mobile unit.
+
+The rule follows the wall's, at every gate the wall uses: `getValidMoves` returns
+zero tiles (the one line that blocks Move Piece, drag-to-move **and** the AI), the
+hover menu offers no MOVE row, both `onTileClick` gates refuse it, and forced
+movement — knockback, push, pull — resists.
+
+⚠ **And mapping it found a hole in the wall rule itself.** `getSwapTargets` never
+excluded walls, and swap **relocates** a unit — so a wall whose own keyword row
+promises "never moves, can't be dragged or take a Move command" could be walked
+across the board by swapping it with the hero. Asking through one shared
+predicate closes that as a side effect, which is the whole argument for a shared
+predicate over a second `isWall`-shaped check: adding the rule to five gates and
+missing the sixth is exactly how swap went wrong.
+
+⚠ **Two predicates, not one.** `_isStationaryUnit` answers "does it take a Move
+command"; `_resistsForcedMove` answers "can it be shoved". A **pushable** wall
+moves when shoved while still never moving itself — collapsing them would have
+silently un-pushed every pushable wall in the game.
+
+⚠ **The forced-move guard exists at TWO sites** — knockback and pull are separate
+blocks with identical text. The patch asserts the count and rewrites both;
+fixing one would have left forced *pull* dragging an enchantment off its tile.
+
+The enchantment gets its own keyword row on the card, like the wall's, naming all
+three ways it cannot be moved including the swap that was leaking.
+
+Suite: `_enchstill_smoke.mjs` (runs both predicates for real, including that a
+pushable wall is STILL pushable).
+
+---
+
+## v121v142 — Cedric is the standard menu character; three new cinematics
+
+Owner: *"Replace the character that is on the main menu and that transfer on the
+side of other menus. Have this breathing Cedric be the standard default across
+all pages from on out."* Plus Cosmic Punch (Effect VFX), Geomax and Lord Gary
+(per-unit Summon VFX).
+
+**One change, three surfaces.** `_mdRoster()` is the single source for the iframe
+main menu's `#charStage`, `_mdSideHeroHtml()` on every sub-page, and the classic
+fallback menu — so the default moves once. An admin-curated roster still wins
+(that is an explicit decision made in the Character Manager); the old hero-art
+fallbacks are kept beneath Cedric as the last thing between a missing asset and
+an empty silhouette.
+
+⚠ **The Character Manager would have destroyed this asset.** Its upload path
+decodes every image and re-encodes with `canvas.toDataURL('image/png')` — an
+animated WebP dropped in there becomes a single still frame. Cedric is therefore
+wired as a code-level default with a real file path; going through that screen
+would have silently killed the animation and looked like a bad file.
+
+**Every asset was recompressed first**, because these load on screens players see
+constantly and there is an open laptop-performance report: Cedric **51 MB → 5.96
+MB** at 640px (he renders ~600–700px tall, so that is roughly native), Geomax
+**26 MB → 11 KB + 732 KB**, Gary **3.7 MB → 8 KB + 397 KB**, the Cosmic Punch
+fist **2.1 MB → 234 KB**. The Geomax win came from its shape: a 23.9 MB HTML that
+was 10 KB of code and three 2000×2000 base64 PNGs — and base64 is 33% larger than
+the bytes it carries *and* cannot be cached apart from the page.
+
+**A weak device gets a still** (owner's choice) — the loop's own first frame at
+125 KB, so the fallback is the same pose. It triggers on `prefers-reduced-motion`,
+on `gfxQuality: 'low'` (which `_memShedGraphics` latches under memory pressure),
+or on the device probe **copied verbatim from `combat.js`'s `lowPower()`** — the
+only capability test in the codebase, because a second differently-shaped one
+would be a second opinion about the same machine. The decision is made in the
+parent, not the iframe, which is handed a finished src; `_mmData()` never sends
+the graphics setting across, so the menu could not decide correctly anyway.
+
+⚠ **Gary's zip shipped an installer and it was NOT run** — it writes to
+`D:/game-deploy-battle`, a different worktree, and patches `index.html` by string
+replacement. But *reading* it earned its keep: it registers into
+`_ACE_VFX_NAME_MAP` as well as `_UNIT_SUMMON_VFX`, and that second registry is
+what fires a cinematic when a card's own `summonVfx` was never set or was
+stripped on publish. Registering only the picker would have left both new summons
+working in the Forge preview and silently dead in a real match.
+
+⚠ **Cosmic Punch was adapted, not copied.** It is an ES module importing a bare
+`'three'` specifier these pages cannot resolve; it used `import.meta.url` for its
+art path, which is a **syntax** error in a classic script (the whole file would
+have failed to parse and the effect would never have existed); and it set
+`colorSpace = THREE.SRGBColorSpace`, an r152+ constant the vendored build
+predates — which would have stored `undefined`, read the texture as linear and
+rendered the fist washed out. A bug nobody reports, because it merely looks
+slightly wrong.
+
+Suite: `_cedricvfx_smoke.mjs`.
+
+---
+
+## v121v143 — an Evo unit is EDITED as a unit
+
+Owner: *"Rvo Units are just like Summons and units they are units that can fight
+you have them as Spells Give them where they two can have stats and attacks."*
+
+⚠ **A bug in v121v138/v140, not a new request.** The `evo` type was added to the
+Forge dropdown and the engine was taught it may stand on a tile — but the
+editor's own test stayed `type === 'unit' || 'hero' || 'summon'`, so picking Evo
+Unit rendered the non-unit form: no stats, no learnset, no passives, no factions.
+A card summoned onto the board to fight had no way to be given anything to fight
+with.
+
+⚠ **The save side needed no change**, which is the tell that this was purely a
+rendering gate: the stat capture is `if (document.getElementById('ed-hp'))`. The
+stats were never refused, only never offered — noted in the source so nobody
+hunts for a save bug that does not exist.
+
+One `isUnitLikeType` predicate replaces **four** hand-rolled copies of the same
+test. Four sites that can disagree is exactly how a type gets added to three of
+them.
+
+Suite: `_evounit_smoke.mjs`.
+
+---
+
+## v121v144 — Node Inventory collects; Vault Crafting removed; zero-cost Archons
+
+Owner: *"This button is not working fix this here, Make sure it gives players
+their node resource yield."* · *"Remove this crafting button from the Vault
+base."* · *"Archon Summon should not consume Kalon Source Points. Have it where I
+can make it zero."*
+
+**Three stacked failures, which is why the Collect button did nothing at all:**
+
+1. it looked the node up in `FoundationReserve.nodes` — PRN rows keyed by
+   `economy_nodes.id`, a **UUID** — while the modal that renders the button shows
+   **territory-war** nodes keyed `'N-01'` (`tw_node_owners.node_id`, **TEXT**).
+   The `find()` missed on every click. This file already documents that exact
+   mismatch for the "Make capital" button and concludes *"economy_nodes still has
+   no column referencing a TW node, so that lookup can never be made to work"*;
+2. its only fallback read `App._twSelNode` — a name appearing **there and nowhere
+   else in the file**, never assigned, always null;
+3. past both, it called `node_inventory_claim(uuid)` against `economy_nodes` — a
+   table this node is not in.
+
+The claim clock now lives in the TW id space (`sql/135`, `tw_node_inventory` +
+`tw_node_inventory_claim(text, numeric)`), ownership checked against
+`tw_node_owners`, upserted so two devices cannot bank the same hours. ⚠ Not a
+re-point of 132: the id spaces cannot be joined, and 132 still serves PRN nodes
+correctly.
+
+**And the number was wrong too.** The panel offered a flat 10/h of a generic
+resource while the RESOURCE YIELD panel *directly beside it* read
+`selNode.resourceYield` and promised FUEL +7/hr — two panels on one modal
+describing the same node differently. It now pays the node's own yield, every
+resource it produces, still multiplied by the tier / node-power / city-level
+curve. A node with no authored yield keeps the old flat rate, so nothing that
+paid out before stops paying. The 24 h head start is kept (owner's choice), so
+the first collect after the fix pays what players were already shown.
+
+Also: the Vault's Crafting button and its handler are gone — which exposed that
+the Crafting screen's Back defaulted to `'baseVault'` while that button was the
+**only** caller that ever set `craftingReturnScreen`. Every other entrance had
+been dumping players into a room they never came from; the default is the title
+hub now, and the field is kept for callers that do know.
+
+And an Archon may cost **zero** Kalon Source. The engine always understood it —
+both the check and the spend use `Math.max(0, kalonCost|0)`, and spending 0 is a
+no-op. Four `|| 1` fallbacks were the problem: `0` is falsy, so they could not
+tell "unset" from "deliberately zero". The save wrote a typed 0 back as 1, the
+editor re-rendered a stored 0 as 1, and the rules text and Realm Deck badge both
+printed 1 for a free Archon.
+
+Suites: `_nodeinvfix_smoke.mjs`. `_nodeinv_smoke`'s collect pin required the uuid
+RPC — the call that could never work from this screen — so it now asserts the TW
+one; the claim it was written to protect (hours claimed on the server, banked
+through `addRes`) is unchanged.

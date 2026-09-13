@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>VFX · COSMIC PUNCH</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  html, body { width:100%; height:100%; overflow:hidden; background:transparent; }
+
+  /* PREVIEW-ONLY backdrop — visible when this file is opened directly, and
+     removed in-game so the board shows through the iframe. Same idiom as every
+     other cinematic in this folder. */
+  #previewbg { position:fixed; inset:0; z-index:-1;
+    background: radial-gradient(ellipse at 50% 45%, #131c2c 0%, #080c14 70%, #04060a 100%); }
+  canvas { position:fixed; inset:0; width:100%; height:100%; display:block; background:transparent; }
+</style>
+</head>
+<body>
+<div id="previewbg"></div>
+
+<!-- ⚠ THE VENDORED THREE, NOT A CDN. The package's own preview imports three
+     0.180 from jsDelivr; every cinematic here loads this local UMD build, and a
+     CDN dependency would make the effect fail exactly when the player has no
+     network — which is when a cached game is most likely to be running. -->
+<script src="three.min.js"></script>
+<script src="cosmic-punch.js"></script>
+<script>
+(function () {
+  'use strict';
+  /* 🌌 COSMIC PUNCH — effect cinematic wrapper (v121v142).
+
+     The package ships a THREE.Group subclass, not a page: it expects a host
+     scene, a camera, a render loop and a trigger. That host is here, kept as
+     small as the effect allows, and matching the conventions the other
+     cinematics in this folder already follow:
+
+       · transparent renderer, so the board shows through the iframe;
+       · a fixed camera framing the punch's ground plane;
+       · one trigger on load, because an effect cinematic is a one-shot;
+       · it tears itself down and tells the parent when it is finished, so the
+         host can drop the iframe rather than leaving a WebGL context alive.
+
+     ⚠ Total lifetime is 3.8s (the package's own `duration`), and onImpact fires
+       at 0.9s. The teardown waits for the full duration plus a small tail so the
+       last particles are not cut off mid-flight. */
+  var TOTAL_MS = 4200;               // 3.8s of animation + a short tail
+  var host, renderer, scene, camera, punch, raf = 0, last = 0, dead = false;
+
+  function done() {
+    if (dead) return;
+    dead = true;
+    try { cancelAnimationFrame(raf); } catch (e) {}
+    try { if (punch) punch.dispose(); } catch (e) {}
+    try { if (renderer) { renderer.dispose(); renderer.forceContextLoss && renderer.forceContextLoss(); } } catch (e) {}
+    /* Same-origin parent only, and a plain message — the host already listens
+       for cinematic completion this way. */
+    try { if (parent !== window) parent.postMessage({ type: 'cosmicpunch:complete' }, '*'); } catch (e) {}
+  }
+
+  function boot() {
+    if (!window.THREE || !window.CosmicPunch) { done(); return; }
+    try {
+      renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.75));
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      renderer.setClearColor(0x000000, 0);
+      document.body.appendChild(renderer.domElement);
+
+      scene = new THREE.Scene();
+      camera = new THREE.PerspectiveCamera(46, window.innerWidth / window.innerHeight, 0.1, 200);
+      camera.position.set(0, 4.2, 12.5);
+      camera.lookAt(0, 1.6, 0);
+      scene.add(new THREE.AmbientLight(0x334466, 0.7));
+
+      punch = new window.CosmicPunch({ particleCount: 650, onImpact: function () {} });
+      scene.add(punch);
+      punch.trigger(new THREE.Vector3(0, 0, 0));
+
+      window.addEventListener('resize', function () {
+        try {
+          camera.aspect = window.innerWidth / window.innerHeight;
+          camera.updateProjectionMatrix();
+          renderer.setSize(window.innerWidth, window.innerHeight);
+        } catch (e) {}
+      });
+
+      last = performance.now();
+      var loop = function (t) {
+        if (dead) return;
+        var dt = Math.min((t - last) / 1000, 0.05);   // clamp: a backgrounded tab
+        last = t;                                      // must not fast-forward it
+        try { punch.update(dt); renderer.render(scene, camera); } catch (e) { done(); return; }
+        raf = requestAnimationFrame(loop);
+      };
+      raf = requestAnimationFrame(loop);
+      setTimeout(done, TOTAL_MS);
+    } catch (e) { done(); }
+  }
+
+  /* A hard stop regardless of what happens above — a cinematic that never ends
+     is a WebGL context the host cannot reclaim. */
+  setTimeout(done, TOTAL_MS + 2500);
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
+  else boot();
+})();
+</script>
+</body>
+</html>
