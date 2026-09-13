@@ -30,7 +30,14 @@ console.log('\n=== 1. which units qualify for a slot ===');
 {
   const dist = (a, b) => Math.max(Math.abs(a.x - b.x), Math.abs(a.y - b.y));
   const env = { distance: dist, escapeHtml: (t) => String(t), getCardArt: () => null, _lazyLoadCardArt: () => {} };
-  const code = ['_polySlotAlts', '_polyExpandReqs', '_polyArtSrc', '_polyArtHtml', '_polyThumbHtml'].map((n) => lift(SRC, n)).join('\n')
+  /* ⚠ v121v151 — _polyMatUsable and _polyMatShape are lifted TOO. _polySlotAlts
+     now asks them "may this body be taken as a material" instead of testing
+     u.owner inline, which is the whole point of that change: the swap list and
+     the material finder must not hold two opinions about legality. Leaving them
+     out did not weaken this check, it broke it — the lifted function threw on an
+     undefined helper, its own try/catch swallowed that and returned [], and
+     every slot came back with no alternatives. */
+  const code = ['_polyMatUsable', '_polyMatShape', '_polySlotAlts', '_polyExpandReqs', '_polyArtSrc', '_polyArtHtml', '_polyThumbHtml'].map((n) => lift(SRC, n)).join('\n')
     + '\nreturn { alts: _polySlotAlts, expand: _polyExpandReqs, art: _polyArtHtml, thumb: _polyThumbHtml };';
   const F = new Function(...Object.keys(env), code)(...Object.values(env));
   const units = [

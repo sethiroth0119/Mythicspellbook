@@ -39507,7 +39507,7 @@ body:has(#pack-opener-frame) #chat-overlay {
   // the console. Bump this every deploy alongside sw.js's CACHE_VERSION. If two
   // machines show different stamps, the older one is on stale code (hard-refresh);
   // if they MATCH but content still differs, it is a DATA/publish issue, not code.
-  window.BUILD_VERSION = 'v121v150';
+  window.BUILD_VERSION = 'v121v151';
   try {
     console.info('%cMythic Spellbook ' + window.BUILD_VERSION + '%c — build check: run  __mg.version',
       'font-weight:700;color:#b48cff', 'color:#7d7499');
@@ -115189,8 +115189,29 @@ function _applyOnPlayOneRaw(state, unit, card) {
     // fusions resolve deterministically for BOTH sides instead.
     // This is what makes "a TRAP that fuses by stealing a unit" work: the KALON
     // still declares WHAT it needs, the CARD declares WHERE it comes from.
-    if (Array.isArray(eff.matSources) && eff.matSources.some(s => s && s !== 'field')) {
-      return _polyFuseFromSources(state, unit, eff, owner, log);
+    /* 🌌 v121v151 — 'enemy' SKIPS THE DIVERSION, BUT ONLY WHERE A MODAL CAN
+       ACTUALLY OPEN. The modal can express a body on the enemy's board now (it
+       is a tile like any other), which is the flow the owner asked for — but it
+       is a player-only, own-turn flow.
+
+       🔴 Everything else MUST keep the deterministic path. The branch below the
+          diversion is a private auto-fuse whose candidate scan is
+          `u.owner === owner`, so it cannot see the enemy board at all: letting
+          an AI card, or a player TRAP resolving on the opponent's turn
+          (_autoPick, where the picker cannot open because the AI step loop
+          overwrites App.state underneath it), fall through to it would stop it
+          finding enemy materials _polyFuseFromSources finds today. That would
+          be a regression in the opposite direction from the bug being fixed.
+
+       hand / deck / graveyard divert for EVERY owner, because those are PILES
+       and the picker's whole vocabulary is slots on the board. */
+    if (Array.isArray(eff.matSources) && eff.matSources.length) {
+      const _hasPile  = eff.matSources.some(s => s && s !== 'field' && s !== 'enemy');
+      const _hasEnemy = eff.matSources.some(s => s === 'enemy');
+      const _canModal = (owner === 'player') && !eff._autoPick;
+      if (_hasPile || (_hasEnemy && !_canModal)) {
+        return _polyFuseFromSources(state, unit, eff, owner, log);
+      }
     }
     // 🌌 THE PLAYER ALWAYS GETS THE CARD'S OWN FLOW. The private auto-fuse below
     // scans from the ACTING UNIT, which for a graveyard / hand ability is a
@@ -116558,7 +116579,54 @@ function checkFusionCondition(state, side, kalonCard, excludeIds) {
   return { ok: true, banish: chosen.map(u => u.id) };
 }
 
-function findLegalFusionMaterials(state, side, kalonCard) {
+/* 🌌 v121v151 — MAY THIS FUSION TEAR A UNIT OFF THE ENEMY BOARD, and what does
+   it treat that unit as? Both answers live on the card's polycreate effect
+   (matSources + seizeTreatAs), and every route into the fusion gate reaches the
+   card, so this is derived once here rather than threaded through four
+   signatures that would each have to remember it.
+   Returns enemyOk:false for every card that does not name the source, which is
+   every card that exists today — so nothing changes for them. */
+function _polyEnemySpec(card) {
+  const none = { enemyOk: false, alias: '' };
+  try {
+    if (!card) return none;
+    const effs = [];
+    if (card.onPlay) effs.push(card.onPlay);
+    if (Array.isArray(card.onPlayExtra)) card.onPlayExtra.forEach(e => e && effs.push(e));
+    if (card.flipEffect) effs.push(card.flipEffect);
+    for (const e of effs) {
+      if (!e || (e.type !== 'polycreate' && e.type !== 'polyFromGrave')) continue;
+      const srcs = Array.isArray(e.matSources) ? e.matSources : null;
+      if (srcs && srcs.indexOf('enemy') !== -1) {
+        return { enemyOk: true, alias: String(e.seizeTreatAs || '').trim() };
+      }
+    }
+  } catch (e) {}
+  return none;
+}
+/* 🌌 v121v151 — the ONE test for "may this body be taken as a material".
+   Shared by the material finder and the swap list so a unit the picker offers
+   is always one the finder would have accepted. */
+function _polyMatUsable(u, side, opts) {
+  if (!u || !u.alive || u.isHero || !u.pos) return false;
+  if (u.owner === side) return true;
+  if (!(opts && opts.enemyOk)) return false;
+  // the deterministic path's own rule about what may be torn off a board
+  try {
+    if (typeof _unitProtectedFrom === 'function'
+        && (_unitProtectedFrom(u, 'target') || _unitProtectedFrom(u, 'destroy'))) return false;
+  } catch (e) {}
+  return true;
+}
+/* 🌌 v121v151 — a seized unit matched through the card's seizeTreatAs alias.
+   matchFusionMaterial already resolves treatAs against the pinned card's name,
+   so this only has to hand it the alias for a body that is not yours. */
+function _polyMatShape(u, side, opts) {
+  if (!u || u.owner === side) return u;
+  const a = (opts && opts.alias) || '';
+  return a ? { ...u, treatAs: a } : u;
+}
+function findLegalFusionMaterials(state, side, kalonCard, opts) {
   if (!state || !kalonCard) return null;
   // 🜂 The spell-turn half of the condition is checked up front (it is free);
   // the BANISH half is checked at the bottom, once the materials are known, so a
@@ -116572,8 +116640,14 @@ function findLegalFusionMaterials(state, side, kalonCard) {
   const radius = Math.max(1, (kalonCard.heroRange | 0) || 1);
   const hero = (state.units || []).find(u => u && u.owner === side && u.isHero && u.alive);
   if (!hero) return null;
+  /* 🌌 v121v151 — the radius is measured from YOUR hero either way: a fusion
+     reaches as far as it reaches, and whose tile the body is standing on does
+     not change that. Enemy bodies join the sweep only when the card named the
+     'enemy' source, so every existing fusion sees exactly the set it always
+     saw. Entries stay bare unit-id strings, so no consumer downstream needs to
+     know this happened. */
   const inRange = (state.units || []).filter(u =>
-    u && u.alive && u.owner === side && !u.isHero &&
+    _polyMatUsable(u, side, opts) &&
     distance({ x: (u.pos.x | 0), y: (u.pos.y | 0) }, { x: (hero.pos.x | 0), y: (hero.pos.y | 0) }) <= radius
   );
   const used = new Set();
@@ -116636,7 +116710,7 @@ function findLegalFusionMaterials(state, side, kalonCard) {
         let got = null;
         for (const z of zones) {
           if (z === 'field') {
-            const u2 = inRange.find(u => !used.has(u.id) && matchFusionMaterial(u, req));
+            const u2 = inRange.find(u => !used.has(u.id) && matchFusionMaterial(_polyMatShape(u, side, opts), req));
             if (u2) { used.add(u2.id); got = u2.id; break; }
           } else {
             const c2 = _takeFromZone(z, req);
@@ -116692,9 +116766,23 @@ function findActivatableFusions(state, side, polySpellCard) {
     ? [].concat(all.filter(k => k && k.id === pinnedId), all.filter(k => !k || k.id !== pinnedId))
     : all;
   const out = [];
+  /* 🌌 v121v151 — the SPELL says whether the enemy board is in play; the KALON
+     only ever said what the materials must be. Derived once, out of the loop.
+
+     🔴 PLAYER ONLY, and this is a RULES BOUNDARY, not a shortcut. The AI's own
+        Polycreation resolver consumes gate.materials BY ID and marks them
+        _fusionConsumed without filing anything into a graveyard — correct while
+        every material is its own, and wrong the instant one is the player's:
+        their card would vanish from the game instead of reaching their
+        graveyard. The AI already has a steal-fusion path that files correctly
+        (_polyFuseFromSources, which every non-modal flow still takes), so it
+        keeps exactly the behaviour it has today. Widening its hand-spell gate
+        would also be a rules change nobody asked for: the ask was to show a
+        seized unit IN THE MODAL, and the modal is the player's own-turn flow. */
+  const _eo = (side === 'player' && typeof _polyEnemySpec === 'function') ? _polyEnemySpec(polySpellCard) : null;
   for (const kalon of sorted) {
     if (!kalon) continue;
-    const materials = findLegalFusionMaterials(state, side, kalon);
+    const materials = findLegalFusionMaterials(state, side, kalon, _eo);
     if (materials && materials.length) out.push({ kalon, materials });
   }
   return out;
@@ -117171,13 +117259,23 @@ function _resolvePolycreationFusion() {
     graveyard: fm.noCard ? (ns.player.graveyard || []) : [...(ns.player.graveyard || []), card],
     energy: Math.max(0, (ns.player.energy | 0) - (fm.noCard ? 0 : cost)),
   };
-  // Push consumed material card-defs to the graveyard when applicable.
+  /* Push consumed material card-defs to the graveyard when applicable.
+     ⚠ v121v151 — TO ITS OWN OWNER'S PILE. This pushed everything into
+       ns.player.graveyard, which was correct while every material was yours and
+       became a gift the moment one was not: a seized enemy unit's card would
+       land in YOUR graveyard, where any of this engine's recursion effects
+       could bring it back for you — you would be permanently stealing a card,
+       not borrowing a body for a fusion. An enemy unit consumed here is filed
+       exactly where it goes when it dies any other way. */
   if (destination === 'graveyard') {
     consumed.forEach(u => {
       if (u && u.cardId) {
         try {
           const def = (typeof resolveDeckCard === 'function') ? resolveDeckCard('custom:' + u.cardId) : null;
-          if (def) ns.player.graveyard.push(def);
+          if (!def) return;
+          const owner2 = (u.owner === 'player') ? 'player' : 'ai';
+          if (owner2 === 'player') ns.player.graveyard.push(def);
+          else ns.ai = { ...ns.ai, graveyard: [...((ns.ai && ns.ai.graveyard) || []), def] };
         } catch (e) {}
       }
     });
@@ -165518,6 +165616,11 @@ function renderFusionSelectionOverlay() {
   };
   const _hero = hero;
   const _radius = fm.heroRadius || Math.max(1, (kalon.heroRange | 0) || 1);
+  /* 🌌 v121v151 — the same enemy permission the GATE used when it filled these
+     slots. Derived from the same card by the same function, so the swap list
+     below cannot answer a different question from the one that chose the
+     material in the first place. */
+  const _eSpec = (typeof _polyEnemySpec === 'function') ? _polyEnemySpec(card) : null;
   const reqList = _polyExpandReqs(kalon.fusionRequirements || []).map((row, i) => {
     const r = row.req;
     const tags = [];
@@ -165530,9 +165633,14 @@ function renderFusionSelectionOverlay() {
     if (r.faction) tags.push('Faction: ' + _factionLabel(r.faction));
     const filled = materials[i];
     const _thumb = filled ? _polyThumbHtml(filled._fromZone ? (fm.materialUnitIds[i] && fm.materialUnitIds[i].cardId) : (filled.originalCardId || filled.cardId), filled.icon) : '';
+    /* 🌌 v121v151 — SAY WHOSE IT IS. The player is about to tear this unit off
+       the opponent's board, and a slot that reads exactly like one of their own
+       units hides the most important fact about the play. */
+    const _seized = !!(filled && !filled._fromZone && filled.owner && filled.owner !== 'player');
     const fillTxt = filled
       ? `${_thumb}${escapeHtml(filled.name || 'Unit')}`
         + (filled._fromZone ? ` <span class="ink-dim" style="font-size:0.78em">· from ${escapeHtml(filled._fromZone)}</span>` : '')
+        + (_seized ? ' <span style="font-size:0.78em;color:#ff8f7a">· seized from the enemy</span>' : '')
       : '<span class="ink-dim">— unfilled —</span>';
     /* ⇄ A slot with alternatives becomes swappable. Zone slots carry theirs
        from findLegalFusionMaterials; FIELD slots are worked out here: any other
@@ -165542,7 +165650,10 @@ function renderFusionSelectionOverlay() {
     if (filled && filled._fromZone && Array.isArray(filled._alts) && filled._alts.length) {
       _swap = `<button type="button" class="poly-swap" data-poly-swap="${i}" title="${escapeHtml('Use a different card (' + (filled._alts.length + 1) + ' available)')}">⇄</button>`;
     } else if (filled && !filled._fromZone && _hero) {
-      const alts = _polySlotAlts(s, 'player', _hero.pos, _radius, fm.materialUnitIds, (u) => matchFusionMaterial(u, r), filled.id);
+      // 🌌 v121v151 — _eSpec, or this list disagrees with the gate that filled the slot
+      const alts = _polySlotAlts(s, 'player', _hero.pos, _radius, fm.materialUnitIds,
+        (u) => matchFusionMaterial((typeof _polyMatShape === 'function') ? _polyMatShape(u, 'player', _eSpec) : u, r),
+        filled.id, _eSpec);
       if (alts.length) _swap = `<button type="button" class="poly-swap" data-poly-swapf="${i}" title="${escapeHtml('Use a different unit (' + (alts.length + 1) + ' qualify): ' + alts.map(u => u.name).join(', '))}">⇄ ${alts.length + 1}</button>`;
     }
     return `<div class="poly-req-row"><span class="poly-req-tags">${tags.map(t => `<span class="poly-req-tag">${escapeHtml(t)}</span>`).join('')}</span><span class="poly-req-fill">${fillTxt}${_swap}</span></div>`;
@@ -165634,7 +165745,14 @@ function bindFusionSelectionOverlay() {
         const req = rows[idx] && rows[idx].req; if (!req) return;
         const hero = (st.units || []).find(u => u && u.owner === 'player' && u.isHero && u.alive); if (!hero) return;
         const radius = fm2.heroRadius || Math.max(1, (kalon.heroRange | 0) || 1);
-        const alts = _polySlotAlts(st, 'player', hero.pos, radius, fm2.materialUnitIds, (u) => matchFusionMaterial(u, req), curId);
+        // 🌌 v121v151 — same spec again: the handler re-derives the list on the
+        // click, and a narrower answer here than in the render would make the
+        // ⇄ button visibly present and silently do nothing.
+        const _eSpec2 = (typeof _polyEnemySpec === 'function')
+          ? _polyEnemySpec(_fusionModeCard(fm2, st) || {}) : null;
+        const alts = _polySlotAlts(st, 'player', hero.pos, radius, fm2.materialUnitIds,
+          (u) => matchFusionMaterial((typeof _polyMatShape === 'function') ? _polyMatShape(u, 'player', _eSpec2) : u, req),
+          curId, _eSpec2);
         if (!alts.length) return;
         fm2.materialUnitIds[idx] = alts[0].id;
         renderBattle();
@@ -165707,14 +165825,18 @@ function _polyThumbHtml(cardId, icon) {
    The OTHER living units of the same side, inside `radius` of `center`, that
    satisfy `match` and are not already spoken for. Pure: the overlays call it
    at draw time and the handlers swap the id in place. */
-function _polySlotAlts(state, side, center, radius, taken, match, excludeId) {
+/* ⇄ 🌌 v121v151 — opts carries the same enemy permission the finder used.
+   WITHOUT IT the two disagree in the worst direction: the modal would show a
+   seized unit in a slot and then offer no way to swap back to it, or offer
+   swaps the fusion would refuse. Both halves ask _polyMatUsable. */
+function _polySlotAlts(state, side, center, radius, taken, match, excludeId, opts) {
   try {
     const cx = center.x | 0, cy = center.y | 0;
     const t = new Set((taken || []).filter(v => typeof v === 'string'));
     return ((state && state.units) || []).filter(u =>
-      u && u.alive && u.owner === side && !u.isHero && u.pos && u.id !== excludeId && !t.has(u.id) &&
+      _polyMatUsable(u, side, opts) && u.id !== excludeId && !t.has(u.id) &&
       distance({ x: (u.pos.x | 0), y: (u.pos.y | 0) }, { x: cx, y: cy }) <= radius &&
-      (function () { try { return !!match(u); } catch (e) { return false; } })());
+      (function () { try { return !!match(_polyMatShape(u, side, opts)); } catch (e) { return false; } })());
   } catch (e) { return []; }
 }
 /* One requirement row per BODY: a "2× Mage" line is two rows, so every material
@@ -269185,8 +269307,8 @@ try {
        that works everywhere except the one early path nobody tested. It is
        2KB with no dependencies. -->
 <script src="src/econ/peg.js?v=v121q51"></script>
-<script src="src/battle/effects.js?v=v121v150" defer></script>
-<script src="src/phone/handset.js?v=v121v150" defer></script>
+<script src="src/battle/effects.js?v=v121v151" defer></script>
+<script src="src/phone/handset.js?v=v121v151" defer></script>
 <script src="src/battle/combat.js?v=120m4" defer></script>
 <script src="src/battle/targeting.js?v=121e3hex" defer></script>
 <link rel="stylesheet" href="src/sprites/frames.css?v=120k3">

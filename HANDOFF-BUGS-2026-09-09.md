@@ -2047,3 +2047,86 @@ so the header was corrected; the check itself was not weakened.
 
 Suite: `_evococoon_smoke.mjs` (62 checks; runs the counter arithmetic and both
 gates for real, including that an arrival with an unknown zone fires nothing).
+
+---
+
+## v121v151 — 🌌 a seized enemy unit shows up in the Polycreation modal
+
+> Owner: *"When stealing a unit from your enemy to use for PolyCreation Make sure
+> to show the unit in the modal if it qualify to be used."*
+
+### The diagnosis was not a filter
+
+Polycreation has **two** resolution paths, and ticking the `enemy` material
+source moved the card from the one with a picker to the one without:
+
+* `findLegalFusionMaterials` → the **selection modal**, where the player sees
+  every slot and can swap each one;
+* `_polyFuseFromSources` → deterministic, opens nothing at all, taken the moment
+  `matSources` names anything other than `field`.
+
+So the enemy unit was never missing *from* the modal — **the modal was never
+opened.** The existing comment said exactly that: *"that modal cannot express it
+— it only ever scans the field."* This makes it able to express it.
+
+### The two halves must ask the same question
+
+`findLegalFusionMaterials` chooses the material; `_polySlotAlts` re-derives the
+legal bodies when the player clicks ⇄. If only the first learned about enemy
+units, the modal would fill a slot with a seized unit and then offer **no way
+back to it**, and would omit every other enemy body the fusion would accept.
+
+Both now call one `_polyMatUsable`, and the protection rule inside it is the
+deterministic path's own `_unitProtectedFrom` call rather than a re-derived copy
+— what may be torn off a board is exactly the kind of rule that must not have two
+opinions. `seizeTreatAs` is applied where the match happens, so the modal shows
+what the fusion will actually accept.
+
+### The regression this nearly shipped
+
+⚠ Letting `enemy` skip the diversion **unconditionally** would send an AI card —
+or a player **trap** resolving on the opponent's turn (`_autoPick`, where the
+picker cannot open because the AI step loop overwrites `App.state` underneath it)
+— into the branch below the diversion. That branch is a private auto-fuse whose
+candidate scan is `u.owner === owner`: **it cannot see the enemy board at all.**
+Those cards would have *stopped* finding materials `_polyFuseFromSources` finds
+today — a regression in the opposite direction from the bug being fixed.
+
+The skip is therefore scoped to `owner === 'player' && !eff._autoPick`, which is
+the only situation a modal can open in. `hand` / `deck` / `graveyard` still divert
+for every owner, because those are piles and the picker's whole vocabulary is
+slots on the board.
+
+### Two rules boundaries
+
+⚠ **The permission is player-only at the gate.** The AI's own Polycreation
+resolver consumes `gate.materials` by id and marks them `_fusionConsumed` without
+filing anything, so a seized *player* card would vanish from the game instead of
+reaching their graveyard. Widening the AI's hand-spell gate would also be a rules
+change nobody asked for — the ask was about the modal, and the modal is the
+player's own-turn flow. The AI keeps `_polyFuseFromSources`, which files
+correctly.
+
+⚠ **A seized body is filed to its own owner's pile.** The consume step pushed
+every consumed material's card-def into `ns.player.graveyard` — correct while
+every material was yours, and a gift the moment one is not: the opponent's card
+would land in *your* graveyard, recoverable by any of this engine's recursion
+effects. That is permanently stealing a card, not borrowing a body for a fusion.
+
+The modal also **labels** a seized slot (*"· seized from the enemy"*). A slot that
+reads exactly like one of your own units hides the most important fact about the
+play.
+
+### A check that broke for the right reason
+
+`_ritualart_smoke` runs `_polySlotAlts` **for real**, lifting it out of the source
+and evaluating it. Adding the `_polyMatUsable` / `_polyMatShape` dependency made
+the lifted function throw on an undefined helper; its own `try/catch` swallowed
+that and returned `[]`, so every slot came back with no alternatives. The fix was
+to lift the two helpers as well — the suite now exercises *more* of the real code,
+not less. Its existing *"not the enemy"* assertion still passing, with no `opts`
+supplied, is independent confirmation that every fusion that exists today is
+unchanged.
+
+Suite: `_polyseize_smoke.mjs` (42 checks; runs the usability decision, the alias
+and the diversion for real).
