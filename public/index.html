@@ -39940,7 +39940,7 @@ body:has(#pack-opener-frame) #chat-overlay {
   // the console. Bump this every deploy alongside sw.js's CACHE_VERSION. If two
   // machines show different stamps, the older one is on stale code (hard-refresh);
   // if they MATCH but content still differs, it is a DATA/publish issue, not code.
-  window.BUILD_VERSION = 'v121v156';
+  window.BUILD_VERSION = 'v121v157';
   try {
     console.info('%cMythic Spellbook ' + window.BUILD_VERSION + '%c — build check: run  __mg.version',
       'font-weight:700;color:#b48cff', 'color:#7d7499');
@@ -54253,24 +54253,36 @@ async function cloudFetchProfile() {
           if (cv > lv) Profile.cardCollection[id] = cv;
         }
       }
-      // 📋 SIDE DECK restore — cloud fills in ONLY when local has no side deck
-      // yet (new device / cleared cache). A populated local side deck wins so a
-      // stale cloud copy can never wipe a freshly-edited one (v86u).
+      /* 📋 SIDE DECK restore. The cloud fills in when local is EMPTY or when the
+         cloud copy is genuinely FRESHER.
+         ⚠ v121v157 — the second condition is new, and it is the reported bug:
+           "cards and decks are missing" on a different PC. This used to adopt
+           the cloud ONLY when local was completely empty, so a stale local side
+           deck holding one card shadowed the full cloud copy and the rest read
+           as missing. The hazard the original guard names — "a stale cloud copy
+           can never wipe a freshly-edited one" — is real; emptiness was just
+           the wrong proxy for it. localIsFresher (computed above from
+           lastLocalEditAt vs the row's updated_at, with the 5s clock-drift
+           grace) is the discriminator every other field on this row already
+           obeys, and a freshly-edited deck sets it by definition, because
+           editing calls saveProfile(). */
       if (f.__sideDeck__ && typeof f.__sideDeck__ === 'object') {
         const _localSide = (Profile.sideDeck && Array.isArray(Profile.sideDeck.cards)) ? Profile.sideDeck.cards : [];
-        if (_localSide.length === 0) {
+        if (_localSide.length === 0 || !localIsFresher) {
           Profile.sideDeck = {
             cards: Array.isArray(f.__sideDeck__.cards) ? f.__sideDeck__.cards.slice(0) : [],
             gems:  Array.isArray(f.__sideDeck__.gems)  ? f.__sideDeck__.gems.slice(0)  : [],
           };
         }
       }
-      // 🜂 ARCHON DECK restore — same policy as the side deck: cloud fills in ONLY
-      // when local has no Archon Deck yet, so a freshly-edited local one always
-      // wins over a stale cloud copy.
+      /* 🜂 REALM DECK restore (Profile.archonDeck keeps its historic name) —
+         same policy as the side deck above, and the same v121v157 correction:
+         empty OR the cloud is fresher. A player who built their Realm Deck on
+         one machine was seeing a truncated one on the next, for exactly the
+         reason described above. */
       if (f.__archonDeck__ && typeof f.__archonDeck__ === 'object') {
         const _localArchon = (Profile.archonDeck && Array.isArray(Profile.archonDeck.cards)) ? Profile.archonDeck.cards : [];
-        if (_localArchon.length === 0) {
+        if (_localArchon.length === 0 || !localIsFresher) {
           Profile.archonDeck = { cards: Array.isArray(f.__archonDeck__.cards) ? f.__archonDeck__.cards.slice(0) : [] };
         }
       }
@@ -58103,6 +58115,32 @@ function getAllCustomCards() {
   const cloudById = new Map((Catalog.cards || []).map(c => [c.id, c]));
   const localById = new Map((Forge.customCards || []).map(c => [c.id, c]));
   const merged = [];
+  /* 🃏 FOR A PLAYER, THE PUBLISHED CATALOGUE IS THE CARD.
+     ═══════════════════════════════════════════════════════════════════════
+     Reported: "the effects of some cards are not the same as they have been
+     updated … every player get the same cards and same updates".
+
+     Forge.customCards is stored PER PLAYER in user_profiles.forge, and the
+     merge below keeps a local copy unless the published one is stamped newer.
+     Measured on the live database against a 477-card catalogue: Inergy carried
+     248 private card definitions, several old accounts 240 each, others a
+     handful — every one of them able to shadow a republished card with its own
+     older version of that card's effect. Two accounts then disagree about what
+     the same card does, which is exactly what was reported.
+
+     Card authoring is ADMIN-ONLY (isAdmin() is an email allowlist), so a normal
+     player never authored any of those entries — they are residue from older
+     builds that copied the catalogue into the profile. Nothing a player made is
+     at risk here, because a player cannot make one.
+
+     ⚠ The author is deliberately EXEMPT: an admin keeps local-wins-unless-
+       cloud-is-newer, which is the only thing that makes unpublished work
+       possible. _cardCloudIsNewer still settles that case.
+     ⚠ Local entries still fill GAPS for non-admins — ids the catalogue does not
+       contain — so this can never make a card a player can currently see
+       vanish. It only stops a stale private copy overriding a published one. */
+  let _authorMode = true;
+  try { _authorMode = (typeof isAdmin === 'function') ? !!isAdmin() : true; } catch (e) { _authorMode = true; }
   // Local authored cards win — EXCEPT when the SAME card was published more recently
   // elsewhere. That signature = a stale local copy (e.g. the dev account signed in on a
   // second computer whose old edits were overriding the fresh cloud). The authoring
@@ -58110,6 +58148,8 @@ function getAllCustomCards() {
   for (const lc of (Forge.customCards || [])) {
     if (_forgeIsCardDeleted(lc.id)) continue;   // 🪦 belt-and-braces
     const cc = cloudById.get(lc.id);
+    // a player takes the published card outright; only the author compares stamps
+    if (!_authorMode && cc) { merged.push(cc); continue; }
     merged.push(_cardCloudIsNewer(cc, lc) ? cc : lc);
   }
   for (const cc of (Catalog.cards || [])) {
@@ -142321,6 +142361,18 @@ function _onbCfg() {
   };
 }
 
+/* 🎓 Is this player's real profile in memory yet?
+   TRUE for an offline player (their local save IS the truth), TRUE once the
+   cloud fetch has answered either way, FALSE only in the window where a
+   signed-in player's row is still in flight — which is exactly the window in
+   which nothing may be concluded from Profile.records. */
+function _profileKnown() {
+  try {
+    const cc = (Profile && Profile.cloud) || {};
+    if (!cc.signedIn) return true;             // offline: local is all there is
+    return !!cc._hydratedFromCloud;
+  } catch (e) { return true; }
+}
 function _ensureOnboardingState() {
   if (!Profile.onboarding || typeof Profile.onboarding !== 'object') Profile.onboarding = {};
   if (typeof Profile.onboarding.complete === 'undefined') {
@@ -142335,8 +142387,18 @@ function _ensureOnboardingState() {
       const r = Profile.records || {};
       established = (r.battles || 0) > 0 || (r.wins || 0) > 0 || (r.losses || 0) > 0;
     } catch (e) {}
+    /* 🎓 …AND ONLY WRITE IT IF WE ACTUALLY KNOW. Reported as "they have to
+       start the game and it makes them do the onboarding over and over again".
+       On a new device the cloud row has not landed when the first render runs,
+       so Profile.records is empty, established is false, and this used to
+       stamp complete=false onto the profile — a value derived from data that
+       had simply not loaded. The next debounced sync then uploaded it, marking
+       the player un-onboarded ON THE SERVER, and it happened again next time.
+       Un-hydrated, the value is returned for this render and NOT saved, so it
+       cannot feed itself. */
     Profile.onboarding.complete = !!established;
-    try { saveProfile && saveProfile(); } catch (e) {}
+    if (_profileKnown()) { try { saveProfile && saveProfile(); } catch (e) {} }
+    else { try { delete Profile.onboarding.complete; } catch (e) {} return { complete: !!established, step: Profile.onboarding.step }; }
   }
   return Profile.onboarding;
 }
@@ -142351,6 +142413,12 @@ function shouldRunOnboarding() {
     if (typeof isAdmin === 'function' && isAdmin()) return false;
     const cc = Profile.cloud || {};
     if (!cc.signedIn && !cc.offlineMode) return false;         // still at the auth gate
+    /* 🎓 …and NOT YET while a signed-in player's profile is still arriving.
+       This is "do not decide", not "skip": the player stays on the screen they
+       are on, and this runs again once the row lands. Deciding here would judge
+       a returning player by an empty Profile.records and send them through the
+       welcome flow they finished months ago. */
+    if (cc.signedIn && !_profileKnown()) return false;
     // 🆕 Brand-new signup → ALWAYS onboard, overriding stale complete/records/cloud
     // flags. Set the instant an account is created (esp. important when an admin
     // makes a test account on a profile that already carries progress). Cleared by
@@ -270304,8 +270372,8 @@ try {
        that works everywhere except the one early path nobody tested. It is
        2KB with no dependencies. -->
 <script src="src/econ/peg.js?v=v121q51"></script>
-<script src="src/battle/effects.js?v=v121v156" defer></script>
-<script src="src/phone/handset.js?v=v121v156" defer></script>
+<script src="src/battle/effects.js?v=v121v157" defer></script>
+<script src="src/phone/handset.js?v=v121v157" defer></script>
 <script src="src/battle/combat.js?v=120m4" defer></script>
 <script src="src/battle/targeting.js?v=121e3hex" defer></script>
 <link rel="stylesheet" href="src/sprites/frames.css?v=120k3">

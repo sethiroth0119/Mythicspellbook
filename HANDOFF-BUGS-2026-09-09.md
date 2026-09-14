@@ -2505,3 +2505,93 @@ function.
 
 Suite: `_elemfx_smoke.mjs` (39 checks; runs the placement arithmetic for real at
 three viewports and pins the 1000×562.5 contract the whole integration rests on).
+
+---
+
+## v121v157 — ☁ same cards for everyone, decks that follow you, onboarding that stays done
+
+> Owner: *"The game is still not registering the same on different accounts … the
+> effects of some cards are not the same as they have been updated and cards and
+> decks are missing plus I have players who say they have to start the game and
+> it makes them do the onboarding over and over again … what service I have to
+> pay for what do I have to setup?"*
+
+**Nothing needed buying.** The org is already on Supabase **Pro**, `card_catalog`
+is a healthy server-side singleton (published the same day, 330 KB of cards +
+151 KB of moves, with a Storage mirror fallback), `player_tutorials_seen` is live
+with 109 rows across 52 players, and every active profile row had synced minutes
+before this was written. **The data was always on the server. Three merge rules
+for READING it were wrong — and all three were the same mistake: "local
+non-empty wins".** Correct on the authoring device, wrong on every other one.
+
+### 1. Card effects differed between accounts
+
+`Forge.customCards` is stored **per player** inside `user_profiles.forge`, and
+`getAllCustomCards()` let a local copy shadow the published one whenever its
+`_editedAt` was newer. Measured against the 477-card published catalogue:
+
+| account | private card definitions |
+|---|---|
+| Sethiroth Tha Dev (author) | 503 |
+| Inergy *(last sync Sep 4)* | 248 |
+| old test accounts | 240 × 3, 184 |
+| Yamuns / LIDS / GreyDragon / Sausage | 4 / 7 / 6 / 1 |
+| **Davos, ClareyV** | **0** ← which is why they looked correct |
+
+Each of those can override a republished card with its own older effect text.
+
+Card authoring is **admin-only** (`isAdmin()` is an email allowlist), so a normal
+player never authored any of them — they are residue from older builds that
+copied the catalogue into the profile. A non-admin now takes the published card
+outright.
+
+⚠ The **author is exempt** and still gets local-wins-unless-cloud-is-newer, which
+is the only thing that makes unpublished work possible. ⚠ Local entries still
+fill **gaps** for ids the catalogue lacks, so nothing a player can currently see
+disappears. ⚠ Tombstones still win. ⚠ On any doubt it defaults to *author*, so an
+`isAdmin()` that throws cannot silently discard unpublished work.
+
+### 2. Onboarding repeated
+
+`_ensureOnboardingState()` derived "is this player established" from
+`Profile.records` — and then **saved** that derivation. On a new device the cloud
+row has not landed at first render, so records are empty, `established` is false,
+and it stamped `complete = false` onto the profile. The next debounced sync
+uploaded it, marking the player un-onboarded **on the server**, so it happened
+again next time. **The "over and over" was that write feeding itself.**
+
+`_profileKnown()` now gates it: an offline player is always known (their local
+save is the only truth there is); a signed-in player is known once the cloud
+fetch answers **either way**; and in the window between, `shouldRunOnboarding()`
+does not *decide* and `_ensureOnboardingState()` answers for that render
+**without writing**.
+
+### 3. Decks were missing
+
+The side deck and the Realm deck restored from the cloud **only when local was
+completely empty**:
+
+```js
+if (_localSide.length === 0) { ...adopt cloud... }
+```
+
+So a stale one-card local deck shadowed the full cloud copy and the rest read as
+missing. The hazard the original guard names — *"a stale cloud copy can never
+wipe a freshly-edited one"* — is real; **emptiness was simply the wrong proxy for
+it**. It now adopts when local is empty **or** the cloud is fresher, using
+`localIsFresher` — computed earlier in the same function, and the discriminator
+every other field on that row already obeys. A freshly-edited deck sets it by
+definition, because editing calls `saveProfile()`.
+
+### Still open on the server-authoritative goal
+
+Riskier, and deliberately not bundled here because they touch money and
+collections: making the cloud profile **adopt rather than merge** on sign-in, and
+**versioning the catalogue** so an update force-adopts. Also noted: the card
+collection restore is a max-merge (`cv > lv`), so counts can only go up — a card
+spent on one device is never removed on another.
+
+Suite: `_cloudauth_smoke.mjs` (39 checks; runs all three decisions for real,
+including that a player takes the published effect even when their private copy
+is stamped newer, and that a stale local deck now adopts the cloud while a
+freshly-edited one still wins).
