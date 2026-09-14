@@ -443,7 +443,38 @@ const TILE_ART = {
      wear the sand painting so a road runs through one continuous ground. */
   asphalt: { src: '../assets/Battlemap%20titles/Street%201.png', top: 1 },
   rubble:  { src: '../assets/Battlemap%20titles/Dirt%201.png', top: .97 },
-  dirt:    { src: '../assets/Battlemap%20titles/Dirt%201.png', top: .97 }
+  dirt:    { src: '../assets/Battlemap%20titles/Dirt%201.png', top: .97 },
+
+  /* 🌍 ELEMENTAL LOCATION PAINTINGS.
+     ⚠ THESE FILES MAY NOT EXIST YET AND THAT IS NOT A BUG -- see the header:
+     artImage() answers null until a file loads (or forever if it 404s) and the
+     tile keeps its SURF swatch, while tileArtLoaded() counts what HAS arrived
+     so the ground re-bakes exactly once per late load. So this table is
+     deliberately written ahead of the art: drop the PNG in with the name below
+     and that surface starts wearing it with no code change.
+     `top` is the fraction of the image occupied by the TOP FACE. These are
+     walled isometric tiles whose stone border is part of the top face, so they
+     sit at .80 like the grass and water paintings rather than at 1 like the
+     flat top-down street plate. */
+  earth:      { src: '../assets/Battlemap%20titles/Earth.png',      top: .80 },
+  wind:       { src: '../assets/Battlemap%20titles/Wind.png',       top: .80 },
+  light:      { src: '../assets/Battlemap%20titles/Light.png',      top: .80 },
+  shadow:     { src: '../assets/Battlemap%20titles/Shadow.png',     top: .80 },
+  nature:     { src: '../assets/Battlemap%20titles/Nature.png',     top: .80 },
+  storm:      { src: '../assets/Battlemap%20titles/Storm.png',      top: .80 },
+  ice:        { src: '../assets/Battlemap%20titles/Ice.png',        top: .80 },
+  metal:      { src: '../assets/Battlemap%20titles/Metal.png',      top: .80 },
+  poison:     { src: '../assets/Battlemap%20titles/Poison.png',     top: .80 },
+  psychic:    { src: '../assets/Battlemap%20titles/Psychic.png',    top: .80 },
+  arcane:     { src: '../assets/Battlemap%20titles/Arcane.png',     top: .80 },
+  void:       { src: '../assets/Battlemap%20titles/Void.png',       top: .80 },
+  blood:      { src: '../assets/Battlemap%20titles/Blood.png',      top: .80 },
+  crystal:    { src: '../assets/Battlemap%20titles/Crystal.png',    top: .80 },
+  corruption: { src: '../assets/Battlemap%20titles/Corruption.png', top: .80 },
+  spirit:     { src: '../assets/Battlemap%20titles/Spirit.png',     top: .80 },
+  lava:       { src: '../assets/Battlemap%20titles/Lava.png',       top: .80 },
+  sound:      { src: '../assets/Battlemap%20titles/Sound.png',      top: .80 },
+  gravity:    { src: '../assets/Battlemap%20titles/Gravity.png',    top: .80 }
 };
 function tileArtSpec(surf, x, z){
   const e = TILE_ART[surf]; if (!e) return null;
@@ -1546,8 +1577,23 @@ function rebuildTileIndex(){
   SKIRT_CELLS = new Map();
   TILE_ELEVS = Array.from(set).sort((a,b) => b - a);
 }
-const _SURF_ORDER = ['dirt','asphalt','rubble','grass','water'];
-function _surfCode(s){ const i = _SURF_ORDER.indexOf(s); return (i < 0 ? 7 : i) * 2654435761; }
+/* ⚠ APPEND-ONLY BELOW THE FIRST FIVE. This list is not a set of names, it is
+   a NUMBERING: _surfCode() turns a surface into its index and the terrain key
+   hashes that number, so re-ordering these entries silently invalidates every
+   baked ground and every screenshot baseline. New surfaces go on the END.
+   The first five are the original city vocabulary; the rest are the elemental
+   locations (game lore), which carry their own art and their own tilefx. */
+const _SURF_ORDER = ['dirt','asphalt','rubble','grass','water',
+  'earth','wind','light','shadow','nature','storm','ice','metal','poison',
+  'psychic','arcane','void','blood','crystal','corruption','spirit','lava',
+  'sound','gravity'];
+/* 🔴 THE UNKNOWN-SURFACE SENTINEL USED TO BE 7, AND 7 IS NOW A REAL INDEX.
+   With five surfaces nothing occupied slot 7, so an unrecognised key hashing
+   to 7 was harmless. With twenty-four it collides with 'metal': an unknown
+   surface and a metal tile would produce the SAME terrain key, so a board that
+   differed only there would reuse the previous bake and draw the wrong ground.
+   99 is outside the list and stays outside it. */
+function _surfCode(s){ const i = _SURF_ORDER.indexOf(s); return (i < 0 ? 99 : i) * 2654435761; }
 function tileElevRungs(){ if (!TILE_INDEX) rebuildTileIndex(); return TILE_ELEVS; }
 function tileAt(x,z){
   if (!TILE_INDEX) rebuildTileIndex();
@@ -3452,7 +3498,36 @@ const SURF = {
   asphalt: { lo:'#23272d', hi:'#9aa2ac', grit:'#b9c0c8', a:0.90 },
   rubble:  { lo:'#2a2926', hi:'#a9a79c', grit:'#c6c3b6', a:0.89 },
   grass:   { lo:'#232819', hi:'#8d9c60', grit:'#a8b482', a:0.88 },
-  water:   { lo:'#141a1f', hi:'#68899a', grit:'#9db4bd', a:0.91 }
+  water:   { lo:'#141a1f', hi:'#68899a', grit:'#9db4bd', a:0.91 },
+
+  /* 🌍 THE ELEMENTAL LOCATIONS. Each is a real place in the lore, not a tint.
+     These swatches are what the tile looks like BEFORE its painting arrives --
+     and for as long as the painting 404s -- so each one has to read as its
+     element on its own. `lo` is the shadowed crease, `hi` the lit top, `grit`
+     the speckle that keeps a 60px hex from reading as a flat swatch.
+     ⚠ Keep `a` at 0.86-0.92. Lower and the ground pair shows through and the
+     tile stops reading a clear step above the apron; higher and the board's
+     own lambert falloff stops coming through, which is what made the first
+     pass at these look like stickers laid on the field. */
+  earth:      { lo:'#2a2118', hi:'#a5845a', grit:'#c2a173', a:0.88 },
+  wind:       { lo:'#1f2a28', hi:'#9fb8b4', grit:'#cfe0dc', a:0.86 },
+  light:      { lo:'#3a3320', hi:'#f0e0a8', grit:'#fff6d2', a:0.88 },
+  shadow:     { lo:'#14101c', hi:'#5c5270', grit:'#877ea0', a:0.90 },
+  nature:     { lo:'#1a2614', hi:'#6f9a4e', grit:'#9ec277', a:0.88 },
+  storm:      { lo:'#101c33', hi:'#5f8fd8', grit:'#a8ccff', a:0.89 },
+  ice:        { lo:'#1a2733', hi:'#9ec9e8', grit:'#dff0ff', a:0.90 },
+  metal:      { lo:'#221c18', hi:'#9a9088', grit:'#d0c4b4', a:0.90 },
+  poison:     { lo:'#14200f', hi:'#6ea83c', grit:'#a6e05e', a:0.89 },
+  psychic:    { lo:'#1d0f2a', hi:'#9a5cc8', grit:'#d0a0f0', a:0.89 },
+  arcane:     { lo:'#17123a', hi:'#6f63d8', grit:'#a99cff', a:0.89 },
+  void:       { lo:'#0a0714', hi:'#4b2f78', grit:'#8a5fd0', a:0.92 },
+  blood:      { lo:'#1e0a0a', hi:'#9c2c2c', grit:'#d05a52', a:0.90 },
+  crystal:    { lo:'#141f30', hi:'#6fc0d8', grit:'#b0e8ff', a:0.89 },
+  corruption: { lo:'#120d18', hi:'#5a4468', grit:'#9878b0', a:0.91 },
+  spirit:     { lo:'#101c1e', hi:'#4f9a94', grit:'#8fdcd4', a:0.88 },
+  lava:       { lo:'#1c0a06', hi:'#c4501c', grit:'#ff9c40', a:0.91 },
+  sound:      { lo:'#0e1626', hi:'#4a86c8', grit:'#90cdf8', a:0.89 },
+  gravity:    { lo:'#0d0a18', hi:'#5a4a90', grit:'#9a86d0', a:0.91 }
 };
 function surfOf(t){ return (t && SURF[t.surf]) || SURF.dirt; }
 /* Radial shrink applied to every tile polygon. It has to be ONE number: the

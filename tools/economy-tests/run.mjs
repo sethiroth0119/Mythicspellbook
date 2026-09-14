@@ -5769,6 +5769,10 @@ const stripComments = (src) => {
   const UPM     = num(NC, 'UPGRADE_MULT');
   const MAXL    = num(NC, 'MAX_LVL');
   const RDC     = num(NC, 'ROAD_DEMOLISH_COST');
+  /* 🔥 The uncollected-Cinder ceiling. loadState's tile statement clamps to it,
+     so the §7 sandbox that RUNS that statement has to be given it — scraped,
+     never retyped, like every other value here. */
+  const HOLDCAP = num(NC, 'CITY_HOLD_CAP');
   /* 🛣 THE ROAD PREDICATES, LIFTED — not stubbed. demolishClick's very first
      branch is `if (isRoadTile(t))`, which is the ROAD_DEMOLISH_COST leg §3f
      runs either side of. That test used to read `t.type === 'road'` inline;
@@ -5934,6 +5938,7 @@ const stripComments = (src) => {
       const BUILD_CINDER_MULT = ${BCM}, BUILD_RES_MULT = ${BRM};
       const OPS_RESEARCH_R = ${RADIUS}, GRID = 24, OPS_PREFIX = 'op_';
       const ROAD_DEMOLISH_COST = ${RDC};
+      const CITY_HOLD_CAP = ${HOLDCAP};
       /* 🏗 §8's placement scaffolding. Everything here is a stub for something
          tryPlace touches on the way past — the parts UNDER TEST (the per-type
          count, the reservation multiset, the order record, both refusals) are

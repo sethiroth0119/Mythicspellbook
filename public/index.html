@@ -39940,7 +39940,7 @@ body:has(#pack-opener-frame) #chat-overlay {
   // the console. Bump this every deploy alongside sw.js's CACHE_VERSION. If two
   // machines show different stamps, the older one is on stale code (hard-refresh);
   // if they MATCH but content still differs, it is a DATA/publish issue, not code.
-  window.BUILD_VERSION = 'v121v157';
+  window.BUILD_VERSION = 'v121v158';
   try {
     console.info('%cMythic Spellbook ' + window.BUILD_VERSION + '%c — build check: run  __mg.version',
       'font-weight:700;color:#b48cff', 'color:#7d7499');
@@ -114986,6 +114986,24 @@ function _applyOnPlayOneRaw(state, unit, card) {
     // graveyard restricted to those cards and picks which to bring back; the AI picks
     // automatically. Same shape as Search Deck and Search & Bury.
     let _salvIds = (Array.isArray(eff.salvageCardIds) && eff.salvageCardIds.length) ? eff.salvageCardIds.slice() : null;
+    /* ♻️🎴 THE SHARED CARD PICKER COUNTS TOO.
+       Reported as "Salvage is not working in a field ability — it will not let me
+       save the units that can be salvaged, and when the ability is used it draws
+       a card instead".
+       Nothing failed to save. The 🎴 Card Filter block's allow-list is injected
+       into every effect editor at runtime and written back by
+       _fxCaptureAllFilters() as eff.filterCardIds, but the DEDICATED salvage
+       picker (ed-onplay-salvage-cards -> eff.salvageCardIds) exists ONLY in the
+       on-play editor. So in a field ability the author's named cards landed on
+       filterCardIds, this effect never looked there, _salvIds stayed null, and
+       execution fell through to the newest-N branch at the bottom — which looks
+       exactly like a draw.
+       Reading BOTH keys fixes it for every editor at once rather than bolting a
+       second picker onto each one, and the union means an on-play card that uses
+       both pickers keeps both lists. */
+    if (Array.isArray(eff.filterCardIds) && eff.filterCardIds.length) {
+      _salvIds = Array.from(new Set((_salvIds || []).concat(eff.filterCardIds.filter(Boolean))));
+    }
     // 🎴 FILTER SALVAGE — when a Card Filter is set (element/faction/type/cost/name), the
     // salvage pool becomes EVERY matching card in the graveyard (works for ANY card, not a
     // hardcoded name). We resolve matching grave cards → their ids and feed the same named-
@@ -153412,7 +153430,7 @@ function renderCardEditor() {
         })()}
         ${type === 'hero'
           ? `<div class="editor-field"><label>Energy Cost</label><div class="small-text" style="padding:0.55rem 0.75rem;background:rgba(212,175,55,0.08);border:1px solid rgba(212,175,55,0.3);border-radius:3px;color:#d4af37">⚔️ Heroes don't have an energy cost — they're picked at deck-select.</div></div>`
-          : `<div class="editor-field"><label>Energy Cost (1-10)</label><input id="ed-cost" type="number" min="1" max="10" value="${card.cost}"></div>`}
+          : `<div class="editor-field"><label>Energy Cost (0-10)</label><input id="ed-cost" type="number" min="0" max="10" value="${card.cost}"></div>`}
         ${card.isBred ? (() => {
           const pts = Array.isArray(card.bredParents) ? card.bredParents : [];
           const unitNames = [].concat(
@@ -155362,7 +155380,14 @@ function captureEditorIntoCard(card) {
 
   if (v('ed-name') != null) card.name = v('ed-name').trim() || card.name;
   if (v('ed-icon') != null) card.icon = v('ed-icon').trim() || card.icon;
-  if (v('ed-cost') != null) card.cost = num('ed-cost', 1, 10, card.cost || 1);
+  /* ⚡ COST 0 IS LEGAL. The floor was 1 in three places at once — the input's
+     `min`, the label, and this clamp — so a 0 typed into the box was silently
+     raised to 1 on save even when the browser let it through.
+     🔴 AND THE FALLBACK HAD TO CHANGE WITH IT. `card.cost || 1` reads 0 as
+     falsy, so a card already saved at cost 0 came back as cost 1 the next time
+     the editor could not parse the field — the value would have looked like it
+     saved and then quietly reverted, which is worse than refusing it outright. */
+  if (v('ed-cost') != null) card.cost = num('ed-cost', 0, 10, (card.cost != null ? (card.cost | 0) : 1));
   if (v('ed-desc') != null) card.desc = v('ed-desc').trim();
   // 🃏 Hand effects — split each line; drop empties; cap entry length at 200
   // so a wall-of-text doesn't bust the detail modal layout. Saved as
@@ -176005,15 +176030,109 @@ const _UNIT_SUMMON_VFX = {
      player is waiting on cannot afford to stall on its own textures. */
   vintrius:     { label: '🌠 Vintrius — The Birth of Reality',        file: 'assets/vfx/vfx-vintrius.html' },
   abraxas:      { label: '🪐 Abraxas — Worlds Unmade',                file: 'assets/vfx/vfx-abraxas.html' },
-  /* 🛸 v121v155 — the two NEW summon pieces. Both are CHARACTER effects: they
+  /* 🛸 v121v155 — the two character summon pieces MOVED OUT of this table in
+     v121v158: they are the STANDARD summon VFX now (see _STANDARD_SUMMON_VFX
+     below), not per-unit cinematics, so the Forge picker no longer offers them
+     and nothing here mounts an iframe for them. Kept for the record: they
      rebuild a figure out of light, so they are fed the unit's SPRITE rather
      than its card face (sprite: true). Both answer the host's existing
      ?art= / ?name= contract — see the host entry point appended to each page —
      while keeping their own postMessage API intact. */
-  hologram:     { label: '🛸 Holographic Arrival',                    file: 'assets/vfx/vfx-hologram.html', sprite: true },
-  crimson:      { label: '🩸 Crimson Rupture (ACE / Mythic)',          file: 'assets/vfx/vfx-rupture.html',  sprite: true },
   aceGeneric:   { label: '👑 ACE — Generic Arrival',                  file: 'vfx/ace?theme=_default' },
 };
+/* ✨ THE STANDARD SUMMON VFX — what plays when a unit is simply PLAYED.
+   🔴 THIS IS NOT A CINEMATIC AND MUST NEVER BECOME ONE. Hologram and Crimson
+   Rupture shipped in _UNIT_SUMMON_VFX, which made them full-screen iframe
+   cinematics offered in the Forge picker — the ACE lane, complete with the
+   _summonCineBusy lock. They were never meant to be that: they are the ordinary
+   arrival effect for every unit, and a normal summon cannot afford a 6.4s
+   blocking overlay. Both ship as dependency-free TRANSPARENT CANVAS renderers
+   (assets/vfx/*-summon.js, `global.<Ctor>`), so this path mounts one positioned
+   <canvas> over the board, plays 4s, and removes itself. No iframe, no lock, no
+   interaction with the ACE/mechanic cinematic lanes.
+   The crimson variant is the MYTHIC one — _vfxSummonTier() already draws that
+   line (ace / archon / mythic / legendary / divine / primordial / level 8+),
+   and it is the same line the effect's own label claimed. */
+const _STANDARD_SUMMON_VFX = {
+  normal: { src: 'assets/vfx/hologram-summon.js', ctor: 'HologramSummon', color: '#65efff' },
+  myth:   { src: 'assets/vfx/rupture-summon.js',  ctor: 'RuptureSummon',  color: '#ff304b' }
+};
+const _STD_VFX_LOADED = {};
+/* Load one effect class once. Returns a promise for the constructor, or null
+   if it cannot be had — a summon VFX is decoration and must never throw into
+   the play pipeline. */
+function _stdSummonCtor(spec) {
+  try {
+    if (window[spec.ctor]) return Promise.resolve(window[spec.ctor]);
+    if (_STD_VFX_LOADED[spec.src]) return _STD_VFX_LOADED[spec.src];
+    _STD_VFX_LOADED[spec.src] = new Promise(function (resolve) {
+      var sc = document.createElement('script');
+      sc.src = spec.src;
+      sc.onload = function () { resolve(window[spec.ctor] || null); };
+      sc.onerror = function () { resolve(null); };
+      document.head.appendChild(sc);
+    });
+    return _STD_VFX_LOADED[spec.src];
+  } catch (e) { return Promise.resolve(null); }
+}
+/* Mount the standard summon VFX over `unit`'s tile. Fire-and-forget. */
+function _playStandardSummonVfx(unit, anchor) {
+  try {
+    var tier = (typeof _vfxSummonTier === 'function') ? _vfxSummonTier(unit) : 'normal';
+    var spec = _STANDARD_SUMMON_VFX[tier] || _STANDARD_SUMMON_VFX.normal;
+    _stdSummonCtor(spec).then(function (Ctor) {
+      if (!Ctor) return;
+      /* Anchor on the unit's own tile when we have one, board centre otherwise —
+         the same fallback ladder _playMythicSummonVfxImpl walks. */
+      var cx = anchor && anchor.x, cy = anchor && anchor.y;
+      if (cx == null || cy == null) {
+        try {
+          var p = unit && unit.pos;
+          var tp = (p && typeof _bbTilePoint === 'function') ? _bbTilePoint(p.x, p.y) : null;
+          if (tp) { cx = tp.x; cy = tp.y; }
+        } catch (e) {}
+      }
+      if (cx == null || cy == null) { cx = window.innerWidth / 2; cy = window.innerHeight / 2; }
+      /* The renderer draws its figure standing ON the canvas floor (it
+         translates to H*0.82), so the canvas is placed with the tile at that
+         floor line rather than at its centre, or the unit rises out of thin
+         air a third of a canvas above its own hex. */
+      var W = 420, H = 460;
+      var cv = document.createElement('canvas');
+      cv.width = W; cv.height = H;
+      cv.className = 'std-summon-vfx';
+      cv.style.cssText = 'position:fixed;pointer-events:none;z-index:60;left:' +
+        Math.round(cx - W / 2) + 'px;top:' + Math.round(cy - H * 0.82) + 'px;width:' +
+        W + 'px;height:' + H + 'px;';
+      document.body.appendChild(cv);
+      var fx = null;
+      var gone = false;
+      var kill = function () {
+        if (gone) return; gone = true;
+        try { if (fx) fx.destroy(); } catch (e) {}
+        try { if (cv.parentNode) cv.remove(); } catch (e) {}
+      };
+      try {
+        fx = new Ctor(cv, { color: spec.color, onComplete: kill });
+      } catch (e) { try { cv.remove(); } catch (e2) {} return; }
+      /* A hard backstop: if the class never completes (a tab backgrounded mid
+         play stops rAF and onComplete never fires) the canvas would sit over
+         the board forever. 4s runtime + margin. */
+      setTimeout(kill, 9000);
+      /* The effect reconstructs a FIGURE, so it wants the unit's sprite, not a
+         card face — the same rule the `sprite: true` cinematics followed. It
+         renders its built-in demo figure if no art can be had, so a failed
+         setUnit must not stop the play. */
+      var art = null;
+      try { if (typeof _vfxUnitImage === 'function') art = _vfxUnitImage(unit, { noBase: true }); } catch (e) {}
+      try { if (!art && typeof _unitCardArtForVfx === 'function') art = _unitCardArtForVfx(unit); } catch (e) {}
+      if (art && fx.setUnit) {
+        try { fx.setUnit(art).then(function () { fx.play(); }, function () { fx.play(); }); }
+        catch (e) { fx.play(); }
+      } else { fx.play(); }
+    });
+  } catch (e) {}
+}
 let _summonCineBusy = false;
 let _summonCineBusyAt = 0;   // timestamp of the last lock — lets a leaked/stuck flag self-heal (see the 12s stale override) so a cinematic never permanently blocks future ones.
 // 🌌 MECHANIC cinematics (Kalon/Archon/Polycreation) run in their OWN lane — an ACE
@@ -176082,6 +176201,15 @@ function _playSummonCinematic(file, artUrl) {
   } catch (e) { _summonCineCleanup(); }
 }
 function _playUnitVfx(vfxId, anchor, unit) {
+  /* 🔁 A card published while Hologram / Crimson were in the cinematic picker
+     still carries `summonVfx:'hologram'` or `'crimson'`. Those ids are no longer
+     in _UNIT_SUMMON_VFX, so without this they would fall through to the
+     effect-burst branch and silently play nothing. Honour them as what they now
+     are — the standard summon VFX — rather than making the admin re-pick. */
+  if (vfxId === 'hologram' || vfxId === 'crimson') {
+    _playStandardSummonVfx(unit, anchor);
+    return;
+  }
   // Dedicated summon cinematic (transparent iframe over the field)?
   const cine = _UNIT_SUMMON_VFX[vfxId];
   if (cine) {
@@ -176723,7 +176851,15 @@ function _dispatchUnitSummonVfx(opts) {
     // No explicit pick (or it was lost on publish) → auto-map ACE units by name so
     // their cinematic still fires.
     if (!vfxId || vfxId === 'none') vfxId = _aceVfxIdForUnit(u);
-    if (!vfxId || vfxId === 'none') return false;
+    // ✨ No picked cinematic and not an ACE — this is an ORDINARY unit being
+    // played, which is exactly what the standard summon VFX is for. Returning
+    // false here used to hand the play on to the generic mythic meteor (the
+    // radial tile-crack burst); the hologram replaces it, and TRUE is what
+    // stops the meteor firing underneath it.
+    if (!vfxId || vfxId === 'none') {
+      _playStandardSummonVfx(u, (typeof _vfxAnchorFor === 'function') ? _vfxAnchorFor(u) : null);
+      return true;
+    }
     _playUnitVfx(vfxId, (typeof _vfxAnchorFor === 'function') ? _vfxAnchorFor(u) : null, u);
     return true;
   } catch (e) {}
@@ -255208,7 +255344,7 @@ function _describeOnPlayEffectBody(eff) {
     case 'polycreate':   return `Auto-fuses nearby allies ${within} into a Fusion Kalon when the materials match.`;
     case 'searchDeck':   return `Search your deck for a card and add it to your hand.`;
     case 'millSelf':     return `Mills the top ${eff.amount || 1} card${(eff.amount || 1) === 1 ? '' : 's'} of your deck into your graveyard.`;
-    case 'graveToHand':  { const n=Math.max(1,eff.amount||1); if (Array.isArray(eff.salvageCardIds) && eff.salvageCardIds.length) { return `♻️🔍 Search your graveyard for ${n === 1 ? 'a specific card' : n + ' specific cards'} and return ${n === 1 ? 'it' : 'them'} to your hand (you choose${eff.salvageCardIds.length > 1 ? ` from ${eff.salvageCardIds.length} named cards` : ''}).`; } return `Returns the most recent ${n} card${n === 1 ? '' : 's'} from your graveyard to your hand.`; }
+    case 'graveToHand':  { const n=Math.max(1,eff.amount||1); const _sIds = [].concat(Array.isArray(eff.salvageCardIds) ? eff.salvageCardIds : [], Array.isArray(eff.filterCardIds) ? eff.filterCardIds : []).filter(Boolean); if (_sIds.length) { return `♻️🔍 Search your graveyard for ${n === 1 ? 'a specific card' : n + ' specific cards'} and return ${n === 1 ? 'it' : 'them'} to your hand (you choose${_sIds.length > 1 ? ` from ${_sIds.length} named cards` : ''}).`; } return `Returns the most recent ${n} card${n === 1 ? '' : 's'} from your graveyard to your hand.`; }
     case 'banishGrave':  { const sd = eff.graveSide || 'enemy'; return `Banishes ${sd === 'both' ? 'both graveyards' : sd === 'self' ? 'your graveyard' : "the enemy's graveyard"} to the Void.`; }
     case 'negateGraveyard': { const sd = eff.graveSide || 'enemy'; const t = eff.statusDuration || 3; return `Seals ${sd === 'both' ? 'every graveyard' : sd === 'self' ? 'your graveyard' : "the enemy's graveyard"} for ${t} turn${t === 1 ? '' : 's'} — no rising, recursion, or graveyard effects.`; }
     case 'paintSurface': { const sf = _abilitySurfaceName(eff.surfaceType); return `Lays ${sf.icon} ${sf.name} on the battlefield (radius ${r}).`; }
@@ -270372,8 +270508,8 @@ try {
        that works everywhere except the one early path nobody tested. It is
        2KB with no dependencies. -->
 <script src="src/econ/peg.js?v=v121q51"></script>
-<script src="src/battle/effects.js?v=v121v157" defer></script>
-<script src="src/phone/handset.js?v=v121v157" defer></script>
+<script src="src/battle/effects.js?v=v121v158" defer></script>
+<script src="src/phone/handset.js?v=v121v158" defer></script>
 <script src="src/battle/combat.js?v=120m4" defer></script>
 <script src="src/battle/targeting.js?v=121e3hex" defer></script>
 <link rel="stylesheet" href="src/sprites/frames.css?v=120k3">

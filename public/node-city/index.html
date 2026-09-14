@@ -9,7 +9,7 @@
      believed the file was already live. Only a CONTENT change moves the hash
      and forces a re-upload, so bump this stamp whenever the city 404s, and
      probe it (grep NC_BUILD on the served page) to prove the deploy landed. -->
-<script>window.NC_BUILD = "v121v157-cloudauth";</script>
+<script>window.NC_BUILD = "v121v158-cinder";</script>
 <!-- ════════════════════════════════════════════════════════════════════════
      NODE CITY — SimCity-style settlement layer for Mythic Spellbook.
      Three.js WebGPU (auto-falls back to WebGL2). Realistic sun/moon cycle.
@@ -6502,6 +6502,139 @@ function cityDemandScale() {
 }
 const CINDER_PERIOD_DIV = 60;                    // per-minute figures → per-hour
 const cinderRate = (perMin) => (perMin || 0) / CINDER_PERIOD_DIV;
+
+/* 🔥 WHAT A UNIT OF OUTPUT SELLS FOR, in Cinder. Only used to derive an earning
+   rate for the 126 buildings that have no authored gen.cinder line; it prices
+   nothing else in the game and is deliberately coarse — staples cheap, refined
+   and rare goods dearer. Anything unlisted takes CITY_SELL_DEFAULT. */
+const CITY_SELL_DEFAULT = 1.0;
+const CITY_SELL_VALUE = {
+  // staples — high volume, low margin
+  food: 0.8, water: 0.6, freshWater: 0.6, industrialWater: 0.5, corn: 0.8,
+  wood: 0.7, stone: 0.7, gravel: 0.6, clay: 0.6, limestone: 0.7, coal: 0.9,
+  // basic industry
+  metal: 1.1, lumber: 1.0, planks: 1.1, fabric: 1.1, cotton: 0.9, cardboard: 0.8,
+  supplies: 1.0, rations: 1.2, goods: 1.3, livestock: 1.3, herbs: 1.4, fruit: 1.1,
+  // refined / chemical
+  petrochemicals: 1.8, industrialChemicals: 1.9, plastic: 1.6, steel: 1.8,
+  aluminum: 1.8, copper: 1.9, copperWire: 2.0, sheetMetal: 1.8, metalAlloys: 2.1,
+  glass: 1.5, adhesives: 1.6, solvents: 1.6, acids: 1.7, paint: 1.6, rubber: 1.6,
+  // energy
+  fuel: 1.6, gasoline: 1.8, industrialFuel: 1.9, aviationFuel: 2.4, industrialGas: 1.5,
+  // high tech / medical / military
+  microchips: 3.2, siliconWafers: 3.0, electronicComponents: 2.8,
+  electricalComponents: 2.4, semiconductorChemicals: 2.8, semiconductorMaterials: 2.8,
+  medicine: 2.2, medicalChemicals: 2.4, remedies: 2.2, reagents: 2.0,
+  ammo: 2.0, components: 1.8, engines: 2.6, vehicleParts: 2.2, tires: 1.8,
+  maintenanceParts: 1.6, constructionComponents: 1.8, machineParts: 2.0,
+  // anomalous
+  memoryShards: 3.5, corruptedEssence: 3.2, anomalousEnergy: 3.4,
+  anomalousMatter: 3.6, dimensionalMaterial: 4.0,
+  goldOre: 2.6, cobalt: 2.4, lithium: 2.4, copperOre: 1.4, aluminumOre: 1.3,
+};
+/* 🔥 A MINUTE OF OUTPUT VALUE → CINDER PER HOUR.
+   CALIBRATED, NOT CHOSEN. The thirteen authored buildings pay 0.18–0.30/hr. A
+   Farm produces food 1.5 + corn 0.3 + fruit 0.18 + herbs 0.08 per minute, which
+   prices at ~2.06 of output value; 0.087 puts it at ~0.18/hr — the same band as
+   a shop, which is the point. A building that out-produces a shop earns more
+   than one, and nothing earns a hundred times one for being expensive. */
+const CINDER_PER_OUTPUT = 0.087;
+/* 🔴 WHY NOT SIMPLY SCALE THE YIELD BY WHAT THE BUILDING COST?
+   A flat cost-proportional rule was tried on paper first and rejected, and the
+   measurement is kept here because the idea is an obvious one that will occur
+   to the next reader too.
+
+   The thirteen authored rows pay a median 0.346 Cinder per 100 of build cost
+   (range 0.125 to 0.735). Apply that same ratio to the rows that have no cinder
+   line and it pays:
+
+       holdco     cost 11,000  ->  38.1 /hr
+       indexfund  cost  3,200  ->  11.1 /hr
+       highrise   cost  2,200  ->   7.6 /hr
+
+   against a shop's 0.18. More than a hundred times a shop, for buildings that
+   produce nothing at all — purely for being expensive. That is exactly the
+   failure the dry-shop block a few hundred lines below already warns about:
+   "copying it is the only way to be sure a new shop is not quietly the best
+   earner in the game."
+
+   Output value avoids it by construction: a building that makes nothing earns
+   nothing, however much it cost. */
+/* 🔥 HOW MUCH A BUILDING MAY HOLD, AND HOW MUCH LEAVES IN ONE COLLECT.
+   Owner: "cap them all at 150,000" and "they can only have 15k transfer the
+   rest is held basically never stopped". So the pool fills to 150,000 and stops
+   filling there; a collect takes at most 15,000 and the remainder stays put for
+   the next one. */
+const CITY_HOLD_CAP    = 150000;
+const CITY_COLLECT_MAX = 15000;
+/* 🔴 LOT RENT AND PATRON INCOME ARE DELIBERATELY LEFT AUTO-CREDITING, and they
+   are the two other writers to game.frac.cinder in this tick. They are not "a
+   building producing": rent is what the LAND pays and patrons are footfall
+   through a venue, neither of which is the thing the owner asked to be held and
+   collected. Sweeping them in would silently change land and venue income,
+   which nobody asked for, and would make a Resting House's rent unreachable
+   until someone thought to collect a building that does not look like a shop.
+   If they should ever be held too, they route through cityHoldAdd exactly as
+   the two production paths now do — that is the whole change. */
+/* 🔥 Bank Cinder INTO A TILE rather than into the player's wallet.
+   ⚠ This is the redirect that keeps one payout path. economyTick used to add
+     straight to game.frac.cinder, which the flush at the bottom turns into real
+     money; building income now stops here instead and waits for a collect.
+   Returns what was actually banked, which is less than asked when the pool is
+   full — the caller uses it so the HUD rate and the Ledger agree with reality
+   rather than advertising Cinder the building could not keep. */
+function cityHoldAdd(t, amount) {
+  try {
+    if (!t || !(amount > 0)) return 0;
+    const cur = Math.max(0, +t.hold || 0);
+    const room = Math.max(0, CITY_HOLD_CAP - cur);
+    if (room <= 0) return 0;
+    const put = Math.min(room, amount);
+    t.hold = cur + put;
+    return put;
+  } catch (e) { return 0; }
+}
+/* 🔥 Take up to CITY_COLLECT_MAX out of a tile and hand it to the player.
+   ⚠ It pays through MythicCityBridge.addCinders — the same bridge the tick's
+     flush uses — so collected Cinder and auto-credited Cinder still arrive by
+     one route. Returns the amount paid. */
+async function cityHoldCollect(t) {
+  try {
+    if (!t) return 0;
+    const cur = Math.max(0, +t.hold || 0);
+    const take = Math.min(CITY_COLLECT_MAX, Math.floor(cur));
+    if (take <= 0) return 0;
+    t.hold = cur - take;
+    const ok = await MythicCityBridge.addCinders(take);
+    /* ⚠ PUT IT BACK IF THE BRIDGE DID NOT DELIVER. addCinders returns false when
+       the parent refused or the RPC failed; keeping the debit would destroy the
+       player's money on a dropped call. */
+    if (!ok) { t.hold = cur; return 0; }
+    try { cityXpAdd(take); } catch (e) {}
+    try { save(); } catch (e) {}
+    return take;
+  } catch (e) { return 0; }
+}
+/* 🔥 The per-hour Cinder a building earns from selling what it makes.
+   ⚠ An authored gen.cinder ALWAYS wins: those thirteen rows are hand-balanced
+     against named neighbours ("EVERY NUMBER IS LIFTED FROM A NAMED NEIGHBOUR")
+     and a formula must not quietly restate them.
+   ⚠ A building that produces nothing earns nothing here. Housing and finance
+     towers are not shops; paying them for existing is exactly what the rejected
+     cost-proportional rule got wrong. */
+function bldCinderPerMin(def) {
+  try {
+    if (!def || !def.gen) return 0;
+    if (def.gen.cinder) return def.gen.cinder;          // authored — untouched
+    let v = 0;
+    for (const r in def.gen) {
+      if (r === 'cinder' || r === 'power') continue;    // power is infrastructure, not stock
+      const q = +def.gen[r] || 0;
+      if (q > 0) v += q * (CITY_SELL_VALUE[r] == null ? CITY_SELL_DEFAULT : CITY_SELL_VALUE[r]);
+    }
+    return v * CINDER_PER_OUTPUT;
+  } catch (e) { return 0; }
+}
 /* The SAME number the tick will actually pay, for any resource. Every panel that
    prints a production rate must go through this rather than reading def.gen[r]
    directly — otherwise the build menu advertises 0.25/min while the economy pays
@@ -30167,12 +30300,18 @@ async function economyTick(dtMin) {
          ⚠ CINDER IS EXEMPT. It is currency, not a stash unit; it has no
            resource cap and must never be idled by a full vault. */
       if (r === 'cinder') {
-        game.frac.cinder = (game.frac.cinder || 0) + madeR;
-        prodPerMin.cinder = (prodPerMin.cinder || 0) + genR * mult * om;
+        /* 🔥 HELD, NOT PAID. This used to add to game.frac.cinder, which the
+           flush at the bottom turns into real money. Building income now banks
+           into the tile and waits for a collect; the flush still exists and is
+           still the one place Cinder becomes money — collect goes through it.
+           ⚠ prodPerMin is credited with what was ACTUALLY banked, so a full
+             building stops advertising a rate it cannot keep. */
+        const _kept = cityHoldAdd(t, madeR);
+        prodPerMin.cinder = (prodPerMin.cinder || 0) + (madeR > 0 ? (genR * mult * om) * (_kept / madeR) : 0);
         /* 🧾 LIFETIME CINDER, PER TILE. The exact amount is already in hand here
            with `t` in scope — this is the whole cost of a real Ledger tab. Only
            Cinder is banked: goods are city stock, not this building's money. */
-        t.earn = (t.earn || 0) + madeR;
+        t.earn = (t.earn || 0) + _kept;   // 🔥 what the building actually banked
       } else {
         _ledgerWant[r] = (_ledgerWant[r] || 0) + madeR;
         _ledgerRate[r] = (_ledgerRate[r] || 0) + genR * mult * om;
@@ -30191,6 +30330,28 @@ async function economyTick(dtMin) {
             dry city was fine. */
       if (r === 'water') waterNetRaw += genR * mult;   // see waterNetRaw
     }
+    /* 🔥 EVERY BUILDING EARNS. The loop above pays only rows that carry an
+       authored gen.cinder — thirteen of them. This pays the other 126 from
+       what they PRODUCE (bldCinderPerMin), on exactly the same terms: the same
+       per-hour divisor, the same tile multiplier (level, crew, adjacency), and
+       the same cinder output multiplier (city needs, morale, plague).
+       ⚠ Guarded on the absence of an authored line, so an authored building is
+         never paid twice — once by the loop and once here. */
+    try {
+      if (def.gen && !def.gen.cinder) {
+        const _dPerMin = bldCinderPerMin(def);
+        if (_dPerMin > 0) {
+          const _dRate = cinderRate(_dPerMin) * mult * (omCin * share);
+          const _dMade = _dRate * dtMin;
+          if (_dMade > 0) {
+            // 🔥 held on the tile, exactly like the authored rows above
+            const _dKept = cityHoldAdd(t, _dMade);
+            prodPerMin.cinder = (prodPerMin.cinder || 0) + _dRate * (_dKept / _dMade);
+            t.earn = (t.earn || 0) + _dKept;     // the Ledger tab's lifetime figure
+          }
+        }
+      }
+    } catch (e) {}
     // 🍽 SERVICES: convert refined stock into COVERAGE.
     if (def.svc) {
       const s = def.svc;
@@ -42350,6 +42511,15 @@ function serialize() {
                  born: Math.round(t.born || 0),
                  // 🧾 Lifetime money. Absent-tolerant on load (see loadState).
                  spent: Math.round(t.spent || 0), earn: Math.round(t.earn || 0),
+                 /* 🔥 UNCOLLECTED CINDER SITTING IN THIS BUILDING, and it MUST
+                    ride the save for the same reason the Resting House's
+                    resonance does two fields down: it is money the player has
+                    earned and not yet taken. Left off this whitelist the pool
+                    would be rebuilt as 0 on every load and the feature would
+                    quietly throw away everything it banked.
+                    ⚠ Distinct from earn, which is LIFETIME and only ever
+                      grows. This one falls when the player collects. */
+                 hold: Math.round(t.hold || 0),
                  /* 🛏 Who is asleep in the Resting House, what they have earned
                     and the wall-clock watermark they were last paid up to.
                     ⚠ MUST ride the tile save. Resonance accrued but not yet
@@ -43826,6 +43996,14 @@ async function loadState() {
                   // ("nothing recorded yet"), and the panel says so.
                   spent: Number.isFinite(+td.spent) ? Math.max(0, +td.spent) : 0,
                   earn: Number.isFinite(+td.earn) ? Math.max(0, +td.earn) : 0,
+                  /* 🔥 …and the uncollected pool. Absent-tolerant exactly like
+                     earn above: every city saved before this field existed has
+                     no hold, and it must read as 0 rather than NaN — an
+                     accrual added to NaN is NaN, and a NaN pool would stop
+                     paying out for ever with nothing on screen to explain it.
+                     Clamped to the cap on the way in so a hand-edited save
+                     cannot mint a pool larger than the rule allows. */
+                  hold: Number.isFinite(+td.hold) ? Math.max(0, Math.min(CITY_HOLD_CAP, +td.hold)) : 0,
                   /* 🛏 Billets, uncollected Resonance and the accrual watermark.
                      Absent on every save written before the House existed and on
                      every tile that is not one — `null` is the correct answer and

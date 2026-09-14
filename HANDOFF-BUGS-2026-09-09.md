@@ -2595,3 +2595,106 @@ Suite: `_cloudauth_smoke.mjs` (39 checks; runs all three decisions for real,
 including that a player takes the published effect even when their private copy
 is stamped newer, and that a stale local deck now adopts the cloud while a
 freshly-edited one still wins).
+
+---
+
+## v121v158 — 🔥 every city building earns, and the money is held until collected
+
+> Owner: *"Make it where city businesses and buildings generate cinder and make
+> profit from NPCs Shopping and just based on the building what it produces,
+> What the level upgrade it is, the units that is on it … All buildings should be
+> bringing and generating profit and cinder cap them all at 150,000 … save the
+> profit progress on every building"* and *"they can only have 15k transfer the
+> rest is held basically never stopped"*.
+
+### Most of the machinery already existed
+
+`economyTick` already computes, once per tick, every factor named in the ask:
+`mult` (tileMult — **level**, crew, adjacency, roads), `om`
+(cityOutputMultipliers — city **needs**, morale, plague), the power pre-pass
+(**utilities**), and `t.earn`, which is already **per-tile lifetime cinder** and
+already read by the Ledger tab. So this adds an **earning rule** and a **holding
+pool**, not a second multiplier chain.
+
+### The yield is derived from OUTPUT, not cost — and that was measured first
+
+Only **13 of 139** rows carry an authored `gen.cinder`, and **all thirteen are
+retail or leisure** (shops, restaurant, club, cinema, arena, office, gas station)
+paying 0.18–0.30/hr. That is the existing model: a shop earns Cinder because NPCs
+shop there; a farm earns **food**.
+
+A flat cost-proportional rule was tried on paper and rejected. At the authored
+median of 0.346 Cinder per 100 cost it pays:
+
+| building | cost | would pay |
+|---|---|---|
+| holdco | 11,000 | **38.1/hr** |
+| indexfund | 3,200 | **11.1/hr** |
+| highrise | 2,200 | 7.6/hr |
+
+against a shop's 0.18 — more than a hundred times, for buildings that produce
+nothing, purely for being expensive. That is exactly what the dry-shop block
+already warns about: *"copying it is the only way to be sure a new shop is not
+quietly the best earner in the game."* Output value avoids it by construction.
+
+⚠ **An authored `gen.cinder` always wins** — those thirteen are hand-balanced
+against named neighbours. ⚠ A building that produces nothing earns nothing.
+
+### Three things that were nearly bugs
+
+⚠ **The double pay.** City Cinder *auto-credited*: `economyTick` accrued into
+`game.frac.cinder`, and the flush at the bottom is, in the file's own words,
+*"the ONE place city Cinder becomes real money"*. Adding a held pool without
+removing that would have paid **every Cinder twice** — the money-leak class
+`ECONOMY.md` exists for. So this is a **redirect**: production banks to the tile,
+and collect pays through the same bridge. Still exactly one payout path.
+
+⚠ **The dead branch.** The production loop is `for (const r in def.gen)`, so a
+building with **no cinder key never enters the cinder branch**. A fix written
+inside it would have changed nothing for the 126 buildings this is for, while
+looking correct. The derived credit therefore sits *after* the loop.
+
+⚠ **The lost pool.** `serialize()` writes tiles from an **explicit field
+whitelist**. A pool left off it is rebuilt as 0 on every load — the feature would
+have worked for one session and then thrown the money away, which is the same
+shape as two bugs already on the tracker (*"Trash Crusher … all the progress has
+reset"*, *"Home Stead Farm — builds not saving"*). `hold` now rides the save and
+is read back absent-tolerant and clamped.
+
+### The rules, as asked
+
+* accrual never stops until the pool is full
+* the pool ceilings at **150,000** per building (`CITY_HOLD_CAP`)
+* one collect transfers at most **15,000** (`CITY_COLLECT_MAX`) — ten collects
+  empty a full building
+* `cityHoldCollect` **puts the money back if the bridge did not deliver**:
+  `addCinders` returns false on a refused or failed RPC, and keeping the debit
+  would destroy the player's money on a dropped call
+
+⚠ **Lot rent and patron income are deliberately left auto-crediting.** They are
+the other two writers to `game.frac.cinder`, and neither is *a building
+producing* — rent is land, patrons are footfall. Sweeping them in would silently
+change land and venue income. If they should ever be held too, they route through
+`cityHoldAdd` exactly as the two production paths now do.
+
+### A gauntlet catch worth recording
+
+§7 **scrapes `loadState`'s tile statement and runs it**, asserting *"every
+identifier it reads is one it declares or is given"*. The new `CITY_HOLD_CAP`
+clamp was not in that sandbox, so the statement threw — and §7's other two rows
+(the 24-hour order round trip, the reloaded level) failed as a **cascade of that
+throw**, not on their own merits. Fixed by giving the sandbox the constant
+**scraped from source**, not by inlining `150000`: clamping on load is the right
+place for it (the pool is money, and a hand-edited save must not present a larger
+one than the rule allows), and a literal typed into the harness would keep the
+round green through exactly the edit it exists to catch.
+
+### Still to layer on
+
+The node-power / cinder-level and registered-player bonuses, world events
+depressing income, and the Collect button in the building panel. The engine is
+in; those sit on top of it.
+
+Suite: `_citycinder_smoke.mjs` (41 checks; runs the earning model and the pool
+arithmetic for real, including that a farm lands in the shops' band and an
+11,000-cost idle tower earns less than a 14-cost farm).
